@@ -4,6 +4,7 @@ import {
   builtInSortingFns,
   getSortingFn,
   registerSortingFn,
+  nameOfSortingFn,
 } from './sorting';
 
 describe('sorting registry', () => {
@@ -65,6 +66,30 @@ describe('sorting registry', () => {
 
     it('built-ins object is frozen', () => {
       expect(Object.isFrozen(builtInSortingFns)).toBe(true);
+    });
+  });
+
+  describe('nameOfSortingFn', () => {
+    it('returns the name for a built-in function', () => {
+      const fn = getSortingFn<Record<string, unknown>>('alphanumeric');
+      expect(nameOfSortingFn(fn)).toBe('alphanumeric');
+    });
+
+    it('returns the name for a registered custom function', () => {
+      const custom = vi.fn(() => -1);
+      registerSortingFn('custom-sort', custom);
+      expect(nameOfSortingFn(custom)).toBe('custom-sort');
+    });
+
+    it('returns undefined for an unregistered inline function', () => {
+      const inline = () => -1;
+      expect(nameOfSortingFn(inline)).toBeUndefined();
+    });
+
+    it('returns undefined for non-function inputs', () => {
+      expect(nameOfSortingFn(null)).toBeUndefined();
+      expect(nameOfSortingFn(undefined)).toBeUndefined();
+      expect(nameOfSortingFn('alphanumeric')).toBeUndefined();
     });
   });
 });

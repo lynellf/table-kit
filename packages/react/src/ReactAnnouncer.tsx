@@ -9,6 +9,7 @@
  */
 
 import type { Announcer } from '@lynellf/tablekit-core';
+import { setGlobalAnnouncer } from '@lynellf/tablekit-core';
 import { useEffect, useRef, useState } from 'react';
 
 const visuallyHiddenStyle: React.CSSProperties = {
@@ -60,11 +61,14 @@ export const ReactAnnouncer = ({
           return;
         }
         lastAnnounceRef.current = { message: msg, ts: now };
-        setMessage('');
-        requestAnimationFrame(() => setMessage(msg));
+        // Use setTimeout to batch with React's rendering cycle.
+        // This ensures the state update happens after the current render cycle.
+        setTimeout(() => setMessage(msg), 0);
       },
     };
     singletonAnnouncer = announcer;
+    // Also set the global announcer so the core table can use it
+    setGlobalAnnouncer(announcer);
     return () => {
       singletonAnnouncer = { announce: () => {} };
     };

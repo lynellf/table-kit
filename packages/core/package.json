@@ -31,6 +31,14 @@
     "./memo": {
       "types": "./dist/pipeline/memo.d.ts",
       "import": "./dist/pipeline/memo.es.js"
+    },
+    "./dataSource": {
+      "types": "./dist/dataSource/index.d.ts",
+      "import": "./dist/dataSource/index.es.js"
+    },
+    "./announcer": {
+      "types": "./dist/announcer.d.ts",
+      "import": "./dist/announcer.es.js"
     }
   },
   "files": ["dist"],

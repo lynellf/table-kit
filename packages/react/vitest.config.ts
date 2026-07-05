@@ -8,8 +8,15 @@ export default defineConfig({
     exclude: ['**/node_modules', '**/dist'],
   },
   resolve: {
-    alias: {
-      '@lynellf/tablekit-core': new URL('../core/src/index.ts', import.meta.url).pathname,
-    },
+    alias: [
+      {
+        find: /^@lynellf\/tablekit-core$/,
+        replacement: '/Users/ezellfrazier/Documents/GitHub/table-kit/packages/core/src/index.ts',
+      },
+      {
+        find: /^@lynellf\/tablekit-core\/(.*)/,
+        replacement: '/Users/ezellfrazier/Documents/GitHub/table-kit/packages/core/src/$1/index.ts',
+      },
+    ],
   },
 });

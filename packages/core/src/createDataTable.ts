@@ -6,8 +6,12 @@
  * pagination helpers, and `autoResetPageIndex`.
  */
 
-import { noopAnnouncer } from './announcer';
+import { noopAnnouncer, getGlobalAnnouncer } from './announcer';
 import { defaultGetRowId } from './columns';
+import { buildRowsQuery } from './dataSource/query';
+import { synthesizePlaceholderRows } from './dataSource/placeholderRows';
+import { validateModeConfiguration } from './dataSource/warnings';
+import type { DataSourceCapabilities, DataSourceState } from './dataSource/types';
 import type { Column } from './columns';
 import { createColumns } from './columns';
 import { buildHeaderGroups } from './headers';
@@ -85,6 +89,8 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   private state: DataTableState;
   private listeners: Set<() => void> = new Set();
   private rowModelCache = new RowModelCache<TRow>();
+  // Flag to prevent subscription firing during setOptions
+  private suppressNotify = false;
   // Scroll + viewport state — set by the React adapter in phase 4.
   // Default to 0/0 so the pure virtualizer produces sensible output in
   // SSR (no rows are "above the fold" until scrollOffset > 0).
@@ -99,10 +105,21 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   // Viewport row count for navigateByPage
   private viewportRowCount = 25;
 
+  // M3 phase 3: data source state. Written by useDataSource via __setDataSourceState.
+  private dataSourceState: DataSourceState<TRow> = {
+    status: 'idle',
+    data: null,
+    refetch: () => {
+      /* no-op until the hook wires refetch */
+    },
+  };
+
   constructor(options: DataTableOptions<TRow>) {
     this.options = options;
     this.state = mergeInitialState(options.initialState, options.state);
     this.navigationMode = options.navigationMode ?? 'cell';
+    // M3 phase 1: mixed-mode trap warning. One-shot dev warning.
+    validateModeConfiguration(this.options);
   }
 
   getState(): DataTableState {
@@ -111,10 +128,21 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
   setOptions(next: DataTableOptions<TRow>): void {
     if (Object.is(next, this.options)) return;
+    const prev = this.options;
     const prevState = this.state;
     this.options = next;
     this.state = mergeInitialState(next.initialState, next.state);
+    // M3 phase 1: re-validate when the option set changes (manual* flags flipped).
+    if (
+      prev.manualSorting !== next.manualSorting ||
+      prev.manualFiltering !== next.manualFiltering ||
+      prev.manualPagination !== next.manualPagination ||
+      prev.allowWithinPageOperations !== next.allowWithinPageOperations
+    ) {
+      validateModeConfiguration(next);
+    }
     // Notify listeners if state actually changed (e.g., initialState change).
+    // Suppress notification during setOptions to prevent infinite loops with controlled state.
     if (
       stateChangedOnSlices(prevState, this.state, [
         'sorting',
@@ -128,7 +156,9 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
         'focusedCell',
       ])
     ) {
+      this.suppressNotify = true;
       this.notify();
+      this.suppressNotify = false;
     }
   }
 
@@ -139,12 +169,82 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     };
   }
 
+  // ─── DataSource seams (M3) ────────────────────────────────────────────────────
+
+  /** @internal Read the data source state. Used by the React hook. */
+  __getDataSourceState(): DataSourceState<TRow> {
+    return this.dataSourceState;
+  }
+
+  /** @internal Write the data source state. Used by the React hook. */
+  __setDataSourceState(state: DataSourceState<TRow>): void {
+    const prev = this.dataSourceState;
+    // Only update if status, data, error, or totalRowCount actually changed.
+    // Spreading { ...prev, refetch } creates a new object even when data is same;
+    // we use JSON stringify for deep comparison of the data field.
+    const dataChanged =
+      prev.data !== state.data &&
+      JSON.stringify(prev.data) !== JSON.stringify(state.data);
+    const statusChanged = prev.status !== state.status;
+    const errorChanged = prev.error !== state.error;
+    const totalRowCountChanged = prev.totalRowCount !== state.totalRowCount;
+    if (!statusChanged && !dataChanged && !errorChanged && !totalRowCountChanged) {
+      // Only refetch changed — skip to avoid unnecessary state updates.
+      this.dataSourceState = state;
+      return;
+    }
+    this.dataSourceState = state;
+    // NOTE: We intentionally do NOT call this.notify() here.
+    // The useDataSource hook manages its own local React state via useState/setSnapshot.
+    // Calling notify() would cause the table's subscribers (including useDataSource itself!)
+    // to fire, creating an infinite loop: runFetch -> __setDataSourceState -> notify -> runFetch
+    // The table's getGridProps/getBodyProps read this.dataSourceState directly,
+    // so they'll pick up the new state on the next render cycle.
+  }
+
+  /**
+   * @internal
+   * Build a `RowsQuery` from the current state + capabilities. Encapsulates
+   * the column resolution + filterFn-name resolution so the React hook
+   * doesn't need to expose columns or options publicly.
+   *
+   * For controlled slices, uses the consumer-provided state from options.state
+   * instead of the internal state.
+   */
+  __buildRowsQuery(capabilities: DataSourceCapabilities) {
+    // For controlled slices, use the options state instead of internal state
+    const sorting = isSliceControlled(this.options.state, 'sorting')
+      ? this.options.state.sorting
+      : this.state.sorting;
+    const columnFilters = isSliceControlled(this.options.state, 'columnFilters')
+      ? this.options.state.columnFilters
+      : this.state.columnFilters;
+    const pagination = isSliceControlled(this.options.state, 'pagination')
+      ? this.options.state.pagination
+      : this.state.pagination;
+    const state = {
+      ...this.state,
+      sorting,
+      columnFilters,
+      pagination,
+    };
+    const columns = this.getResolvedColumns();
+    return buildRowsQuery(state, columns, { capabilities });
+  }
+
   // ─── Row model (M1: filter → sort → paginate pipeline) ─────────────────────
 
   getRowModel(): Row<TRow>[] {
+    // M3 phase 4: render placeholders while loading and no fresh data is available.
+    if (this.dataSourceState.status === 'loading' && this.dataSourceState.data === null) {
+      const count = this.options.placeholderRows ?? this.state.pagination.pageSize;
+      return synthesizePlaceholderRows<TRow>(count) as unknown as Row<TRow>[];
+    }
+
     const columns = this.getResolvedColumns();
     const { state, options } = this;
-    let rows: TRow[] = options.data;
+    // When the data source has fresh data, use it instead of options.data.
+    let rows: TRow[] = this.dataSourceState.data ?? options.data;
 
     if (options.manualFiltering !== true) {
       rows = filterRows({ rows, filters: state.columnFilters, columns });
@@ -185,15 +285,19 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       (base as any).getVisibleCells = () =>
         buildVisibleCells(base, visibleColumns, this) as Cell<TRow>[];
       // biome-ignore lint/suspicious/noExplicitAny: intentional type manipulation to build self-referential row object
-      (base as any).getRowProps = (consumerProps?: Record<string, unknown>) =>
-        mergeProps(
+      (base as any).getRowProps = (consumerProps?: Record<string, unknown>) => {
+        const merged = mergeProps(
           {
             role: 'row',
             'aria-rowindex': base.index + 2, // header row is 1
-            key: base.id,
           },
-          consumerProps,
+          consumerProps ?? {},
         );
+        // Filter out key to avoid React JSX spread warning
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { key: _k, ...rest } = merged as Record<string, unknown>;
+        return rest;
+      };
       return base;
     }) as Row<TRow>[];
 
@@ -555,9 +659,17 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     return this.options.announcer ?? noopAnnouncer;
   }
 
-  private announce(message: string): void {
-    this.getAnnouncer().announce(message, 'polite');
-  }
+  /** Announce a message via the live-region. Used by useDataSource on success. */
+  announce = (message: string, politeness: 'polite' | 'assertive' = 'polite'): void => {
+    // Use global announcer if available, otherwise fall back to options announcer.
+    // This allows the React adapter to set up the announcer after the table is created.
+    const global = getGlobalAnnouncer();
+    if (global !== noopAnnouncer) {
+      global.announce(message, politeness);
+    } else {
+      this.getAnnouncer().announce(message, politeness);
+    }
+  };
 
   // ─── Header structure + prop getters (M1 Phase 5) ─────────────────────────────
 
@@ -635,6 +747,15 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       }
     };
 
+    // M3 phase 4: aria-busy + aria-invalid + data-loading when data source is wired.
+    if (this.dataSourceState.status === 'loading') {
+      baseProps['aria-busy'] = 'true';
+      baseProps['data-loading'] = 'true';
+    }
+    if (this.dataSourceState.status === 'error') {
+      baseProps['aria-invalid'] = 'true';
+    }
+
     return mergeProps(baseProps, { onKeyDown }, consumerProps);
   }
 
@@ -642,7 +763,13 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
    * Body rowgroup prop getter.
    */
   getBodyProps(consumerProps?: Record<string, unknown>): Record<string, unknown> {
-    return mergeProps({ role: 'rowgroup' }, consumerProps);
+    const base: Record<string, unknown> = { role: 'rowgroup' };
+    // M3 phase 4: aria-busy + data-loading on body when loading.
+    if (this.dataSourceState.status === 'loading') {
+      base['aria-busy'] = 'true';
+      base['data-loading'] = 'true';
+    }
+    return mergeProps(base, consumerProps);
   }
 
   // ─── State change application ───────────────────────────────────────────────

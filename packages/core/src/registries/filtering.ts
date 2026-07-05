@@ -70,3 +70,19 @@ export const BUILT_IN_FILTER_FNS = [
 export type BuiltInFilterFn = (typeof BUILT_IN_FILTER_FNS)[number];
 
 export { builtInFilterFns };
+
+/**
+ * Reverse lookup: find the registry name of a filter function. Searches the
+ * custom map first, then the built-in map. Returns undefined when the function
+ * is not registered (i.e., an inline closure that should not cross the wire).
+ */
+export const nameOfFilterFn = (fn: unknown): string | undefined => {
+  if (typeof fn !== 'function') return undefined;
+  for (const name of Object.keys(customFilterFns)) {
+    if (customFilterFns[name] === fn) return name;
+  }
+  for (const name of Object.keys(builtInFilterFns)) {
+    if (builtInFilterFns[name] === fn) return name;
+  }
+  return undefined;
+};

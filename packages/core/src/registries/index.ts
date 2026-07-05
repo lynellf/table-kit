@@ -3,6 +3,7 @@ export {
   builtInSortingFns,
   getSortingFn,
   registerSortingFn,
+  nameOfSortingFn,
   type BuiltInSortingFn,
 } from './sorting';
 
@@ -11,5 +12,6 @@ export {
   builtInFilterFns,
   getFilterFn,
   registerFilterFn,
+  nameOfFilterFn,
   type BuiltInFilterFn,
 } from './filtering';

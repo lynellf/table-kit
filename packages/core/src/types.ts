@@ -211,6 +211,12 @@ export interface DataTableOptions<TRow> {
   rowCount?: number;
   /** Announcer interface for sort/filter/pagination announcements. */
   announcer?: Announcer;
+  /**
+   * M3 phase 1: when true, suppresses the mixed-mode trap warning when
+   * `manualPagination === true` and client-side sort/filter is active.
+   * Indicates the consumer understands the within-page-only effect.
+   */
+  allowWithinPageOperations?: boolean;
   // ─────── Interaction events (M1; spec §7.6) ───────
   onCellClick?: import('./events').CellEventHandler<TRow>;
   onCellDoubleClick?: import('./events').CellEventHandler<TRow>;
@@ -222,6 +228,13 @@ export interface DataTableOptions<TRow> {
   onHeaderClick?: import('./events').HeaderEventHandler<TRow>;
   // ─────── Keyboard navigation (M2 Phase 5) ───────
   navigationMode?: 'cell' | 'row' | 'none';
+  // ─────── DataSource (M3) ───────────────────────────────────────────────────
+  /**
+   * M3 phase 4: number of placeholder rows to render while the data source
+   * is loading and no fresh data is available. Defaults to
+   * `state.pagination.pageSize`. Set to 0 to disable placeholder rows.
+   */
+  placeholderRows?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -299,6 +312,10 @@ export interface DataTableInstance<TRow> {
   /** Returns the filtered, sorted, paginated array of Row objects. */
   getRowModel(): Row<TRow>[];
 
+  // ─── Announcer (M1 + M3) ─────────────────────────────────────────────────────
+  /** Announce a message via the live-region. Used by useDataSource on success. */
+  announce(message: string, politeness?: 'polite' | 'assertive'): void;
+
   // ─── Pagination helpers (M1) ─────────────────────────────────────────────
   getCanPreviousPage(): boolean;
   getCanNextPage(): boolean;
@@ -360,4 +377,12 @@ export interface DataTableInstance<TRow> {
   __setColumnScrollState(scrollOffset: number, viewportSize: number): void;
   getRowVirtualizer(): import('./virtualization/types').RowVirtualizerResult<TRow>;
   getCenterVirtualizer(): import('./virtualization/types').ColumnVirtualizerResult;
+
+  // ─── DataSource (M3) ─────────────────────────────────────────────────────
+  /** @internal Read the data source state. Used by the React hook. */
+  __getDataSourceState(): import('./dataSource/types').DataSourceState<TRow>;
+  /** @internal Write the data source state. Used by the React hook. */
+  __setDataSourceState(state: import('./dataSource/types').DataSourceState<TRow>): void;
+  /** @internal Build a RowsQuery from current state + capabilities. Used by the React hook. */
+  __buildRowsQuery(capabilities: import('./dataSource/types').DataSourceCapabilities): import('./dataSource/types').RowsQuery;
 }

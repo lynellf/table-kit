@@ -102,7 +102,7 @@ export type {
 export type { Row, Cell, CellContext } from './types';
 
 // ─── Announcer (M1) ────────────────────────────────────────────────────────
-export { noopAnnouncer } from './announcer';
+export { noopAnnouncer, setGlobalAnnouncer, getGlobalAnnouncer } from './announcer';
 
 // ─── Public types (M0 + M1) ────────────────────────────────────────────────
 export type {
@@ -139,6 +139,22 @@ export type {
   RowVirtualizerResult,
   ColumnVirtualizerResult,
 } from './virtualization/types';
+
+// ─── DataSource types (M3 phase 1) ─────────────────────────────────────
+export type {
+  MaybePromise,
+  DataSourceCapabilities,
+  DataSourceStatus,
+  DataSourceState,
+  DataSource,
+  RowsQuery,
+  SerializedFilter,
+  BuildRowsQueryOptions,
+  CreateClientDataSourceOptions,
+} from './dataSource/types';
+
+// ─── DataSource runtime (M3 phase 2) ───────────────────────────────────
+export { createClientDataSource } from './dataSource/client';
 
 // ─── Pinning helpers (M2 Phase 2) ─────────────────────────────────────────
 export {

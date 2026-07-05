@@ -98,3 +98,21 @@ export const BUILT_IN_SORTING_FNS = [
 export type BuiltInSortingFn = (typeof BUILT_IN_SORTING_FNS)[number];
 
 export { builtInSortingFns };
+
+/**
+ * Reverse lookup: find the registry name of a sorting function. Searches the
+ * custom map first (more specific), then the built-in map. Returns undefined
+ * when the function is not registered (i.e., an inline closure that should
+ * not cross the serialization boundary).
+ */
+export const nameOfSortingFn = (fn: unknown): string | undefined => {
+  if (typeof fn !== 'function') return undefined;
+  // Custom first (consumer may have registered a built-in override).
+  for (const name of Object.keys(customSortingFns)) {
+    if (customSortingFns[name] === fn) return name;
+  }
+  for (const name of Object.keys(builtInSortingFns)) {
+    if (builtInSortingFns[name] === fn) return name;
+  }
+  return undefined;
+};

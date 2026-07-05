@@ -9,3 +9,15 @@ export const noopAnnouncer: Announcer = {
     // default no-op
   },
 };
+
+/**
+ * Singleton announcer accessor. The React adapter sets this when ReactAnnouncer mounts.
+ * This allows the core table to announce messages without knowing about React.
+ */
+let globalAnnouncer: Announcer = noopAnnouncer;
+
+export const setGlobalAnnouncer = (announcer: Announcer): void => {
+  globalAnnouncer = announcer;
+};
+
+export const getGlobalAnnouncer = (): Announcer => globalAnnouncer;

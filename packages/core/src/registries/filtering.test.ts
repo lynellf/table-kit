@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BUILT_IN_FILTER_FNS, builtInFilterFns, getFilterFn, registerFilterFn } from './filtering';
+import { BUILT_IN_FILTER_FNS, builtInFilterFns, getFilterFn, registerFilterFn, nameOfFilterFn } from './filtering';
 
 describe('filtering registry', () => {
   describe('built-ins', () => {
@@ -70,6 +70,30 @@ describe('filtering registry', () => {
 
     it('built-ins object is frozen', () => {
       expect(Object.isFrozen(builtInFilterFns)).toBe(true);
+    });
+  });
+
+  describe('nameOfFilterFn', () => {
+    it('returns the name for a built-in function', () => {
+      const fn = getFilterFn<Record<string, unknown>>('equalsString');
+      expect(nameOfFilterFn(fn)).toBe('equalsString');
+    });
+
+    it('returns the name for a registered custom function', () => {
+      const custom = vi.fn(() => true);
+      registerFilterFn('custom-filter', custom);
+      expect(nameOfFilterFn(custom)).toBe('custom-filter');
+    });
+
+    it('returns undefined for an unregistered inline function', () => {
+      const inline = () => true;
+      expect(nameOfFilterFn(inline)).toBeUndefined();
+    });
+
+    it('returns undefined for non-function inputs', () => {
+      expect(nameOfFilterFn(null)).toBeUndefined();
+      expect(nameOfFilterFn(undefined)).toBeUndefined();
+      expect(nameOfFilterFn('equalsString')).toBeUndefined();
     });
   });
 });

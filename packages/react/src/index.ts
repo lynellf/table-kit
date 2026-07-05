@@ -27,7 +27,11 @@ export const VERSION = '0.2.0' as const;
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
 export { useDataTable } from './useDataTable';
-export type { UseDataTableResult } from './useDataTable';
+export type { UseDataTableResult, UseDataTableOptions } from './useDataTable';
+
+// ─── DataSource (M3 phase 3) ─────────────────────────────────────────────────
+export { useDataSource } from './useDataSource';
+export type { UseDataSourceResult } from './useDataSource';
 
 // ─── Announcer (M1) ───────────────────────────────────────────────────────
 export { ReactAnnouncer, getReactAnnouncer } from './ReactAnnouncer';
