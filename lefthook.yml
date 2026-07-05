@@ -1,0 +1,42 @@
+# lefthook configuration
+# Docs: https://lefthook.dev/configuration/
+
+pre-push:
+  parallel: true
+  commands:
+    build:
+      glob_filter: |
+        **/package.json
+        **/vite.config.ts
+        **/tsconfig*.json
+        lefthook.yml
+      run: pnpm build
+
+    typecheck:
+      glob_filter: |
+        **/*.{ts,tsx,js,jsx,mjs,cjs}
+        **/package.json
+        **/tsconfig*.json
+        **/biome.json
+        **/vite.config.ts
+        **/vitest.config.ts
+        **/vitest.workspace.ts
+        lefthook.yml
+      run: pnpm typecheck
+
+    lint:
+      glob_filter: |
+        **/*.{ts,tsx,js,jsx,mjs,cjs,json,md}
+        **/biome.json
+        lefthook.yml
+      run: pnpm lint
+
+    test:
+      glob_filter: |
+        **/*.{ts,tsx,js,jsx,mjs,cjs,json}
+        **/package.json
+        **/vitest.config.ts
+        **/vitest.workspace.ts
+        **/vite.config.ts
+        lefthook.yml
+      run: pnpm test

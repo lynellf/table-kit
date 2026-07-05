@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Base",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "exactOptionalPropertyTypes": true,
+    "useUnknownInCatchVariables": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "incremental": true,
+    "composite": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@tablekit/core": ["./packages/core/src/index.ts"],
+      "@tablekit/core/*": ["./packages/core/src/*"],
+      "@tablekit/react": ["./packages/react/src/index.ts"],
+      "@tablekit/react/*": ["./packages/react/src/*"]
+    }
+  },
+  "exclude": ["**/node_modules", "**/dist", "**/.vitest-cache", "**/coverage"]
+}

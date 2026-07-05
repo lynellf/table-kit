@@ -1,0 +1,37 @@
+{
+  "name": "@tablekit/core",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Headless table state engine, row pipeline, column model, and event system.",
+  "type": "module",
+  "main": "./dist/tablekit-core.es.js",
+  "module": "./dist/tablekit-core.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/tablekit-core.es.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lynellf/tablekit"
+  },
+  "bugs": {
+    "url": "https://github.com/lynellf/tablekit/issues"
+  },
+  "homepage": "https://github.com/lynellf/tablekit",
+  "keywords": ["table", "headless", "data-grid", "state-machine", "virtualization"],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {},
+  "peerDependencies": {}
+}

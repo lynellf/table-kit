@@ -1,0 +1,37 @@
+{
+  "name": "table-kit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Headless table primitives (DataTable + PivotTable).",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.1",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "pnpm -F @tablekit/core build && pnpm -F @tablekit/react build",
+    "build:core": "pnpm -F @tablekit/core build",
+    "build:react": "pnpm -F @tablekit/react build",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "pack:core": "pnpm -F @tablekit/core build && pnpm -F @tablekit/core pack --dry-run",
+    "pack:react": "pnpm -F @tablekit/react build && pnpm -F @tablekit/react pack --dry-run",
+    "release:core": "pnpm build:core && pnpm -F @tablekit/core publish --access public",
+    "release:react": "pnpm build:react && pnpm -F @tablekit/react publish --access public",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.10.0",
+    "lefthook": "^1.10.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  }
+}
