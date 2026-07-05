@@ -17,8 +17,8 @@ export default defineConfig({
   resolve: {
     alias: {
       // Mirror the TS paths from tsconfig.base.json so tests resolve workspace sources.
-      '@tablekit/core': new URL('./packages/core/src/index.ts', import.meta.url).pathname,
-      '@tablekit/react': new URL('./packages/react/src/index.ts', import.meta.url).pathname,
+      '@lynellf/tablekit-core': new URL('./packages/core/src/index.ts', import.meta.url).pathname,
+      '@lynellf/tablekit-react': new URL('./packages/react/src/index.ts', import.meta.url).pathname,
     },
   },
 });

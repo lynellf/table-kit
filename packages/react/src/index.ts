@@ -1,5 +1,5 @@
 /**
- * @tablekit/react — React adapter: hooks, prop getters, announcer,
+ * @lynellf/tablekit-react — React adapter: hooks, prop getters, announcer,
  * dev-mode a11y validator.
  *
  * M0 stub. Real surface lands in milestone M0 of the spec.

@@ -1,11 +1,11 @@
-# @tablekit/core
+# @lynellf/tablekit-core
 
 Framework-agnostic headless table state engine, row pipeline, column model, and event system.
 
 ## Install
 
 ```bash
-npm install @tablekit/core
+npm install @lynellf/tablekit-core
 ```
 
 Requires Node ≥ 20.
@@ -13,7 +13,7 @@ Requires Node ≥ 20.
 ## Usage
 
 ```ts
-import { createTable } from '@tablekit/core';
+import { createTable } from '@lynellf/tablekit-core';
 
 const table = createTable({ columns: [...], rows: [...] });
 ```

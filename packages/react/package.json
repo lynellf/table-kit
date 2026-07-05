@@ -1,8 +1,8 @@
 {
-  "name": "@tablekit/react",
+  "name": "@lynellf/tablekit-react",
   "version": "0.1.0",
   "private": false,
-  "description": "React adapter for @tablekit/core — hooks, prop getters, announcer, and a11y validator.",
+  "description": "React adapter for @lynellf/tablekit-core — hooks, prop getters, announcer, and a11y validator.",
   "type": "module",
   "main": "./dist/tablekit-react.es.js",
   "module": "./dist/tablekit-react.es.js",

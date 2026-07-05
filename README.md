@@ -8,17 +8,17 @@ Headless table primitives for the modern web — framework-free state engine, ro
 
 | Package | Description |
 |---|---|
-| [`@tablekit/core`](/packages/core) | Framework-agnostic state engine, row pipeline, column model, and event system. |
-| [`@tablekit/react`](/packages/react) | React hooks, prop getters, announcer, and a11y validator for `@tablekit/core`. |
+| [`@lynellf/tablekit-core`](/packages/core) | Framework-agnostic state engine, row pipeline, column model, and event system. |
+| [`@lynellf/tablekit-react`](/packages/react) | React hooks, prop getters, announcer, and a11y validator for `@lynellf/tablekit-core`. |
 
 ## Install
 
 ```bash
 # Core only
-npm install @tablekit/core
+npm install @lynellf/tablekit-core
 
 # With React adapter
-npm install @tablekit/core @tablekit/react
+npm install @lynellf/tablekit-core @lynellf/tablekit-react
 ```
 
 Requires Node ≥ 20.
@@ -26,7 +26,7 @@ Requires Node ≥ 20.
 ## Quick start
 
 ```ts
-import { createTable } from '@tablekit/core';
+import { createTable } from '@lynellf/tablekit-core';
 
 const table = createTable({ columns: [...], rows: [...] });
 ```

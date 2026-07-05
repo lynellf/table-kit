@@ -1,5 +1,5 @@
 {
-  "name": "@tablekit/core",
+  "name": "@lynellf/tablekit-core",
   "version": "0.1.0",
   "private": false,
   "description": "Headless table state engine, row pipeline, column model, and event system.",

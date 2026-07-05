@@ -26,10 +26,10 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@tablekit/core": ["./packages/core/src/index.ts"],
-      "@tablekit/core/*": ["./packages/core/src/*"],
-      "@tablekit/react": ["./packages/react/src/index.ts"],
-      "@tablekit/react/*": ["./packages/react/src/*"]
+      "@lynellf/tablekit-core": ["./packages/core/src/index.ts"],
+      "@lynellf/tablekit-core/*": ["./packages/core/src/*"],
+      "@lynellf/tablekit-react": ["./packages/react/src/index.ts"],
+      "@lynellf/tablekit-react/*": ["./packages/react/src/*"]
     }
   },
   "exclude": ["**/node_modules", "**/dist", "**/.vitest-cache", "**/coverage"]
