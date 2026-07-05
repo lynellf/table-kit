@@ -10,6 +10,7 @@ dist/
 # Test artifacts
 coverage/
 .vitest-cache/
+*.heapsnapshot
 
 # Editor / OS
 .DS_Store
