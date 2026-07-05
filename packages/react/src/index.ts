@@ -10,6 +10,19 @@
 
 export type { ReactElement } from 'react';
 
+// ─── Virtualization hooks (M2 Phase 4) ─────────────────────────────────────
+export { useScrollAdapter } from './useScrollAdapter';
+export { useSizeObserver } from './useSizeObserver';
+export type { SizeObserverOptions } from './useSizeObserver';
+export { useRowVirtualizer } from './useRowVirtualizer';
+export { useCenterVirtualizer } from './useCenterVirtualizer';
+
+// ─── Resize hook (M2 Phase 3) ──────────────────────────────────────────────
+export { useResizeHandle } from './useResizeHandle';
+
+// ─── Keyboard nav hook (M2 Phase 5) ─────────────────────────────────────────
+export { useKeyboardNav } from './useKeyboardNav';
+
 export const VERSION = '0.2.0' as const;
 
 // ─── Hook ───────────────────────────────────────────────────────────────────

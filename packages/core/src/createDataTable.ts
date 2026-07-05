@@ -10,6 +10,35 @@ import { noopAnnouncer } from './announcer';
 import { defaultGetRowId } from './columns';
 import type { Column } from './columns';
 import { createColumns } from './columns';
+import {
+  pinAnnouncement,
+  pinColumns as pinColumnsHelper,
+  togglePinColumn as togglePinColumnHelper,
+  unpinColumns as unpinColumnsHelper,
+  type PinSide,
+} from './pinning';
+import {
+  cancelResize as cancelResizeHelper,
+  resizeAnnouncement,
+  resizeColumn,
+} from './resize';
+import {
+  navigateCell as navigateCellHelper,
+  navigateToEdge as navigateToEdgeHelper,
+  navigateByPage as navigateByPageHelper,
+  resolveKeyBinding,
+  type NavigationDirection,
+} from './keyboardNav';
+import { RowModelCache } from './pipeline/memo';
+import {
+  createRowVirtualizer,
+  getScrollOffsetForIndex,
+} from './virtualization/rowVirtualizer';
+import { createColumnVirtualizer } from './virtualization/columnVirtualizer';
+import type {
+  RowVirtualizerResult,
+  ColumnVirtualizerResult,
+} from './virtualization/types';
 import { buildHeaderGroups } from './headers';
 import type { HeaderContext } from './headers';
 import { moveColumn } from './ordering';
@@ -65,10 +94,25 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   private options: DataTableOptions<TRow>;
   private state: DataTableState;
   private listeners: Set<() => void> = new Set();
+  private rowModelCache = new RowModelCache<TRow>();
+  // Scroll + viewport state — set by the React adapter in phase 4.
+  // Default to 0/0 so the pure virtualizer produces sensible output in
+  // SSR (no rows are "above the fold" until scrollOffset > 0).
+  private scrollOffset = 0;
+  private viewportSize = 0;
+  private columnScrollOffset = 0;
+  private columnViewportSize = 0;
+  // Resize mode
+  private resizeMode: 'onChange' | 'onEnd' = 'onChange';
+  // Navigation mode
+  private navigationMode: 'cell' | 'row' | 'none' = 'cell';
+  // Viewport row count for navigateByPage
+  private viewportRowCount = 25;
 
   constructor(options: DataTableOptions<TRow>) {
     this.options = options;
     this.state = mergeInitialState(options.initialState, options.state);
+    this.navigationMode = options.navigationMode ?? 'cell';
   }
 
   getState(): DataTableState {
@@ -122,14 +166,22 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       rows = paginateRows({ rows, pagination: state.pagination });
     }
 
+    // Memoize based on the computed rows identity
+    const memoKey = this.rowModelCache.getMemoKey();
+    const dataChanged = memoKey.data !== rows;
+    const stateChanged = memoKey.sorting !== state.sorting ||
+                         memoKey.columnFilters !== state.columnFilters ||
+                         memoKey.pagination !== state.pagination;
+
+    if (!dataChanged && !stateChanged && memoKey.cachedRows) {
+      return memoKey.cachedRows;
+    }
+
     const getRowId = options.getRowId ?? (defaultGetRowId as (row: TRow, index: number) => string);
     const visibleColumns = this.getVisibleColumns();
 
-    return rows.map((original, index) => {
+    const result = rows.map((original, index) => {
       const id = getRowId(original, index);
-      // Build the row in two steps to avoid the closure reference to an
-      // object that doesn't exist yet. The `getVisibleCells` function is
-      // attached after `base` is assigned, so `base` is in scope.
       const base: RowInterface<TRow> = {
         id,
         index,
@@ -138,11 +190,9 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
         getVisibleCells: () => [],
         getRowProps: () => ({}),
       };
-      // Now attach the real getVisibleCells using the same reference.
       // biome-ignore lint/suspicious/noExplicitAny: intentional type manipulation to build self-referential row object
       (base as any).getVisibleCells = () =>
         buildVisibleCells(base, visibleColumns, this) as Cell<TRow>[];
-      // Attach the real getRowProps.
       // biome-ignore lint/suspicious/noExplicitAny: intentional type manipulation to build self-referential row object
       (base as any).getRowProps = (consumerProps?: Record<string, unknown>) =>
         mergeProps(
@@ -155,6 +205,221 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
         );
       return base;
     }) as Row<TRow>[];
+
+    // Update cache
+    this.rowModelCache.setCachedResult(rows, state, result);
+    return result;
+  }
+
+  /**
+   * @internal
+   * React adapter calls this on scroll events.
+   */
+  __setScrollState(scrollOffset: number, viewportSize: number): void {
+    this.scrollOffset = scrollOffset;
+    this.viewportSize = viewportSize;
+  }
+  /**
+   * @internal
+   * React adapter calls this on horizontal scroll events.
+   */
+  __setColumnScrollState(scrollOffset: number, viewportSize: number): void {
+    this.columnScrollOffset = scrollOffset;
+    this.columnViewportSize = viewportSize;
+  }
+
+  // ─── Pinning helpers (M2 Phase 2) ─────────────────────────────────────────
+
+  togglePin = (columnId: string, side: PinSide): void => {
+    const previous = this.state.columnPinning.left.includes(columnId)
+      ? 'left' as const
+      : this.state.columnPinning.right.includes(columnId)
+        ? 'right' as const
+        : false;
+    const next = togglePinColumnHelper(this.state.columnPinning, columnId, side);
+    if (next === null) return;
+    this.applyChange('columnPinning', next);
+    const msg = pinAnnouncement(columnId, side, previous);
+    if (msg) this.announce(msg);
+  };
+
+  pinColumns = (columnIds: string[], side: 'left' | 'right'): void => {
+    const next = pinColumnsHelper(this.state.columnPinning, columnIds, side);
+    if (next === null) return;
+    this.applyChange('columnPinning', next);
+    this.announce(
+      `Pinned ${columnIds.length === 1 ? columnIds[0] : `${columnIds.length} columns`} to ${side}`,
+    );
+  };
+
+  unpinColumns = (columnIds: string[]): void => {
+    const next = unpinColumnsHelper(this.state.columnPinning, columnIds);
+    if (next === null) return;
+    this.applyChange('columnPinning', next);
+    this.announce(
+      `Unpinned ${columnIds.length === 1 ? columnIds[0] : `${columnIds.length} columns`}`,
+    );
+  };
+
+  // ─── Resize mode + interaction (M2 Phase 3) ──────────────────────────────────────
+
+  setResizeMode = (mode: 'onChange' | 'onEnd'): void => {
+    this.resizeMode = mode;
+  };
+
+  getResizeMode = (): 'onChange' | 'onEnd' => {
+    return this.resizeMode;
+  };
+
+  /**
+   * Begin a resize session.
+   */
+  startResize = (columnId: string, startSize: number, _clientX: number): void => {
+    this.applyChange('columnSizingInfo', {
+      columnId,
+      startSize,
+      delta: 0,
+      mode: this.resizeMode,
+    });
+  };
+
+  /**
+   * Adjust the in-progress resize by a pixel delta.
+   */
+  adjustResize = (columnId: string, deltaPx: number): void => {
+    const session = this.state.columnSizingInfo;
+    if (!session || session.columnId !== columnId) return;
+    this.applyChange('columnSizingInfo', { ...session, delta: deltaPx });
+    if (this.resizeMode === 'onChange') {
+      const col = this.getResolvedColumns().find((c) => c.id === columnId);
+      if (!col) return;
+      const out = resizeColumn({
+        columnSizing: this.state.columnSizing,
+        session: { ...session, delta: deltaPx },
+        minSize: col.getMinSize(),
+        maxSize: col.getMaxSize(),
+      });
+      this.applyChange('columnSizing', out.columnSizing);
+    }
+  };
+
+  /**
+   * Commit the in-progress resize.
+   */
+  commitResize = (columnId: string): void => {
+    const session = this.state.columnSizingInfo;
+    if (!session || session.columnId !== columnId) return;
+    if (this.resizeMode === 'onEnd') {
+      const col = this.getResolvedColumns().find((c) => c.id === columnId);
+      if (!col) return;
+      const out = resizeColumn({
+        columnSizing: this.state.columnSizing,
+        session,
+        minSize: col.getMinSize(),
+        maxSize: col.getMaxSize(),
+      });
+      this.applyChange('columnSizing', out.columnSizing);
+      this.announce(resizeAnnouncement(col.id, out.columnSizing[col.id] ?? session.startSize, col.id));
+    } else {
+      const col = this.getResolvedColumns().find((c) => c.id === columnId);
+      if (col) {
+        this.announce(
+          resizeAnnouncement(
+            col.id,
+            this.state.columnSizing[col.id] ?? session.startSize,
+            col.id,
+          ),
+        );
+      }
+    }
+    this.applyChange('columnSizingInfo', null);
+  };
+
+  /**
+   * Cancel the in-progress resize and revert to the start size.
+   */
+  cancelResize = (columnId: string): void => {
+    const session = this.state.columnSizingInfo;
+    if (!session || session.columnId !== columnId) return;
+    const reverted = cancelResizeHelper(this.state.columnSizing, session);
+    this.applyChange('columnSizing', reverted);
+    this.applyChange('columnSizingInfo', null);
+  };
+
+  // ─── Keyboard navigation (M2 Phase 5) ──────────────────────────────────────
+
+  setNavigationMode = (mode: 'cell' | 'row' | 'none'): void => {
+    this.navigationMode = mode;
+  };
+
+  getNavigationMode = (): 'cell' | 'row' | 'none' => {
+    return this.navigationMode;
+  };
+
+  /**
+   * Build a KeyboardNavContext for the navigation helpers.
+   */
+  private buildNavContext() {
+    const visibleColumns = this.getVisibleColumns();
+    const rows = this.getRowModel();
+    const rowIndexById = new Map<string, number>();
+    for (const row of rows) rowIndexById.set(row.id, row.index);
+    const columnIdByIndex = visibleColumns.map((c) => c.id);
+    return {
+      state: this.state,
+      rowIndexById,
+      columnIdByIndex,
+      rowCount: rows.length,
+      columnCount: visibleColumns.length,
+    };
+  }
+
+  navigateCell = (direction: NavigationDirection): void => {
+    const next = navigateCellHelper(this.buildNavContext(), this.state.focusedCell, direction);
+    if (next) this.applyChange('focusedCell', next);
+  };
+
+  navigateToEdge = (scope: 'row-start' | 'row-end' | 'grid-start' | 'grid-end'): void => {
+    const next = navigateToEdgeHelper(this.buildNavContext(), this.state.focusedCell, scope);
+    if (next) this.applyChange('focusedCell', next);
+  };
+
+  navigateByPage = (delta: -1 | 1): void => {
+    const next = navigateByPageHelper(
+      this.buildNavContext(),
+      this.state.focusedCell,
+      delta,
+      this.viewportRowCount,
+    );
+    if (next) this.applyChange('focusedCell', next);
+  };
+
+  __setViewportRowCount = (n: number): void => {
+    this.viewportRowCount = n;
+  };
+
+  getRowVirtualizer(): RowVirtualizerResult<TRow> {
+    return createRowVirtualizer<TRow>({
+      rows: this.getRowModel(),
+      estimateSize: () => 33, // M2 default; consumers override via the React adapter's SizeObserver
+      scrollOffset: this.scrollOffset,
+      viewportSize: this.viewportSize,
+      keepMounted: () => {
+        // Phase 5 wires the focused cell's row index into keepMounted.
+        // For now, return [] (no keepMounted).
+        return [];
+      },
+    });
+  }
+
+  getCenterVirtualizer(): ColumnVirtualizerResult {
+    const center = this.getCenterLeafColumns();
+    return createColumnVirtualizer<TRow>({
+      columns: center,
+      scrollOffset: this.columnScrollOffset,
+      viewportSize: this.columnViewportSize,
+      keepMounted: () => [],
+    });
   }
 
   // ─── Column resolution helpers ─────────────────────────────────────────────
@@ -336,17 +601,50 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
   /**
    * Root grid prop getter. M1: emits role="grid" + aria-rowcount + aria-colcount.
+   * M2: adds keyboard navigation for cell mode.
    */
   getGridProps(consumerProps?: Record<string, unknown>): Record<string, unknown> {
-    return mergeProps(
-      {
-        role: 'grid',
-        'aria-rowcount': this.getRowCount() + 1, // +1 for header row
-        'aria-colcount': this.getVisibleColumns().length,
-        tabIndex: 0,
-      },
-      consumerProps,
-    );
+    const baseProps: Record<string, unknown> = {
+      'aria-rowcount': this.getRowCount() + 1, // +1 for header row
+      'aria-colcount': this.getVisibleColumns().length,
+    };
+
+    if (this.navigationMode === 'cell') {
+      baseProps.role = 'grid';
+      baseProps.tabIndex = -1; // Focus enters via the focused cell
+    } else if (this.navigationMode === 'none') {
+      baseProps.role = 'table';
+      baseProps.tabIndex = 0;
+    } else {
+      baseProps.role = 'grid';
+      baseProps.tabIndex = -1;
+    }
+
+    // onKeyDown: library keyboard navigation handler
+    const onKeyDown = (...args: unknown[]) => {
+      const event = args[0] as { key?: string; ctrlKey?: boolean; defaultPrevented?: boolean } | undefined;
+      if (event?.defaultPrevented) return;
+      if (this.navigationMode !== 'cell') return;
+      const binding = resolveKeyBinding(event?.key ?? '', event?.ctrlKey ?? false, false);
+      if (!binding) return;
+      switch (binding.action) {
+        case 'navigateCell':
+          this.navigateCell(binding.arg);
+          break;
+        case 'navigateToEdge':
+          this.navigateToEdge(binding.arg);
+          break;
+        case 'navigateByPage':
+          this.navigateByPage(binding.arg);
+          break;
+        case 'enterCell':
+        case 'exitCell':
+          // M2 doesn't ship the focus trap; consumer handles this
+          break;
+      }
+    };
+
+    return mergeProps(baseProps, { onKeyDown }, consumerProps);
   }
 
   /**

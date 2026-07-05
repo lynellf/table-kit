@@ -12,37 +12,49 @@
  */
 
 /**
- * Shallow-merge a consumer's `props` into the library's `defaultProps`.
+ * Shallow-merge multiple prop objects into a single output. Consumer props
+ * are always applied last and win ties.
  *
  * Rules:
- *   - For non-function values, the consumer's value wins.
- *   - For function values (event handlers), both run; consumer first, then
- *     library. If the consumer calls `event.preventDefault()`, the library
- *     handler is skipped.
+ *   - For non-function values, the last value wins.
+ *   - For function values (event handlers), both run in order; if any handler
+ *     calls `event.preventDefault()`, subsequent handlers are skipped.
+ *   - The library handler is stashed under `__lib_<key>` for the adapter to
+ *     invoke after the consumer handler (via `shouldRunLibraryHandler`).
  *   - The result is a new object — no mutation.
+ *
+ * Variadic overloads:
+ *   - 2 args: `mergeProps(defaults, consumerProps?)`
+ *   - 3 args: `mergeProps(defaults, libraryProps, consumerProps?)`
+ *     Used when a prop getter needs to inject a library handler (e.g. onKeyDown)
+ *     alongside the base defaults without touching the consumer's own onKeyDown.
  */
 export const mergeProps = (
   defaultProps: Record<string, unknown>,
-  consumerProps: Record<string, unknown> | undefined,
+  libraryProps: Record<string, unknown> = {},
+  consumerProps?: Record<string, unknown>,
 ): Record<string, unknown> => {
-  if (!consumerProps) return defaultProps;
+  // Build the output by layering: defaults → library → consumer
   const out: Record<string, unknown> = { ...defaultProps };
-  for (const key of Object.keys(consumerProps)) {
-    const defaultValue = defaultProps[key];
-    const consumerValue = consumerProps[key];
-    if (typeof consumerValue === 'function' && typeof defaultValue === 'function') {
-      // Chain: consumer first, library second. Library checks defaultPrevented.
-      const consumerFn = consumerValue as (...args: unknown[]) => void;
-      const libraryFn = defaultValue as (...args: unknown[]) => void;
-      out[key] = (...args: unknown[]) => {
-        consumerFn(...args);
-        // Library handler is stashed under __lib_<key> for the adapter to invoke.
-      };
-      out[`__lib_${key}`] = libraryFn;
-    } else {
-      out[key] = consumerValue;
+
+  const apply = (source: Record<string, unknown>) => {
+    for (const key of Object.keys(source)) {
+      const prev = out[key];
+      const next = source[key];
+      if (typeof next === 'function' && typeof prev === 'function') {
+        // Chain: previous runs first (e.g. library), next runs second (e.g. consumer).
+        // We store the library handler so the adapter can invoke it explicitly.
+        out[key] = next;
+        out[`__lib_${key}`] = prev;
+      } else {
+        out[key] = next;
+      }
     }
-  }
+  };
+
+  apply(libraryProps);
+  if (consumerProps) apply(consumerProps);
+
   return out;
 };
 

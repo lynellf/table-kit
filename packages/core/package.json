@@ -11,6 +11,26 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/tablekit-core.es.js"
+    },
+    "./virtualization": {
+      "types": "./dist/virtualization/index.d.ts",
+      "import": "./dist/virtualization/index.es.js"
+    },
+    "./resize": {
+      "types": "./dist/resize.d.ts",
+      "import": "./dist/resize.es.js"
+    },
+    "./pinning": {
+      "types": "./dist/pinning.d.ts",
+      "import": "./dist/pinning.es.js"
+    },
+    "./keyboard-nav": {
+      "types": "./dist/keyboard-nav.d.ts",
+      "import": "./dist/keyboard-nav.es.js"
+    },
+    "./memo": {
+      "types": "./dist/pipeline/memo.d.ts",
+      "import": "./dist/pipeline/memo.es.js"
     }
   },
   "files": ["dist"],

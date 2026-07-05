@@ -220,6 +220,8 @@ export interface DataTableOptions<TRow> {
   onRowClick?: import('./events').RowEventHandler<TRow>;
   onRowDoubleClick?: import('./events').RowEventHandler<TRow>;
   onHeaderClick?: import('./events').HeaderEventHandler<TRow>;
+  // ─────── Keyboard navigation (M2 Phase 5) ───────
+  navigationMode?: 'cell' | 'row' | 'none';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -350,4 +352,12 @@ export interface DataTableInstance<TRow> {
   getHeaderGroups(): HeaderGroup<TRow>[];
   getGridProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
   getBodyProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
+
+  // ─── Virtualization (M2) ─────────────────────────────────────────────────
+  /** @internal */
+  __setScrollState(scrollOffset: number, viewportSize: number): void;
+  /** @internal */
+  __setColumnScrollState(scrollOffset: number, viewportSize: number): void;
+  getRowVirtualizer(): import('./virtualization/types').RowVirtualizerResult<TRow>;
+  getCenterVirtualizer(): import('./virtualization/types').ColumnVirtualizerResult;
 }

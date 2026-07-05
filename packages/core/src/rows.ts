@@ -16,7 +16,7 @@
 
 import type { Column } from './columns';
 import { mergeProps } from './propGetters';
-import type { Cell, CellContext, Row as RowInterface } from './types';
+import type { Cell, CellContext, CellPosition, Row as RowInterface } from './types';
 
 export type { Row, Cell, CellContext } from './types';
 
@@ -28,11 +28,29 @@ const defaultCellProps = <TRow, TValue>(
   consumerProps?: Record<string, unknown>,
 ): Record<string, unknown> => {
   const isPinned = cell.column.getIsPinned();
+  const table = cell.getContext().table as unknown as {
+    getNavigationMode?: () => string;
+    state: { focusedCell: CellPosition | null };
+  };
+  const mode = table?.getNavigationMode?.() ?? 'cell';
+  const isFocused =
+    mode === 'cell' &&
+    table?.state?.focusedCell?.rowId === cell.row.id &&
+    table?.state?.focusedCell?.columnId === cell.column.id;
+
   const props: Record<string, unknown> = {
-    role: 'gridcell',
     'aria-colindex': cell.getContext().colIndex + 1,
     key: cell.id,
   };
+  if (mode === 'none') {
+    props.role = 'cell';
+  } else {
+    props.role = 'gridcell';
+  }
+  if (mode === 'cell') {
+    props.tabIndex = isFocused ? 0 : -1;
+    if (isFocused) props['data-focused'] = 'true';
+  }
   if (isPinned) {
     props['data-pinned'] = isPinned;
   }

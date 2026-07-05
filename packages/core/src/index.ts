@@ -131,3 +131,39 @@ export type {
 } from './types';
 
 export { DEFAULT_STATE } from './types';
+
+// ─── Virtualization types (M2 Phase 1) ─────────────────────────────────────
+export type {
+  VirtualItem,
+  VirtualRow,
+  RowVirtualizerResult,
+  ColumnVirtualizerResult,
+} from './virtualization/types';
+
+// ─── Pinning helpers (M2 Phase 2) ─────────────────────────────────────────
+export {
+  togglePinColumn,
+  pinColumns,
+  unpinColumns,
+  pinAnnouncement,
+} from './pinning';
+export type { PinSide } from './pinning';
+
+// ─── Resize helpers (M2 Phase 3) ───────────────────────────────────────────
+export {
+  DEFAULT_RESIZE_STEP_PX,
+  resizeColumn,
+  cancelResize,
+  clampColumnSize,
+  resizeAnnouncement,
+} from './resize';
+
+// ─── Keyboard nav helpers (M2 Phase 5) ─────────────────────────────────────
+export {
+  KEY_BINDINGS,
+  navigateCell,
+  navigateToEdge,
+  navigateByPage,
+  resolveKeyBinding,
+} from './keyboardNav';
+export type { NavigationMode, NavigationDirection } from './keyboardNav';

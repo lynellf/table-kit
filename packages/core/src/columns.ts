@@ -44,18 +44,22 @@ export class Column<TRow, TValue = unknown> {
   readonly isVisible: boolean;
   /** Pinned side derived from `columnPinning`. */
   readonly pinnedSide: 'left' | 'right' | false;
+  /** Map of all column defs (id → def). Optional; set by the factory so preceding-column lookups work. */
+  readonly defsById?: Map<string, ColumnDef<TRow, unknown>> | undefined;
 
   constructor(args: {
     def: ColumnDef<TRow, TValue>;
     state: DataTableState;
     index: number;
     resolveAccessor: (def: ColumnDef<TRow, TValue>) => AccessorFn<TRow, TValue>;
+    defsById?: Map<string, ColumnDef<TRow, unknown>>;
   }) {
     this.id = args.def.id;
     this.def = args.def;
     this.state = args.state;
     this.index = args.index;
     this.accessorFn = args.resolveAccessor(args.def);
+    this.defsById = args.defsById;
 
     const visibility = args.state.columnVisibility[args.def.id];
     this.isVisible = visibility === undefined ? true : visibility;
@@ -106,12 +110,20 @@ export class Column<TRow, TValue = unknown> {
     for (let i = 0; i < idx; i++) {
       const precedingId = ordered[i];
       if (precedingId === undefined) continue;
+      // First try state.columnSizing
       const fromState = this.state.columnSizing[precedingId];
       if (typeof fromState === 'number') {
         offset += fromState;
-      } else {
-        offset += 150; // default; M2 will plumb real defs to compute this exactly
+        continue;
       }
+      // Then try the def's size
+      const def = this.defsById?.get(precedingId);
+      if (def && typeof def.size === 'number') {
+        offset += def.size;
+        continue;
+      }
+      // Fall back to default 150
+      offset += 150;
     }
     return offset;
   }
@@ -212,6 +224,7 @@ export const createColumns = <TRow>(
         state,
         index: i,
         resolveAccessor,
+        defsById,
       }),
     );
   }

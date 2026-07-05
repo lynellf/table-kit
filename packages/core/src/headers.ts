@@ -11,6 +11,7 @@
 
 import type { Column } from './columns';
 import { mergeProps } from './propGetters';
+import { DEFAULT_RESIZE_STEP_PX } from './resize';
 
 export interface Header<TRow, TValue = unknown> {
   readonly id: string;
@@ -21,6 +22,7 @@ export interface Header<TRow, TValue = unknown> {
   readonly subHeaders: Header<TRow, TValue>[];
   getHeaderProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
   getSortToggleProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  getResizeHandleProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
 }
 
 export interface HeaderGroup<TRow> {
@@ -42,6 +44,11 @@ export interface HeaderContext<_TRow> {
     getColumnCount: () => number;
     getRowCount: () => number;
     announce: (message: string) => void;
+    // ─── Resize interaction (M2 Phase 3) ──────────────────────────────────
+    startResize?: (columnId: string, startSize: number, clientX: number) => void;
+    adjustResize?: (columnId: string, deltaPx: number) => void;
+    commitResize?: (columnId: string) => void;
+    cancelResize?: (columnId: string) => void;
   };
 }
 
@@ -64,6 +71,8 @@ export const buildHeaderGroups = <TRow>(
       defaultHeaderProps<TRow>(col, index, ctx, consumerProps),
     getSortToggleProps: (consumerProps?: Record<string, unknown>) =>
       defaultSortToggleProps<TRow>(col, ctx, consumerProps),
+    getResizeHandleProps: (consumerProps?: Record<string, unknown>) =>
+      defaultResizeHandleProps<TRow>(col, ctx, consumerProps),
   }));
 
   return [
@@ -145,6 +154,53 @@ const defaultSortToggleProps = <TRow>(
       role: 'button',
       tabIndex: -1,
       onClick,
+    },
+    consumerProps,
+  );
+};
+
+const defaultResizeHandleProps = <TRow>(
+  col: Column<TRow, unknown>,
+  ctx: HeaderContext<TRow>,
+  consumerProps?: Record<string, unknown>,
+): Record<string, unknown> => {
+  const minSize = col.getMinSize();
+  const maxSize = col.getMaxSize();
+  const currentSize = col.getSize();
+
+  const onPointerDown = (...args: unknown[]) => {
+    const event = args[0] as { clientX?: number; defaultPrevented?: boolean } | undefined;
+    if (event?.defaultPrevented) return;
+    ctx.instance.startResize?.(col.id, currentSize, event?.clientX ?? 0);
+  };
+
+  const onKeyDown = (...args: unknown[]) => {
+    const event = args[0] as { key?: string; shiftKey?: boolean; defaultPrevented?: boolean } | undefined;
+    if (event?.defaultPrevented) return;
+    const step = event?.shiftKey ? 1 : DEFAULT_RESIZE_STEP_PX;
+    if (event?.key === 'ArrowLeft') {
+      ctx.instance.adjustResize?.(col.id, -step);
+    } else if (event?.key === 'ArrowRight') {
+      ctx.instance.adjustResize?.(col.id, step);
+    } else if (event?.key === 'Enter') {
+      ctx.instance.commitResize?.(col.id);
+    } else if (event?.key === 'Escape') {
+      ctx.instance.cancelResize?.(col.id);
+    }
+  };
+
+  return mergeProps(
+    {
+      role: 'separator',
+      'aria-orientation': 'vertical',
+      'aria-valuenow': currentSize,
+      'aria-valuemin': minSize,
+      'aria-valuemax': maxSize,
+      'aria-controls': col.id,
+      'aria-label': `Resize column ${col.id}`,
+      tabIndex: 0,
+      onPointerDown,
+      onKeyDown,
     },
     consumerProps,
   );
