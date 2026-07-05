@@ -26,9 +26,11 @@ Requires Node ≥ 20.
 ## Quick start
 
 ```ts
-import { createTable } from '@lynellf/tablekit-core';
+import { createDataTable } from '@lynellf/tablekit-core';
 
-const table = createTable({ columns: [...], rows: [...] });
+const table = createDataTable({ data, columns });
+table.getState();       // current state snapshot
+table.subscribe(() => { /* re-render */ });
 ```
 
 See the spec at [`docs/initial-spec.md`](./docs/initial-spec.md) for the full surface.

@@ -13,9 +13,9 @@ Requires Node ≥ 20.
 ## Usage
 
 ```ts
-import { createTable } from '@lynellf/tablekit-core';
+import { createDataTable } from '@lynellf/tablekit-core';
 
-const table = createTable({ columns: [...], rows: [...] });
+const table = createDataTable({ data, columns });
 ```
 
 ## Status

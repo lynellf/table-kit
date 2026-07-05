@@ -41,7 +41,8 @@
         "useNodejsImportProtocol": "error",
         "useConst": "error",
         "useTemplate": "error",
-        "useExportType": "error"
+        "useExportType": "error",
+        "noNonNullAssertion": "off"
       },
       "suspicious": {
         "noExplicitAny": "error"

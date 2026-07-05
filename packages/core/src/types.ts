@@ -1,0 +1,353 @@
+/**
+ * @lynellf/tablekit-core — public type surface.
+ *
+ * Source-of-truth mapping to docs/initial-spec.md:
+ *  - §4.1 Instances, §4.2 State model — controlled-slice contract
+ *  - §4.3 Dependency-inversion seams — registry interfaces
+ *  - §4.4 Data model — ColumnDef + derived Column shape
+ *  - §5   Data layer — RowsQuery (Level 0)
+ *  - §7.5 Keyboard navigation — focusedCell slice
+ */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Updater
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A value-or-function that produces the next value of a state slice.
+ *
+ * Consumers may pass either:
+ *   - A concrete value (replace the slice wholesale), or
+ *   - A function `(old) => next` (derive from the previous slice).
+ *
+ * The function form is invoked synchronously by the engine when the slice is
+ * uncontrolled. When the slice is controlled, the engine hands the updater
+ * to the consumer via the slice-specific callback without invoking it.
+ */
+export type Updater<T> = T | ((old: T) => T);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State slices
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Multi-sort spec. Order in the array = priority (index 0 is primary). */
+export interface SortItem {
+  id: string;
+  desc: boolean;
+}
+
+/** Per-column filter spec. `value` is opaque to the core; the consumer's `filterFn` interprets it. */
+export interface ColumnFilterItem {
+  id: string;
+  value: unknown;
+}
+
+export interface PaginationState {
+  pageIndex: number;
+  pageSize: number;
+}
+
+/** `columnPinning` slice. Order within each side is the pinned display order. */
+export interface ColumnPinningState {
+  left: string[];
+  right: string[];
+}
+
+/** `columnSizing` slice: id → measured width in px. */
+export type ColumnSizingState = Record<string, number>;
+
+/** Transient session for an in-progress resize. Null when no resize is active. */
+export interface ColumnResizeSession {
+  columnId: string;
+  startSize: number;
+  delta: number;
+  mode: 'onChange' | 'onEnd';
+}
+
+/** `focusedCell` slice. Null when no cell has focus. */
+export interface CellPosition {
+  rowId: string;
+  columnId: string;
+}
+
+/**
+ * DataTable state model.
+ *
+ * Each slice is independently controllable (§4.2). Slice keys listed here are
+ * the contract surface; new slices must be appended (never reordered) to keep
+ * key identity stable across the v1 line.
+ */
+export interface DataTableState {
+  sorting: SortItem[];
+  columnFilters: ColumnFilterItem[];
+  pagination: PaginationState;
+  columnOrder: string[];
+  columnVisibility: Record<string, boolean>;
+  columnPinning: ColumnPinningState;
+  columnSizing: ColumnSizingState;
+  columnSizingInfo: ColumnResizeSession | null;
+  focusedCell: CellPosition | null;
+}
+
+/** Default starting values for every slice when the consumer passes no `initialState`. */
+export const DEFAULT_STATE: DataTableState = {
+  sorting: [],
+  columnFilters: [],
+  pagination: { pageIndex: 0, pageSize: 25 },
+  columnOrder: [],
+  columnVisibility: {},
+  columnPinning: { left: [], right: [] },
+  columnSizing: {},
+  columnSizingInfo: null,
+  focusedCell: null,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Registry types (sorting / filtering)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Comparator over the values produced by a column's accessor. */
+export type SortingFn<TRow> = (rowA: TRow, rowB: TRow, columnId: string) => number;
+
+/** Predicate applied to a column value. Returns true to keep the row. */
+export type FilterFn<TRow> = (row: TRow, columnId: string, filterValue: unknown) => boolean;
+
+/** Built-in or consumer-registered sorting function, addressable by name. */
+export type RegisteredSortingFn<TRow> = SortingFn<TRow>;
+
+/** Built-in or consumer-registered filtering function, addressable by name. */
+export type RegisteredFilterFn<TRow> = FilterFn<TRow>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ColumnDef + accessor resolution
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * String accessor = keyof TRow. Function accessor = custom resolver.
+ * Opacity: `header` and `cell` are `unknown` to the core; the React adapter
+ * supplies the render bridge (`renderSlot` analogue).
+ */
+export type ColumnAccessor<TRow, TValue> =
+  | (keyof TRow & string)
+  | ((row: TRow, rowIndex: number) => TValue);
+
+export interface ColumnDef<TRow, TValue = unknown> {
+  id: string;
+  accessor?: ColumnAccessor<TRow, TValue>;
+  header?: unknown;
+  cell?: unknown;
+  size?: number;
+  minSize?: number;
+  maxSize?: number;
+  /** When true, the column participates in sort state. Default: false. */
+  enableSorting?: boolean;
+  /** Registry name OR inline comparator. */
+  sortingFn?: string | SortingFn<TRow>;
+  /** When true, the column participates in filter state. Default: false. */
+  enableFiltering?: boolean;
+  /** Registry name OR inline predicate. */
+  filterFn?: string | FilterFn<TRow>;
+  /** Default behavior for `undefined` values during sort. */
+  sortUndefined?: 'first' | 'last';
+  /** Consumer escape hatch. Flows through to derived `Column.meta`. */
+  meta?: Record<string, unknown>;
+}
+
+/** Resolved value the column exposes to consumers (e.g., cell renderers). */
+export type AccessorFn<TRow, TValue> = (row: TRow, rowIndex: number) => TValue;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Row identity
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Resolve a stable id for a row. Required for server modes (M3) and pivot (M4). */
+export type RowIdAccessor<TRow> = (row: TRow, index: number) => string;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Options (factory input)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Per-slice onChange callback signature. Slice-keyed to keep the contract narrow. */
+export type SliceChange<T> = (updater: Updater<T>) => void;
+
+/**
+ * `createDataTable` options.
+ *
+ * Controlled vs uncontrolled per slice:
+ *   - If `state[K]` is provided, slice K is controlled and `on[K]Change` MUST be supplied.
+ *   - If `state[K]` is absent and `initialState[K]` is provided, slice K is uncontrolled seeded.
+ *   - If neither is provided, slice K is uncontrolled and starts at `DEFAULT_STATE[K]`.
+ *
+ * Global `onStateChange` fires after slice-specific callbacks, in the same
+ * microtask, only when state actually changed.
+ */
+export interface DataTableOptions<TRow> {
+  data: TRow[];
+  columns: Array<ColumnDef<TRow, unknown>>;
+  getRowId?: RowIdAccessor<TRow>;
+  initialState?: Partial<DataTableState>;
+  state?: Partial<DataTableState>;
+  onSortingChange?: SliceChange<SortItem[]>;
+  onColumnFiltersChange?: SliceChange<ColumnFilterItem[]>;
+  onPaginationChange?: SliceChange<PaginationState>;
+  onColumnOrderChange?: SliceChange<string[]>;
+  onColumnVisibilityChange?: SliceChange<Record<string, boolean>>;
+  onColumnPinningChange?: SliceChange<ColumnPinningState>;
+  onColumnSizingChange?: SliceChange<ColumnSizingState>;
+  onColumnSizingInfoChange?: SliceChange<ColumnResizeSession | null>;
+  onFocusedCellChange?: SliceChange<CellPosition | null>;
+  onStateChange?: SliceChange<DataTableState>;
+  // ─────── Feature flags (M1+ behavior) ───────
+  manualSorting?: boolean;
+  manualFiltering?: boolean;
+  manualPagination?: boolean;
+  /** When true (default), filter changes reset pageIndex to 0. */
+  autoResetPageIndex?: boolean;
+  /** When true (default), sort items can be removed by clicking the third time. */
+  enableSortingRemoval?: boolean;
+  /** When true, the first sort click goes desc instead of asc. */
+  sortDescFirst?: boolean;
+  /** Total row count when manualPagination=true. */
+  rowCount?: number;
+  /** Announcer interface for sort/filter/pagination announcements. */
+  announcer?: Announcer;
+  // ─────── Interaction events (M1; spec §7.6) ───────
+  onCellClick?: import('./events').CellEventHandler<TRow>;
+  onCellDoubleClick?: import('./events').CellEventHandler<TRow>;
+  onCellContextMenu?: import('./events').CellEventHandler<TRow>;
+  onCellActivate?: import('./events').CellEventHandler<TRow>;
+  onCellFocusChange?: import('./events').CellEventHandler<TRow>;
+  onRowClick?: import('./events').RowEventHandler<TRow>;
+  onRowDoubleClick?: import('./events').RowEventHandler<TRow>;
+  onHeaderClick?: import('./events').HeaderEventHandler<TRow>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Row + Cell model (M1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Type-only imports - these are erased at runtime.
+import type { Column as ColumnClass } from './columns';
+import type { HeaderGroup } from './headers';
+
+/** Context object passed to renderSlot(def.header/cell, ctx). */
+export interface CellContext<TRow, TValue = unknown> {
+  table: unknown;
+  row: Row<TRow>;
+  column: ColumnClass<TRow, TValue>;
+  cell: Cell<TRow, TValue>;
+  value: TValue;
+  rowIndex: number;
+  colIndex: number;
+}
+
+/**
+ * Derived cell object. Built lazily per row from `buildVisibleCells`.
+ * Identity is rebuilt on every `getRowModel()` call; consumers must not hold
+ * `Cell` references across renders.
+ */
+export interface Cell<TRow, TValue = unknown> {
+  readonly id: string;
+  readonly row: Row<TRow>;
+  readonly column: ColumnClass<TRow, TValue>;
+  getValue(): TValue;
+  getContext(): CellContext<TRow, TValue>;
+  /** Returns prop getter for this cell. */
+  getCellProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
+}
+
+/**
+ * Derived row object. Built by `buildRowModel`. Identity is rebuilt on every
+ * `getRowModel()` call; consumers must not hold `Row` references across renders.
+ */
+export interface Row<TRow> {
+  readonly id: string;
+  /** Pipeline-output index (post-filter, post-sort, post-paginate). */
+  readonly index: number;
+  /** Reference to the original input row. */
+  readonly original: TRow;
+  getVisibleCells(): Cell<TRow>[];
+  /** Returns prop getter for this row. */
+  getRowProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Instance
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type Unsubscribe = () => void;
+
+/** Announcer interface (spec §10). announce() is called from core on slice changes. */
+export interface Announcer {
+  announce(message: string, politeness?: 'polite' | 'assertive'): void;
+}
+
+/**
+ * Public instance shape.
+ *
+ * M1 adds `getRowModel()` returning `Row<TRow>[]` and pagination helpers.
+ */
+export interface DataTableInstance<TRow> {
+  /** Returns the current state snapshot. */
+  getState(): DataTableState;
+  /** Replace the entire options object. Called by React adapter on each render. */
+  setOptions(next: DataTableOptions<TRow>): void;
+  /** Subscribe to state changes. Returns an unsubscribe function. */
+  subscribe(listener: () => void): Unsubscribe;
+  /** Returns the filtered, sorted, paginated array of Row objects. */
+  getRowModel(): Row<TRow>[];
+
+  // ─── Pagination helpers (M1) ─────────────────────────────────────────────
+  getCanPreviousPage(): boolean;
+  getCanNextPage(): boolean;
+  getPageCount(): number;
+  getRowCount(): number;
+  nextPage(): void;
+  previousPage(): void;
+  setPageIndex(updater: number | ((old: number) => number)): void;
+  setPageSize(updater: number | ((old: number) => number)): void;
+
+  // ─── Slice dispatchers ───────────────────────────────────────────────
+  setSorting(updater: SortItem[] | ((old: SortItem[]) => SortItem[])): void;
+  setColumnFilters(
+    updater: ColumnFilterItem[] | ((old: ColumnFilterItem[]) => ColumnFilterItem[]),
+  ): void;
+  setPagination(updater: PaginationState | ((old: PaginationState) => PaginationState)): void;
+  setColumnOrder(updater: string[] | ((old: string[]) => string[])): void;
+  setColumnVisibility(
+    updater: Record<string, boolean> | ((old: Record<string, boolean>) => Record<string, boolean>),
+  ): void;
+  setColumnPinning(
+    updater: ColumnPinningState | ((old: ColumnPinningState) => ColumnPinningState),
+  ): void;
+  setColumnSizing(
+    updater: ColumnSizingState | ((old: ColumnSizingState) => ColumnSizingState),
+  ): void;
+  setColumnSizingInfo(
+    updater:
+      | ColumnResizeSession
+      | null
+      | ((old: ColumnResizeSession | null) => ColumnResizeSession | null),
+  ): void;
+  setFocusedCell(
+    updater: CellPosition | null | ((old: CellPosition | null) => CellPosition | null),
+  ): void;
+
+  // ─── Column ordering (M1) ─────────────────────────────────────────────
+  moveColumn(id: string, to: number | 'left' | 'right' | 'center' | false): void;
+
+  // ─── Column visibility (M1) ─────────────────────────────────────────
+  toggleColumnVisibility(columnId: string): void;
+  toggleAllColumnsVisibility(next?: boolean): void;
+
+  // ─── Column resolution helpers (M1) ─────────────────────────────────
+  getVisibleColumns(): Array<ColumnClass<TRow, unknown>>;
+  getLeftLeafColumns(): Array<ColumnClass<TRow, unknown>>;
+  getCenterLeafColumns(): Array<ColumnClass<TRow, unknown>>;
+  getRightLeafColumns(): Array<ColumnClass<TRow, unknown>>;
+
+  // ─── Header structure + prop getters (M1) ─────────────────────────
+  getHeaderGroups(): HeaderGroup<TRow>[];
+  getGridProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  getBodyProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
+}

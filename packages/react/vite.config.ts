@@ -19,7 +19,8 @@ export default defineConfig({
       fileName: () => 'tablekit-react.es.js',
     },
     rollupOptions: {
-      external: Object.keys(dependencies),
+      // Externalize peer/runtime dependencies plus the workspace core package.
+      external: [...Object.keys(dependencies), '@lynellf/tablekit-core'],
       output: {
         inlineDynamicImports: true,
       },
