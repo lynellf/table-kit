@@ -61,7 +61,7 @@ export const memoKeysEqual = (a: MemoKey | null, b: MemoKey): boolean => {
   return a.manualPagination === b.manualPagination;
 };
 
-export const buildPipelineRowModel = <TRow>(opts: MemoBuildOptions<TRow>): Row<TRow>[] => {
+export const buildPipelineRowModel = <TRow>(_opts: MemoBuildOptions<TRow>): Row<TRow>[] => {
   // NOTE: This function returns the raw pipeline output (id/index/original).
   // The full Row interface with getVisibleCells is assembled by createDataTable.
   // This memo cache stores the assembled rows, not the pipeline output.
@@ -90,11 +90,7 @@ export class RowModelCache<TRow> {
     };
   }
 
-  setCachedResult(
-    data: unknown[],
-    state: DataTableState,
-    rows: Row<TRow>[],
-  ): void {
+  setCachedResult(data: unknown[], state: DataTableState, rows: Row<TRow>[]): void {
     this.cachedData = data;
     this.cachedSorting = state.sorting;
     this.cachedColumnFilters = state.columnFilters;

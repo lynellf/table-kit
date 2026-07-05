@@ -8,15 +8,23 @@ describe('validateGridStructure', () => {
       <div role="grid" aria-rowcount="3" aria-colcount="2">
         <div role="rowgroup">
           <div role="row" aria-rowindex="1">
-            <div role="columnheader" aria-colindex="1">a</div>
-            <div role="columnheader" aria-colindex="2">b</div>
+            <div role="columnheader" aria-colindex="1">
+              a
+            </div>
+            <div role="columnheader" aria-colindex="2">
+              b
+            </div>
           </div>
         </div>
         <div role="rowgroup">
           <div role="presentation">
             <div role="row" aria-rowindex="2" tabIndex={0}>
-              <div role="gridcell" aria-colindex="1">1</div>
-              <div role="gridcell" aria-colindex="2">2</div>
+              <div role="gridcell" aria-colindex="1">
+                1
+              </div>
+              <div role="gridcell" aria-colindex="2">
+                2
+              </div>
             </div>
           </div>
         </div>
@@ -33,7 +41,9 @@ describe('validateGridStructure', () => {
       <div role="grid" aria-colcount="2">
         <div role="rowgroup">
           <div role="row" aria-rowindex="1">
-            <div role="columnheader" aria-colindex="1">a</div>
+            <div role="columnheader" aria-colindex="1">
+              a
+            </div>
           </div>
         </div>
       </div>,
@@ -47,7 +57,9 @@ describe('validateGridStructure', () => {
     const { container } = render(
       <div role="grid" aria-rowcount="2" aria-colcount="1">
         <div role="row" aria-rowindex="1">
-          <div role="columnheader" aria-colindex="1">a</div>
+          <div role="columnheader" aria-colindex="1">
+            a
+          </div>
         </div>
       </div>,
     );
@@ -60,7 +72,9 @@ describe('validateGridStructure', () => {
     const { container } = render(
       <div role="grid" aria-rowcount="2" aria-colcount="1">
         <div role="rowgroup">
-          <div role="gridcell" aria-colindex="1">a</div>
+          <div role="gridcell" aria-colindex="1">
+            a
+          </div>
         </div>
       </div>,
     );
@@ -74,8 +88,12 @@ describe('validateGridStructure', () => {
       <div role="grid" aria-rowcount="2" aria-colcount="1">
         <div role="rowgroup">
           <div role="row" aria-rowindex="1">
-            <div role="gridcell" aria-colindex="1" tabIndex={0}>a</div>
-            <div role="gridcell" aria-colindex="1" tabIndex={0}>b</div>
+            <div role="gridcell" aria-colindex="1" tabIndex={0}>
+              a
+            </div>
+            <div role="gridcell" aria-colindex="1" tabIndex={0}>
+              b
+            </div>
           </div>
         </div>
       </div>,
@@ -90,7 +108,9 @@ describe('validateGridStructure', () => {
       <div role="table" aria-rowcount="2" aria-colcount="1">
         <div role="rowgroup">
           <div role="row" aria-rowindex="1">
-            <div role="cell" aria-colindex="1">a</div>
+            <div role="cell" aria-colindex="1">
+              a
+            </div>
           </div>
         </div>
       </div>,
@@ -137,7 +157,9 @@ describe('validateGridStructure', () => {
         <div role="rowgroup">
           <div role="presentation">
             <div role="row" aria-rowindex="2" tabIndex={0}>
-              <div role="gridcell" aria-colindex="1">1</div>
+              <div role="gridcell" aria-colindex="1">
+                1
+              </div>
             </div>
           </div>
         </div>

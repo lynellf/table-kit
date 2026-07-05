@@ -15,15 +15,8 @@
  */
 
 import type { Column } from '../columns';
-import type {
-  ColumnVirtualizerResult,
-  VirtualItem,
-} from './types';
-import {
-  getRange,
-  getScrollOffsetForIndex,
-  getTotalSize,
-} from './rowVirtualizer';
+import { getRange, getScrollOffsetForIndex, getTotalSize } from './rowVirtualizer';
+import type { ColumnVirtualizerResult, VirtualItem } from './types';
 
 const DEFAULT_OVERSCAN_COLS = 2;
 

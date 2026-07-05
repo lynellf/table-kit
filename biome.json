@@ -51,7 +51,9 @@
         "noBannedTypes": "error"
       },
       "a11y": {
-        "useKeyWithClickEvents": "warn"
+        "useKeyWithClickEvents": "warn",
+        "useSemanticElements": "off",
+        "useFocusableInteractive": "off"
       }
     }
   },

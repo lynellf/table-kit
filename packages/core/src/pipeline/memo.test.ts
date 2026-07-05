@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { RowModelCache, buildMemoKey, memoKeysEqual } from './memo';
 import type { DataTableOptions, DataTableState, Row } from '../types';
+import { RowModelCache, buildMemoKey, memoKeysEqual } from './memo';
 
 interface Person {
   id: string;
@@ -147,7 +147,7 @@ describe('RowModelCache', () => {
     // Simulate building rows
     const rows: Row<Person>[] = [];
     cache.setCachedResult(opts.data as unknown as unknown[], state, rows);
-    
+
     // Get memo key and verify cache hit
     const memoKey = cache.getMemoKey();
     expect(memoKey.cachedRows).toBe(rows);
@@ -172,7 +172,7 @@ describe('RowModelCache', () => {
     const rows: Row<Person>[] = [];
     cache.setCachedResult(opts.data as unknown as unknown[], state, rows);
     cache.invalidate();
-    
+
     const memoKey = cache.getMemoKey();
     expect(memoKey.cachedRows).toBeNull();
     expect(memoKey.data).toBeNull();

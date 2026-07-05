@@ -13,11 +13,7 @@
  */
 
 import type { Row } from '../types';
-import type {
-  RowVirtualizerResult,
-  VirtualItem,
-  VirtualRow,
-} from './types';
+import type { RowVirtualizerResult, VirtualRow } from './types';
 
 const DEFAULT_OVERSCAN_ROWS = 4;
 

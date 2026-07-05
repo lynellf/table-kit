@@ -54,7 +54,7 @@ const pathFor = (el: Element): string => {
   return parts.join(' > ');
 };
 
-export const validateGridStructure = (
+export const validateGridStructure =
   process.env.NODE_ENV === 'production'
     ? noOpValidate
     : (rootEl: Element | null): ValidatorResult => {
@@ -190,7 +190,7 @@ export const validateGridStructure = (
             violations.push({
               path: pathFor(row),
               rule: 'aria-rowindex-monotonic',
-              message: `aria-rowindex must be strictly increasing.`,
+              message: 'aria-rowindex must be strictly increasing.',
               node: row,
             });
           }
@@ -198,5 +198,4 @@ export const validateGridStructure = (
         }
 
         return { valid: violations.length === 0, violations };
-      }
-);
+      };

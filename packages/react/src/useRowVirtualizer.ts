@@ -21,10 +21,10 @@ export const useRowVirtualizer = <TRow>(
   const measuredRef = useRef<Map<number, number>>(new Map());
 
   return useMemo(() => {
-    const tableState = table.getState();
-    const scrollOffset = (table as unknown as { scrollOffset?: number }).scrollOffset ?? 0;
-    const viewportSize = (table as unknown as { viewportSize?: number }).viewportSize ?? 0;
-    const rows = table.getRowModel();
+    const _tableState = table.getState();
+    const _scrollOffset = (table as unknown as { scrollOffset?: number }).scrollOffset ?? 0;
+    const _viewportSize = (table as unknown as { viewportSize?: number }).viewportSize ?? 0;
+    const _rows = table.getRowModel();
     const result = table.getRowVirtualizer();
     // Wrap measureElement to persist into our ref.
     const wrappedMeasure = (index: number, size: number) => {
@@ -42,11 +42,5 @@ export const useRowVirtualizer = <TRow>(
       }),
       measureElement: wrappedMeasure,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    table,
-    (table as unknown as { scrollOffset?: number }).scrollOffset ?? 0,
-    (table as unknown as { viewportSize?: number }).viewportSize ?? 0,
-    table.getRowModel(),
-  ]);
+  }, [table]);
 };

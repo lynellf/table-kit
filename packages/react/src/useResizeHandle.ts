@@ -21,23 +21,28 @@ import type { DataTableInstance } from '@lynellf/tablekit-core';
 import { useCallback, useRef } from 'react';
 
 export const useResizeHandle = <TRow>(instance: DataTableInstance<TRow>) => {
-  const activeRef = useRef<{ columnId: string; startClientX: number; startSize: number } | null>(null);
+  const activeRef = useRef<{ columnId: string; startClientX: number; startSize: number } | null>(
+    null,
+  );
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent) => {
       const native = event.nativeEvent;
       // Find the column id from the closest columnheader ancestor.
       const headerEl = (event.currentTarget as HTMLElement).closest('[role="columnheader"]');
-      const columnId = headerEl?.getAttribute('aria-controls') ?? headerEl?.getAttribute('data-column-id');
+      const columnId =
+        headerEl?.getAttribute('aria-controls') ?? headerEl?.getAttribute('data-column-id');
       if (!columnId) return;
       const startSizeAttr = headerEl?.getAttribute('aria-valuenow');
       const startSize = startSizeAttr ? Number.parseInt(startSizeAttr, 10) : 150;
       activeRef.current = { columnId, startClientX: native.clientX, startSize };
       (event.currentTarget as HTMLElement).setPointerCapture(native.pointerId);
       // Tell the instance to begin a resize session.
-      (instance as unknown as {
-        startResize: (id: string, size: number, x: number) => void;
-      }).startResize(columnId, startSize, native.clientX);
+      (
+        instance as unknown as {
+          startResize: (id: string, size: number, x: number) => void;
+        }
+      ).startResize(columnId, startSize, native.clientX);
     },
     [instance],
   );
@@ -48,9 +53,11 @@ export const useResizeHandle = <TRow>(instance: DataTableInstance<TRow>) => {
       if (!active) return;
       const native = event.nativeEvent;
       const deltaPx = native.clientX - active.startClientX;
-      (instance as unknown as {
-        adjustResize: (id: string, deltaPx: number) => void;
-      }).adjustResize(active.columnId, deltaPx);
+      (
+        instance as unknown as {
+          adjustResize: (id: string, deltaPx: number) => void;
+        }
+      ).adjustResize(active.columnId, deltaPx);
     },
     [instance],
   );
@@ -60,9 +67,11 @@ export const useResizeHandle = <TRow>(instance: DataTableInstance<TRow>) => {
       const active = activeRef.current;
       if (!active) return;
       (event.currentTarget as HTMLElement).releasePointerCapture(event.nativeEvent.pointerId);
-      (instance as unknown as {
-        commitResize: (id: string) => void;
-      }).commitResize(active.columnId);
+      (
+        instance as unknown as {
+          commitResize: (id: string) => void;
+        }
+      ).commitResize(active.columnId);
       activeRef.current = null;
     },
     [instance],
@@ -73,9 +82,11 @@ export const useResizeHandle = <TRow>(instance: DataTableInstance<TRow>) => {
       const active = activeRef.current;
       if (!active) return;
       (event.currentTarget as HTMLElement).releasePointerCapture(event.nativeEvent.pointerId);
-      (instance as unknown as {
-        cancelResize: (id: string) => void;
-      }).cancelResize(active.columnId);
+      (
+        instance as unknown as {
+          cancelResize: (id: string) => void;
+        }
+      ).cancelResize(active.columnId);
       activeRef.current = null;
     },
     [instance],

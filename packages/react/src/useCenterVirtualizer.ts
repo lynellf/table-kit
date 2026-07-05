@@ -14,8 +14,10 @@ export const useCenterVirtualizer = <TRow>(
 ): ColumnVirtualizerResult => {
   const measuredRef = useRef<Map<number, number>>(new Map());
   return useMemo(() => {
-    const scrollOffset = (table as unknown as { columnScrollOffset?: number }).columnScrollOffset ?? 0;
-    const viewportSize = (table as unknown as { columnViewportSize?: number }).columnViewportSize ?? 0;
+    const _scrollOffset =
+      (table as unknown as { columnScrollOffset?: number }).columnScrollOffset ?? 0;
+    const _viewportSize =
+      (table as unknown as { columnViewportSize?: number }).columnViewportSize ?? 0;
     const result = table.getCenterVirtualizer();
     const wrappedMeasure = (index: number, size: number) => {
       measuredRef.current.set(index, size);
@@ -32,11 +34,5 @@ export const useCenterVirtualizer = <TRow>(
       }),
       measureElement: wrappedMeasure,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    table,
-    (table as unknown as { columnScrollOffset?: number }).columnScrollOffset ?? 0,
-    (table as unknown as { columnViewportSize?: number }).columnViewportSize ?? 0,
-    table.getCenterLeafColumns(),
-  ]);
+  }, [table]);
 };

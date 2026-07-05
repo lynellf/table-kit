@@ -1,18 +1,7 @@
-/**
- * @lynellf/tablekit-react — useSizeObserver hook.
- *
- * Wraps the browser's `ResizeObserver` to feed measured sizes into the
- * virtualizer's `measureElement(index, size)` callback. Each rendered
- * row + column element registers itself via a `data-virtual-index`
- * attribute; the hook observes the parent and dispatches size changes
- * to the matching index.
- *
- * Consumers attach the hook at the grid level; the hook uses
- * event delegation (a single ResizeObserver on the grid) for perf.
- */
-
-import type { DataTableInstance } from '@lynellf/tablekit-core';
-import type { RowVirtualizerResult, ColumnVirtualizerResult } from '@lynellf/tablekit-core/virtualization';
+import type {
+  ColumnVirtualizerResult,
+  RowVirtualizerResult,
+} from '@lynellf/tablekit-core/virtualization';
 import { useEffect } from 'react';
 
 export interface SizeObserverOptions<TRow> {
@@ -21,9 +10,7 @@ export interface SizeObserverOptions<TRow> {
   columnVirtualizer: ColumnVirtualizerResult;
 }
 
-export const useSizeObserver = <TRow>(
-  options: SizeObserverOptions<TRow>,
-): void => {
+export const useSizeObserver = <TRow>(options: SizeObserverOptions<TRow>): void => {
   const { gridRef, rowVirtualizer, columnVirtualizer } = options;
 
   useEffect(() => {
@@ -39,10 +26,7 @@ export const useSizeObserver = <TRow>(
         if (type === null || indexAttr === null) continue;
         const index = Number.parseInt(indexAttr, 10);
         if (Number.isNaN(index)) continue;
-        const size =
-          type === 'row'
-            ? entry.contentRect.height
-            : entry.contentRect.width;
+        const size = type === 'row' ? entry.contentRect.height : entry.contentRect.width;
         if (type === 'row') rowVirtualizer.measureElement(index, size);
         else columnVirtualizer.measureElement(index, size);
       }

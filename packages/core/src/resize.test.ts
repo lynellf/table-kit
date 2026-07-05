@@ -65,10 +65,7 @@ describe('resizeColumn', () => {
 
 describe('cancelResize', () => {
   it('reverts to start size', () => {
-    const out = cancelResize(
-      { name: 250 },
-      baseSession({ startSize: 150, delta: 100 }),
-    );
+    const out = cancelResize({ name: 250 }, baseSession({ startSize: 150, delta: 100 }));
     expect(out.name).toBe(150);
   });
 

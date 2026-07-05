@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  navigateByPage,
-  navigateCell,
-  navigateToEdge,
-  resolveKeyBinding,
-} from './keyboardNav';
+import { navigateByPage, navigateCell, navigateToEdge, resolveKeyBinding } from './keyboardNav';
 import type { CellPosition, DataTableState } from './types';
 
 const baseState = (): DataTableState => ({

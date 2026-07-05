@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { Row } from '../types';
 import {
   createRowVirtualizer,
   getRange,
   getScrollOffsetForIndex,
   getTotalSize,
 } from './rowVirtualizer';
-import type { Row } from '../types';
 
 const makeRow = (id: string, index: number): Row<{ id: string }> => ({
   id,

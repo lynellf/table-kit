@@ -13,9 +13,7 @@ export {
   getTotalSize,
 } from './rowVirtualizer';
 
-export {
-  createColumnVirtualizer,
-} from './columnVirtualizer';
+export { createColumnVirtualizer } from './columnVirtualizer';
 
 export type {
   VirtualItem,

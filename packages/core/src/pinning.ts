@@ -108,11 +108,7 @@ export const unpinColumns = (
  * Build the announcer message for a pin change. M1 hardcodes English; M6
  * introduces the `messages` map.
  */
-export const pinAnnouncement = (
-  columnId: string,
-  next: PinSide,
-  previous: PinSide,
-): string => {
+export const pinAnnouncement = (columnId: string, next: PinSide, previous: PinSide): string => {
   if (next === previous) return ''; // no-op
   if (next === false) return `Unpinned ${columnId}`;
   if (previous === false) return `Pinned ${columnId} to ${next}`;

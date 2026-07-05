@@ -175,7 +175,9 @@ const defaultResizeHandleProps = <TRow>(
   };
 
   const onKeyDown = (...args: unknown[]) => {
-    const event = args[0] as { key?: string; shiftKey?: boolean; defaultPrevented?: boolean } | undefined;
+    const event = args[0] as
+      | { key?: string; shiftKey?: boolean; defaultPrevented?: boolean }
+      | undefined;
     if (event?.defaultPrevented) return;
     const step = event?.shiftKey ? 1 : DEFAULT_RESIZE_STEP_PX;
     if (event?.key === 'ArrowLeft') {

@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  pinAnnouncement,
-  pinColumns,
-  togglePinColumn,
-  unpinColumns,
-} from './pinning';
+import { pinAnnouncement, pinColumns, togglePinColumn, unpinColumns } from './pinning';
 import type { ColumnPinningState } from './types';
 
 const baseState = (): ColumnPinningState => ({ left: ['a'], right: ['b'] });

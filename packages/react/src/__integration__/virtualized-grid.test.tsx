@@ -5,8 +5,8 @@
  * Full DOM rendering tests with React hooks are in the end-to-end suite.
  */
 
-import { describe, expect, it, vi } from 'vitest';
 import { createDataTable } from '@lynellf/tablekit-core';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('Virtualization integration', () => {
   it('getRowVirtualizer returns correct totalSize', () => {
@@ -16,9 +16,7 @@ describe('Virtualization integration', () => {
     }));
     const table = createDataTable({
       data,
-      columns: [
-        { id: 'name', accessor: 'name' },
-      ],
+      columns: [{ id: 'name', accessor: 'name' }],
       getRowId: (r) => r.id,
       manualPagination: true,
     });
@@ -36,7 +34,10 @@ describe('Virtualization integration', () => {
 
   it('pinned columns bypass virtualization', () => {
     const table = createDataTable({
-      data: [{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }],
+      data: [
+        { id: '1', name: 'Alice' },
+        { id: '2', name: 'Bob' },
+      ],
       columns: [
         { id: 'name', accessor: 'name' },
         { id: 'age', accessor: 'age' },

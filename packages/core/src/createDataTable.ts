@@ -10,42 +10,29 @@ import { noopAnnouncer } from './announcer';
 import { defaultGetRowId } from './columns';
 import type { Column } from './columns';
 import { createColumns } from './columns';
+import { buildHeaderGroups } from './headers';
+import type { HeaderContext } from './headers';
 import {
+  type NavigationDirection,
+  navigateByPage as navigateByPageHelper,
+  navigateCell as navigateCellHelper,
+  navigateToEdge as navigateToEdgeHelper,
+  resolveKeyBinding,
+} from './keyboardNav';
+import { moveColumn } from './ordering';
+import {
+  type PinSide,
   pinAnnouncement,
   pinColumns as pinColumnsHelper,
   togglePinColumn as togglePinColumnHelper,
   unpinColumns as unpinColumnsHelper,
-  type PinSide,
 } from './pinning';
-import {
-  cancelResize as cancelResizeHelper,
-  resizeAnnouncement,
-  resizeColumn,
-} from './resize';
-import {
-  navigateCell as navigateCellHelper,
-  navigateToEdge as navigateToEdgeHelper,
-  navigateByPage as navigateByPageHelper,
-  resolveKeyBinding,
-  type NavigationDirection,
-} from './keyboardNav';
-import { RowModelCache } from './pipeline/memo';
-import {
-  createRowVirtualizer,
-  getScrollOffsetForIndex,
-} from './virtualization/rowVirtualizer';
-import { createColumnVirtualizer } from './virtualization/columnVirtualizer';
-import type {
-  RowVirtualizerResult,
-  ColumnVirtualizerResult,
-} from './virtualization/types';
-import { buildHeaderGroups } from './headers';
-import type { HeaderContext } from './headers';
-import { moveColumn } from './ordering';
 import { filterRows } from './pipeline/filter';
+import { RowModelCache } from './pipeline/memo';
 import { computePageCount, paginateRows } from './pipeline/paginate';
 import { sortRows, toggleSortItem } from './pipeline/sort';
 import { mergeProps } from './propGetters';
+import { cancelResize as cancelResizeHelper, resizeAnnouncement, resizeColumn } from './resize';
 import { buildVisibleCells } from './rows';
 import {
   applySliceChange,
@@ -70,6 +57,9 @@ import type {
   Row,
   Row as RowInterface,
 } from './types';
+import { createColumnVirtualizer } from './virtualization/columnVirtualizer';
+import { createRowVirtualizer } from './virtualization/rowVirtualizer';
+import type { ColumnVirtualizerResult, RowVirtualizerResult } from './virtualization/types';
 import {
   toggleAllColumnsVisibility,
   toggleColumnVisibility as toggleColumnVisibilityHelper,
@@ -169,9 +159,10 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // Memoize based on the computed rows identity
     const memoKey = this.rowModelCache.getMemoKey();
     const dataChanged = memoKey.data !== rows;
-    const stateChanged = memoKey.sorting !== state.sorting ||
-                         memoKey.columnFilters !== state.columnFilters ||
-                         memoKey.pagination !== state.pagination;
+    const stateChanged =
+      memoKey.sorting !== state.sorting ||
+      memoKey.columnFilters !== state.columnFilters ||
+      memoKey.pagination !== state.pagination;
 
     if (!dataChanged && !stateChanged && memoKey.cachedRows) {
       return memoKey.cachedRows;
@@ -232,9 +223,9 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
   togglePin = (columnId: string, side: PinSide): void => {
     const previous = this.state.columnPinning.left.includes(columnId)
-      ? 'left' as const
+      ? ('left' as const)
       : this.state.columnPinning.right.includes(columnId)
-        ? 'right' as const
+        ? ('right' as const)
         : false;
     const next = togglePinColumnHelper(this.state.columnPinning, columnId, side);
     if (next === null) return;
@@ -319,16 +310,14 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
         maxSize: col.getMaxSize(),
       });
       this.applyChange('columnSizing', out.columnSizing);
-      this.announce(resizeAnnouncement(col.id, out.columnSizing[col.id] ?? session.startSize, col.id));
+      this.announce(
+        resizeAnnouncement(col.id, out.columnSizing[col.id] ?? session.startSize, col.id),
+      );
     } else {
       const col = this.getResolvedColumns().find((c) => c.id === columnId);
       if (col) {
         this.announce(
-          resizeAnnouncement(
-            col.id,
-            this.state.columnSizing[col.id] ?? session.startSize,
-            col.id,
-          ),
+          resizeAnnouncement(col.id, this.state.columnSizing[col.id] ?? session.startSize, col.id),
         );
       }
     }
@@ -622,7 +611,9 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
     // onKeyDown: library keyboard navigation handler
     const onKeyDown = (...args: unknown[]) => {
-      const event = args[0] as { key?: string; ctrlKey?: boolean; defaultPrevented?: boolean } | undefined;
+      const event = args[0] as
+        | { key?: string; ctrlKey?: boolean; defaultPrevented?: boolean }
+        | undefined;
       if (event?.defaultPrevented) return;
       if (this.navigationMode !== 'cell') return;
       const binding = resolveKeyBinding(event?.key ?? '', event?.ctrlKey ?? false, false);

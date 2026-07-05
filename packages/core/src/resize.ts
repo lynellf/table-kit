@@ -67,11 +67,7 @@ export const cancelResize = (
  * Pure utility for keyboard-driven resize where the caller computes
  * the delta.
  */
-export const clampColumnSize = (
-  size: number,
-  minSize: number,
-  maxSize: number,
-): number => {
+export const clampColumnSize = (size: number, minSize: number, maxSize: number): number => {
   return Math.max(minSize, Math.min(maxSize, size));
 };
 

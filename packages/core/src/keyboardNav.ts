@@ -15,7 +15,7 @@ import type { CellPosition, DataTableState } from './types';
 export type NavigationMode = 'cell' | 'row' | 'none';
 export type NavigationDirection = 'up' | 'down' | 'left' | 'right';
 
-export interface KeyboardNavContext<TRow> {
+export interface KeyboardNavContext<_TRow> {
   state: DataTableState;
   /** Resolve rowId → index in the current row model. */
   rowIndexById: Map<string, number>;
@@ -78,7 +78,7 @@ export const navigateCell = <TRow>(
     rowId: Array.from(ctx.rowIndexById.keys())[0] ?? '',
     columnId: ctx.columnIdByIndex[0] ?? '',
   };
-  let { rowId, columnId } = start;
+  const { rowId, columnId } = start;
 
   // Resolve current indices
   const rowIdx = rowId ? (ctx.rowIndexById.get(rowId) ?? 0) : 0;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Column, createColumns } from '../columns';
+import { createColumns } from '../columns';
 import { DEFAULT_STATE } from '../types';
 import { createColumnVirtualizer } from './columnVirtualizer';
 
