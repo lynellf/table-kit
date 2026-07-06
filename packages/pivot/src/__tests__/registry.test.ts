@@ -52,13 +52,13 @@ describe('registerAggregator', () => {
   it('stores under custom name', () => {
     const median: Aggregator<number, number[], number> = {
       init: () => [],
-      accumulate: (acc, v) => {
+      accumulate: (acc: number[], v: number) => {
         acc.push(v);
         return acc;
       },
-      merge: (a, b) => a.concat(b),
-      finalize: (acc) => {
-        const sorted = [...acc].sort((x, y) => x - y);
+      merge: (a: number[], b: number[]) => a.concat(b),
+      finalize: (acc: number[]) => {
+        const sorted = [...acc].sort((x: number, y: number) => x - y);
         const mid = Math.floor(sorted.length / 2);
         return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
       },
@@ -75,13 +75,13 @@ describe('nameOfAggregator', () => {
   });
 
   it('returns name for custom aggregator', () => {
-    const custom: Aggregator = { init: () => 0, accumulate: (a) => a, merge: (a, b) => a + b };
+    const custom: Aggregator<number, number, number> = { init: () => 0, accumulate: (a: number) => a, merge: (a: number, b: number) => a + b };
     registerAggregator('custom', custom);
     expect(nameOfAggregator(custom)).toBe('custom');
   });
 
   it('returns undefined for unregistered / inline aggregator', () => {
-    const inline: Aggregator = { init: () => 0, accumulate: (a) => a, merge: (a, b) => a + b };
+    const inline: Aggregator<number, number, number> = { init: () => 0, accumulate: (a: number) => a, merge: (a: number, b: number) => a + b };
     expect(nameOfAggregator(inline)).toBeUndefined();
   });
 

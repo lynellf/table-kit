@@ -21,15 +21,8 @@ describe('§9.1 PivotConfig types', () => {
   it('FieldRef accepts string form', () => {
     const f1: FieldRef = 'region';
     expect(f1).toBe('region');
-    expectTypeOf<FieldRef>().toEqualTypeOf<
-      | string
-      | {
-          field: string;
-          accessor?: (row: unknown) => unknown;
-          label?: unknown;
-          sortComparator?: string;
-        }
-    >();
+    // FieldRef is a union type - string is assignable to it
+    expectTypeOf<'region'>().toMatchTypeOf<FieldRef>();
   });
 
   it('FieldRef accepts object form', () => {

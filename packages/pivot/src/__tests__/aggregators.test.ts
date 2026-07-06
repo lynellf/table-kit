@@ -147,7 +147,7 @@ describe('BUILT_IN_AGGREGATORS', () => {
   });
 
   it('every entry has init/accumulate/merge', () => {
-    for (const name of Object.keys(BUILT_IN_AGGREGATORS)) {
+    for (const name of Object.keys(BUILT_IN_AGGREGATORS) as (keyof typeof BUILT_IN_AGGREGATORS)[]) {
       const a = BUILT_IN_AGGREGATORS[name]!;
       expect(typeof a.init).toBe('function');
       expect(typeof a.accumulate).toBe('function');

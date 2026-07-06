@@ -18,83 +18,83 @@ const rows: Row[] = [
 ];
 
 describe('pivot sorting', () => {
-  it('by: "label" ascending (default order)', () => {
+  it('by: "label" ascending (default order)', async () => {
     const engine = createMainThreadEngine<Row>();
     const q: PivotQuery<Row> = {
       rows,
       rowsFieldRef: [{ field: 'region' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [{ level: 0, by: 'label', desc: false }],
     };
-    const result = engine.compute(q, { signal: new AbortController().signal });
-    expect(result.rowRoot.children!.map((c) => c.label)).toEqual(['East', 'North', 'West']);
+    const result = await engine.compute(q, { signal: new AbortController().signal });
+    expect(result.rowRoot.children!.map((c) => String(c.label))).toEqual(['East', 'North', 'West']);
   });
 
-  it('by: "label" descending', () => {
+  it('by: "label" descending', async () => {
     const engine = createMainThreadEngine<Row>();
     const q: PivotQuery<Row> = {
       rows,
       rowsFieldRef: [{ field: 'region' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [{ level: 0, by: 'label', desc: true }],
     };
-    const result = engine.compute(q, { signal: new AbortController().signal });
-    expect(result.rowRoot.children!.map((c) => c.label)).toEqual(['West', 'North', 'East']);
+    const result = await engine.compute(q, { signal: new AbortController().signal });
+    expect(result.rowRoot.children!.map((c) => String(c.label))).toEqual(['West', 'North', 'East']);
   });
 
-  it('by: "measure" ascending (sort by sales_sum)', () => {
+  it('by: "measure" ascending (sort by sales_sum)', async () => {
     const engine = createMainThreadEngine<Row>();
     const q: PivotQuery<Row> = {
       rows,
       rowsFieldRef: [{ field: 'region' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [{ level: 0, by: 'measure', measureId: 'sales_sum', desc: false }],
     };
-    const result = engine.compute(q, { signal: new AbortController().signal });
-    expect(result.rowRoot.children!.map((c) => c.label)).toEqual(['East', 'North', 'West']);
+    const result = await engine.compute(q, { signal: new AbortController().signal });
+    expect(result.rowRoot.children!.map((c) => String(c.label))).toEqual(['East', 'North', 'West']);
   });
 
-  it('by: "measure" descending', () => {
+  it('by: "measure" descending', async () => {
     const engine = createMainThreadEngine<Row>();
     const q: PivotQuery<Row> = {
       rows,
       rowsFieldRef: [{ field: 'region' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [{ level: 0, by: 'measure', measureId: 'sales_sum', desc: true }],
     };
-    const result = engine.compute(q, { signal: new AbortController().signal });
-    expect(result.rowRoot.children!.map((c) => c.label)).toEqual(['West', 'North', 'East']);
+    const result = await engine.compute(q, { signal: new AbortController().signal });
+    expect(result.rowRoot.children!.map((c) => String(c.label))).toEqual(['West', 'North', 'East']);
   });
 
-  it('no sorting → insertion order (alphabetical by first-seen)', () => {
+  it('no sorting → insertion order (alphabetical by first-seen)', async () => {
     const engine = createMainThreadEngine<Row>();
     const q: PivotQuery<Row> = {
       rows,
       rowsFieldRef: [{ field: 'region' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [],
     };
-    const result = engine.compute(q, { signal: new AbortController().signal });
-    expect(result.rowRoot.children!.map((c) => c.label)).toEqual(['West', 'East', 'North']);
+    const result = await engine.compute(q, { signal: new AbortController().signal });
+    expect(result.rowRoot.children!.map((c) => String(c.label))).toEqual(['West', 'East', 'North']);
   });
 });

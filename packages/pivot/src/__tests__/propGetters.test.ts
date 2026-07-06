@@ -122,7 +122,7 @@ describe('getFooterProps', () => {
   it('returns null when grandTotalRow is false', () => {
     const p = createPivotTable({
       ...opts,
-      pivot: { ...opts.pivot, totals: { grandTotalRow: false } },
+      pivot: { rows: ['region', 'product'], columns: [], measures: [{ id: 'sales_sum', field: 'sales' }], totals: { grandTotalRow: false } },
     });
     expect(p.getFooterProps()).toBeNull();
   });

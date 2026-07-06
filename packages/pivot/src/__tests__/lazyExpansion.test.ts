@@ -20,19 +20,19 @@ const rows: Row[] = [
 ];
 
 describe('lazy expansion', () => {
-  it('expandedPaths = [] → only level-0 materialized', () => {
+  it('expandedPaths = [] → only level-0 materialized', async () => {
     const engine = createMainThreadEngine<Row>();
     const q: PivotQuery<Row> = {
       rows,
       rowsFieldRef: [{ field: 'region' }, { field: 'product' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [],
     };
-    const result = engine.compute(q, { signal: new AbortController().signal });
+    const result = await engine.compute(q, { signal: new AbortController().signal });
     expect(result.rowRoot.children).toHaveLength(2); // West, East
     for (const region of result.rowRoot.children!) {
       expect(region.hasChildren).toBe(true);
@@ -41,19 +41,19 @@ describe('lazy expansion', () => {
     }
   });
 
-  it('expandedPaths = ["West"] → West children materialized, East still not', () => {
+  it('expandedPaths = ["West"] → West children materialized, East still not', async () => {
     const engine = createMainThreadEngine<Row>();
     const q: PivotQuery<Row> = {
       rows,
       rowsFieldRef: [{ field: 'region' }, { field: 'product' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: ['["West"]'],
       pivotSorting: [],
     };
-    const result = engine.compute(q, { signal: new AbortController().signal });
+    const result = await engine.compute(q, { signal: new AbortController().signal });
     const west = result.rowRoot.children!.find((c) => c.label === 'West')!;
     expect(west.children).toHaveLength(2); // West's children (A, B) are materialized
     expect(west.childState).toBe('loaded');
@@ -68,36 +68,36 @@ describe('lazy expansion', () => {
     expect(east.childState).toBe('notLoaded');
   });
 
-  it('computeChildren materializes children of a single path', () => {
+  it('computeChildren materializes children of a single path', async () => {
     const engine = createMainThreadEngine<Row>();
     const q: PivotQuery<Row> = {
       rows,
       rowsFieldRef: [{ field: 'region' }, { field: 'product' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [],
     };
-    const children = engine.computeChildren!(['West'], q, { signal: new AbortController().signal });
+    const children = await engine.computeChildren!(['West'], q, { signal: new AbortController().signal });
     expect(children).toHaveLength(2);
-    expect(children.map((c) => c.label).sort()).toEqual(['A', 'B']);
+    expect(children.map((c) => String(c.label)).sort()).toEqual(['A', 'B']);
   });
 
-  it('aggregated values are still present for unexpanded nodes', () => {
+  it('aggregated values are still present for unexpanded nodes', async () => {
     const engine = createMainThreadEngine<Row>();
     const q: PivotQuery<Row> = {
       rows,
       rowsFieldRef: [{ field: 'region' }, { field: 'product' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [],
     };
-    const result = engine.compute(q, { signal: new AbortController().signal });
+    const result = await engine.compute(q, { signal: new AbortController().signal });
     const west = result.rowRoot.children!.find((c) => c.label === 'West')!;
     expect(west.rowTotals.sales_sum).toBe(30); // 10 + 20 (children NOT enumerated, but aggregated)
   });

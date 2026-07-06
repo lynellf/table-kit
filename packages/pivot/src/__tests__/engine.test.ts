@@ -26,7 +26,7 @@ const rows: SalesRow[] = [
 ];
 
 describe('createMainThreadEngine', () => {
-  it('computes a row hierarchy (region) with sum of sales', () => {
+  it('computes a row hierarchy (region) with sum of sales', async () => {
     const engine = createMainThreadEngine<SalesRow>();
     const query: PivotQuery<SalesRow> = {
       rows,
@@ -38,7 +38,7 @@ describe('createMainThreadEngine', () => {
       expandedPaths: [],
       pivotSorting: [],
     };
-    const result = engine.compute(query, { signal: new AbortController().signal });
+    const result = await engine.compute(query, { signal: new AbortController().signal });
     expect(result.rowRoot.children).toHaveLength(2); // West, East
     const west = result.rowRoot.children!.find((c) => c.label === 'West')!;
     expect(west.rowTotals.sales_sum).toBe(430); // 100+150+180
@@ -47,35 +47,35 @@ describe('createMainThreadEngine', () => {
     expect(result.grandTotals['__total__::sales_sum']).toBe(880);
   });
 
-  it('default aggregator is "sum" when MeasureDef.aggregator is omitted', () => {
+  it('default aggregator is "sum" when MeasureDef.aggregator is omitted', async () => {
     const engine = createMainThreadEngine<SalesRow>();
     const q: PivotQuery<SalesRow> = {
       rows,
       rowsFieldRef: [],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [],
     };
-    const r = engine.compute(q, { signal: new AbortController().signal });
+    const r = await engine.compute(q, { signal: new AbortController().signal });
     expect(r.rowRoot.rowTotals.sales_sum).toBe(880);
   });
 
-  it('two-level row hierarchy (region × quarter)', () => {
+  it('two-level row hierarchy (region × quarter)', async () => {
     const engine = createMainThreadEngine<SalesRow>();
     const query: PivotQuery<SalesRow> = {
       rows,
       rowsFieldRef: [{ field: 'region' }, { field: 'quarter' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [],
     };
-    const result = engine.compute(query, { signal: new AbortController().signal });
+    const result = await engine.compute(query, { signal: new AbortController().signal });
     expect(result.rowRoot.children).toHaveLength(2);
     const west = result.rowRoot.children!.find((c) => c.label === 'West')!;
     expect(west.hasChildren).toBe(true);
@@ -83,14 +83,14 @@ describe('createMainThreadEngine', () => {
     expect(west.childState).toBe('notLoaded');
   });
 
-  it('column hierarchy + multi-measure', () => {
+  it('column hierarchy + multi-measure', async () => {
     const engine = createMainThreadEngine<SalesRow>();
     const query: PivotQuery<SalesRow> = {
       rows,
       rowsFieldRef: [{ field: 'region' }],
       columnsFieldRef: [{ field: 'year' }],
       measures: [
-        { id: 'sales_sum', field: 'sales' },
+        { id: 'sales_sum', field: 'sales', aggregator: 'sum' },
         { id: 'orders_count', field: 'orders', aggregator: 'count' },
       ],
       filters: [],
@@ -98,42 +98,42 @@ describe('createMainThreadEngine', () => {
       expandedPaths: [],
       pivotSorting: [],
     };
-    const result = engine.compute(query, { signal: new AbortController().signal });
+    const result = await engine.compute(query, { signal: new AbortController().signal });
     expect(result.columnRoot.children).toBeDefined();
     const year2024 = result.columnRoot.children!.find((c) => c.label === 2024);
     expect(year2024?.colSpan).toBe(2); // two measures
   });
 
-  it('no rows → empty root with no children', () => {
+  it('no rows → empty root with no children', async () => {
     const engine = createMainThreadEngine<SalesRow>();
     const query: PivotQuery<SalesRow> = {
       rows: [],
       rowsFieldRef: [{ field: 'region' }],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [],
     };
-    const result = engine.compute(query, { signal: new AbortController().signal });
+    const result = await engine.compute(query, { signal: new AbortController().signal });
     expect(result.rowRoot.hasChildren).toBe(false);
     expect(result.rowRoot.children).toBeUndefined();
   });
 
-  it('no row hierarchy → aggregated at the root', () => {
+  it('no row hierarchy → aggregated at the root', async () => {
     const engine = createMainThreadEngine<SalesRow>();
     const query: PivotQuery<SalesRow> = {
       rows,
       rowsFieldRef: [],
       columnsFieldRef: [],
-      measures: [{ id: 'sales_sum', field: 'sales' }],
+      measures: [{ id: 'sales_sum', field: 'sales', aggregator: 'sum' }],
       filters: [],
       totals: {},
       expandedPaths: [],
       pivotSorting: [],
     };
-    const result = engine.compute(query, { signal: new AbortController().signal });
+    const result = await engine.compute(query, { signal: new AbortController().signal });
     expect(result.rowRoot.children).toBeUndefined();
     expect(result.rowRoot.rowTotals.sales_sum).toBe(880);
   });

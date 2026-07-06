@@ -48,7 +48,7 @@ describe('getVisibleRows', () => {
   it('expanded but hasChildren=false is a leaf', () => {
     const p = createPivotTable({
       ...opts,
-      pivot: { ...opts.pivot, rows: ['region'] },
+      pivot: { rows: ['region'], columns: [], measures: [{ id: 'sales_sum', field: 'sales' }] },
     });
     p.setExpanded({ '["West"]': true });
     const visible = p.getVisibleRows();
