@@ -55,3 +55,55 @@ jobs:
 
       - name: Test audit (recursive paths check)
         run: node test-audit.mjs
+
+  # M6 Phase 4: CI benchmarks (advisory — soft regression check)
+  bench:
+    name: Run Benchmarks (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Run benchmarks after tests so we don't waste CI time on a broken build.
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ vars.PNPM_VERSION || '10' }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create bench results directory
+        run: mkdir -p bench/results
+
+      - name: Run pivot main-thread bench
+        run: pnpm --filter @lynellf/tablekit-pivot bench --run --reporter=json bench/results/pivot-main-thread.bench.json 2>&1 || true
+        continue-on-error: true
+
+      - name: Run worker bench
+        run: pnpm --filter @lynellf/tablekit-worker bench --run --reporter=json bench/results/worker.bench.json 2>&1 || true
+        continue-on-error: true
+
+      - name: Compare against baseline (soft regression)
+        run: |
+          if command -v node > /dev/null 2>&1; then
+            node scripts/bench-compare.mjs || echo "bench-compare skipped (no results)"
+          fi
+        continue-on-error: true
+
+      - name: Upload bench results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/results/
+          retention-days: 30

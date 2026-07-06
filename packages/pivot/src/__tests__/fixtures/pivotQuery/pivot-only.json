@@ -1,0 +1,9 @@
+{
+  "rowsFieldRef": [{ "field": "region" }],
+  "columnsFieldRef": [],
+  "measures": [{ "id": "sales_sum", "field": "sales", "aggregator": "sum" }],
+  "filters": [],
+  "totals": {},
+  "expandedPaths": [],
+  "pivotSorting": []
+}

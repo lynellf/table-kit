@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@lynellf/tablekit-core": ["packages/core/src/index.ts"],
+      "@lynellf/tablekit-core/*": ["packages/core/src/*"],
+      "@lynellf/tablekit-pivot": ["packages/pivot/src/index.ts"],
+      "@lynellf/tablekit-pivot/*": ["packages/pivot/src/*"],
+      "@lynellf/tablekit-react": ["packages/react/src/index.ts"],
+      "@lynellf/tablekit-react/*": ["packages/react/src/*"],
+      "@lynellf/tablekit-worker": ["packages/worker/src/index.ts"],
+      "@lynellf/tablekit-worker/*": ["packages/worker/src/*"]
+    }
+  },
+  "include": ["src"]
+}

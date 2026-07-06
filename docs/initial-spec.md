@@ -950,7 +950,7 @@ stops windowing), otherwise they file issues.
 | M3 | Server modes              | `manual*` semantics, DataSource + `useDataSource`, loading/aria-busy contract                                     | Mixed-mode warnings; server pagination/sort/filter reference app       |
 | M4 | Pivot, main thread        | Config, aggregators, result model, expansion, totals, pivot sorting, treegrid rendering                           | Pivot integration + a11y tree tests; sum-default verified              |
 | M5 | Pivot engines             | Worker engine + protocol + data store; server engine contract + lazy expansion                                    | 1M-row worker budget; server-expansion reference app                   |
-| M6 | Hardening                 | SR manual matrix, docs (recipes: layout, DnD reorder, keyboard reorder, split-pane), benchmarks in CI, API review | v1.0                                                                   |
+| M6 | Hardening ✓                 | SR manual matrix, docs (recipes: layout, DnD reorder, keyboard reorder, split-pane), benchmarks in CI, API review | v1.0 ✓ — complete 2026-07-06 (`docs/m6-hardening/api-freeze.md`)                                  |
 
 Sequencing rationale: virtualization (M2) lands before server modes and pivot
 because focus retention and the layout recipe constrain everything downstream;

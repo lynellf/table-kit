@@ -189,3 +189,4 @@ export {
   resolveKeyBinding,
 } from './keyboardNav';
 export type { NavigationMode, NavigationDirection } from './keyboardNav';
+export type { TabBehavior } from './types';

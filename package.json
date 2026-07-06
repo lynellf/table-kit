@@ -1,6 +1,6 @@
 {
   "name": "table-kit",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Headless table primitives (DataTable + PivotTable).",
   "license": "MIT",
@@ -17,14 +17,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "pnpm build:main && pnpm build:subpaths",
-    "build:main": "pnpm build:core && pnpm build:react && pnpm build:pivot",
-    "build:subpaths": "pnpm build:core:subpaths && pnpm build:react:subpaths && pnpm build:pivot:subpaths",
+    "build:main": "pnpm build:core && pnpm build:react && pnpm build:pivot && pnpm build:worker",
+    "build:subpaths": "pnpm build:core:subpaths && pnpm build:react:subpaths && pnpm build:pivot:subpaths && pnpm build:worker:subpaths",
     "build:core": "pnpm -F @lynellf/tablekit-core build",
     "build:core:subpaths": "node packages/core/vite.subpaths.config.mjs",
     "build:react": "pnpm -F @lynellf/tablekit-react build",
     "build:react:subpaths": "node packages/react/vite.subpaths.config.mjs",
     "build:pivot": "pnpm -F @lynellf/tablekit-pivot build",
     "build:pivot:subpaths": "node packages/pivot/vite.subpaths.config.mjs",
+    "build:worker": "pnpm -F @lynellf/tablekit-worker build",
+    "build:worker:subpaths": "node packages/worker/vite.subpaths.config.mjs",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "pack:core": "pnpm -F @lynellf/tablekit-core build && pnpm -F @lynellf/tablekit-core pack --dry-run",
     "pack:react": "pnpm -F @lynellf/tablekit-react build && pnpm -F @lynellf/tablekit-react pack --dry-run",
@@ -38,6 +40,7 @@
     "lefthook": "^1.10.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
+    "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^2.1.4"
   }
 }

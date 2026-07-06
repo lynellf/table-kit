@@ -22,6 +22,7 @@ import type {
   FieldValue,
   LeafColumnId,
   MeasureDef,
+  MeasureId,
   PivotColumnNode,
   PivotConfig,
   PivotLeafColumn,
@@ -51,7 +52,7 @@ const resolveMeasureAccessor = <TRow>(
   _inlineAccessor: ((row: TRow) => unknown) | undefined,
 ): ((row: TRow) => unknown) => {
   if (def.accessor) return def.accessor;
-  if (def.field) return (row: TRow) => (row as Record<string, unknown>)[def.field];
+  if (def.field !== undefined) return (row: TRow) => (row as Record<string, unknown>)[def.field as string];
   // Count aggregator needs a value to count; return the row itself as a sentinel
   // (counting non-null values). When no field is provided, count all rows.
   return () => 1;
@@ -62,7 +63,7 @@ const resolveMeasureAggregator = (
   inlineAggregator: Aggregator | undefined,
 ): Aggregator => {
   if (inlineAggregator) return inlineAggregator;
-  const name = def.aggregator ?? 'sum';
+  const name = typeof def.aggregator === 'string' ? def.aggregator : 'sum';
   const registered = getAggregator(name);
   if (!registered) {
     throw new Error(
@@ -174,7 +175,6 @@ const buildColumnRoot = <TRow>(
       // Attach totals leaves as a sibling of regular leaves at the root.
       const existingChildren = columnRoot.children ?? [];
       const regularLeaves = columnRoot.leaves ?? [];
-      columnRoot.leaves = undefined;
       columnRoot.children = [
         ...existingChildren,
         {
@@ -198,7 +198,6 @@ const buildColumnRoot = <TRow>(
       leafColumns.unshift(...totalsLeaves);
       const existingChildren = columnRoot.children ?? [];
       const regularLeaves = columnRoot.leaves ?? [];
-      columnRoot.leaves = undefined;
       columnRoot.children = [
         {
           id: '__totals__',

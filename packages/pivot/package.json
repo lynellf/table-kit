@@ -1,6 +1,6 @@
 {
   "name": "@lynellf/tablekit-pivot",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": false,
   "description": "Framework-free PivotTable config, main-thread aggregation engine, and treegrid rendering primitives.",
   "type": "module",

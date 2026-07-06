@@ -15,6 +15,8 @@ import type {
 } from '@lynellf/tablekit-core/dataSource';
 import { validateModeConfiguration } from '@lynellf/tablekit-core/dataSource';
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { defaultMessages } from './messages';
+import type { AnnouncerKey } from './messages';
 
 /** Return type. `data` is the latest successful result; consumers use it as the `data` prop. */
 export interface UseDataSourceResult<TRow> {
@@ -40,11 +42,19 @@ type DataTableInstanceWithSeams<TRow> = DataTableInstance<TRow> & {
  *
  * Uses useSyncExternalStore to subscribe to the table's data source state changes.
  * This ensures re-renders happen at the right time, avoiding infinite loops.
+ *
+ * @param translator - Optional i18n translator. When provided, announcer calls
+ *   route through the translator instead of using hardcoded English strings.
  */
 export const useDataSource = <TRow>(
   table: DataTableInstanceWithSeams<TRow>,
   source: DataSource<TRow>,
+  translator?: (key: AnnouncerKey, ...args: unknown[]) => string,
 ): UseDataSourceResult<TRow> => {
+  const t = translator ?? ((key: AnnouncerKey) => {
+    const val = defaultMessages[key];
+    return typeof val === 'function' ? (val as (...a: unknown[]) => string)() : (val as string);
+  });
   // Subscribe to the table's data source state.
   const subscribe = useCallback((onChange: () => void) => table.subscribe(onChange), [table]);
   const getSnapshot = useCallback(() => table.__getDataSourceState(), [table]);
@@ -124,7 +134,7 @@ export const useDataSource = <TRow>(
           successState.totalRowCount = awaited.totalRowCount;
         }
         table.__setDataSourceState(successState);
-        table.announce(`Loaded ${awaited.rows.length} rows`);
+        table.announce(t('loadingFinished', awaited.rows.length));
 
         if (
           sourceRef.current.capabilities.paginate === 'server' &&

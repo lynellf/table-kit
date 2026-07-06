@@ -88,8 +88,6 @@ export {
 } from './pivotTable/propGetters';
 export { announceExpansion, announceSorting, announceTotals } from './pivotTable/announcer';
 
-export { DEFAULT_PIVOT_STATE } from './types';
-
 export { defaultGetRowId, __resetPivotDefaultGetRowIdWarningForTests } from './defaultGetRowId';
 export {} from './engine';
 export {} from './pivotTable';

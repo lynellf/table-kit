@@ -1,3 +1,5 @@
 packages:
   - "packages/*"
   - "examples/m3-server-modes"
+  - "examples/m4-pivot-main-thread"
+  - "examples/m5-pivot-engines"

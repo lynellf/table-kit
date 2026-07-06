@@ -2,7 +2,7 @@
 
 Headless table primitives for the modern web — framework-free state engine, row pipeline, column model, and a first-class React adapter.
 
-**Status:** v0.1.0 — early stage. The core surface is under active development; the public API is stabilizing.
+**Status:** v1.0.0 — stable. The public API is frozen. See [`docs/m6-hardening/api-freeze.md`](./docs/m6-hardening/api-freeze.md) for the v1.0 contract.
 
 ## Packages
 
@@ -40,6 +40,19 @@ See the spec at [`docs/initial-spec.md`](./docs/initial-spec.md) for the full su
 The library supports server-side pagination, sorting, and filtering via the `DataSource` interface and `useDataSource` hook. See [`docs/m3-server-modes/api-freeze.md`](./docs/m3-server-modes/api-freeze.md) for the API surface.
 
 A reference app demonstrating the four server mode patterns is at [`examples/m3-server-modes/`](./examples/m3-server-modes/).
+
+## Recipes
+
+Consumer-facing integration patterns. Each recipe is a self-contained copy-paste guide:
+
+| Recipe | What it solves |
+| --- | --- |
+| [`docs/recipes/layout.md`](./docs/recipes/layout.md) | Virtualization + sticky pinning in one scroll container |
+| [`docs/recipes/dnd-column-reorder.md`](./docs/recipes/dnd-column-reorder.md) | Pointer-based column reordering via dnd-kit |
+| [`docs/recipes/kbd-column-reorder.md`](./docs/recipes/kbd-column-reorder.md) | Keyboard "grab" pattern (Space → Arrows → Space) |
+| [`docs/recipes/split-pane.md`](./docs/recipes/split-pane.md) | Three viewports with scroll sync (for transformed parent layouts) |
+
+See [`docs/recipes/README.md`](./docs/recipes/) for the full index.
 
 ## Bugs & Issues
 

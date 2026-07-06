@@ -10,17 +10,28 @@
  */
 
 import { createDataTable } from '@lynellf/tablekit-core';
-import type { DataTableInstance, DataTableOptions, DataTableState } from '@lynellf/tablekit-core';
+import type { DataTableInstance, DataTableOptions, DataTableState, TabBehavior } from '@lynellf/tablekit-core';
 import type { DataSource, DataSourceState } from '@lynellf/tablekit-core/dataSource';
 import React from 'react';
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { ReactElement } from 'react';
+import { createT } from './i18n/t';
 import { ReactAnnouncer } from './ReactAnnouncer';
 import { useDataSource } from './useDataSource';
+import { useTabBehavior } from './useTabBehavior';
+import type { MessagesMap } from './messages';
 
 export interface UseDataTableOptions<TRow> extends DataTableOptions<TRow> {
   /** M3 phase 3: wire a data source for server modes. */
   dataSource?: DataSource<TRow>;
+  /** M6 phase 1: per-key announcer-string overrides for i18n. Defaults to English. */
+  messages?: Partial<MessagesMap>;
+  /**
+   * M6 phase 2: how Tab behaves inside the grid.
+   * - 'exit' (default, APG-conformant): Tab moves focus out of the grid.
+   * - 'cells' (opt-in): Tab focuses the first cell; Arrow keys move within the row.
+   */
+  tabBehavior?: TabBehavior;
 }
 
 export interface UseDataTableResult<TRow> {
@@ -32,6 +43,11 @@ export interface UseDataTableResult<TRow> {
   Announcer: () => ReactElement;
   /** M3 phase 3: present iff `dataSource` option is provided. */
   dataSourceState?: DataSourceState<TRow>;
+  /**
+   * M6 phase 2: assign this ref to the root grid element to enable Tab behavior.
+   * Consumers typically spread it into their grid div: <div {...table.getGridProps()} ref={gridRef} />
+   */
+  gridRef: React.RefObject<HTMLDivElement | null>;
 }
 
 /**
@@ -83,13 +99,24 @@ export const useDataTable = <TRow>(
 
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  // M3 phase 3: dataSource wiring
+  // M6 phase 1: i18n translator (created once per hook; no per-call allocation).
+  const t = useMemo(() => createT(options.messages), [options.messages]);
+
+  // M3 phase 3: dataSource wiring (passes t() for announcer localization).
   const dataSourceState = options.dataSource
     ? useDataSource(
         table as DataTableInstance<TRow> & Parameters<typeof useDataSource<TRow>>[0],
         options.dataSource,
+        t,
       )
     : undefined;
+
+  // M6 phase 2: tabBehavior ref and hook.
+  // Consumers assign gridRef.current to the root grid element so the Tab handler
+  // can blur/focus as needed.
+  const tabBehavior = options.tabBehavior ?? 'exit';
+  const gridRef = useRef<HTMLDivElement>(null);
+  useTabBehavior({ gridRef, tabBehavior });
 
   return {
     table,
@@ -98,5 +125,6 @@ export const useDataTable = <TRow>(
       return React.createElement(ReactAnnouncer);
     },
     ...(dataSourceState ? { dataSourceState } : {}),
+    gridRef,
   };
 };

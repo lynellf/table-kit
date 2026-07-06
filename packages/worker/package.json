@@ -1,0 +1,48 @@
+{
+  "name": "@lynellf/tablekit-worker",
+  "version": "1.0.0",
+  "private": false,
+  "description": "Worker pivot engine + message protocol + tiny in-worker data store, plus a server engine reference factory.",
+  "type": "module",
+  "main": "./dist/tablekit-worker.es.js",
+  "module": "./dist/tablekit-worker.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/tablekit-worker.es.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol/index.d.ts",
+      "import": "./dist/protocol/index.es.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.es.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lynellf/tablekit"
+  },
+  "bugs": {
+    "url": "https://github.com/lynellf/tablekit/issues"
+  },
+  "homepage": "https://github.com/lynellf/tablekit",
+  "keywords": ["table", "headless", "pivot", "data-grid", "worker", "web-worker", "aggregation"],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "vite build",
+    "build:subpaths": "node vite.subpaths.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "bench": "vitest bench --run bench/worker.bench.ts"
+  },
+  "peerDependencies": {
+    "@lynellf/tablekit-pivot": "workspace:*"
+  }
+}

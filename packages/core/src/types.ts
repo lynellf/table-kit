@@ -228,6 +228,12 @@ export interface DataTableOptions<TRow> {
   onHeaderClick?: import('./events').HeaderEventHandler<TRow>;
   // ─────── Keyboard navigation (M2 Phase 5) ───────
   navigationMode?: 'cell' | 'row' | 'none';
+  /**
+   * M6 phase 2: how Tab behaves inside the grid.
+   * - 'exit' (default, APG-conformant): Tab moves focus out of the grid.
+   * - 'cells' (opt-in): Tab focuses the first cell; Arrow keys move within the row.
+   */
+  tabBehavior?: TabBehavior;
   // ─────── DataSource (M3) ───────────────────────────────────────────────────
   /**
    * M3 phase 4: number of placeholder rows to render while the data source
@@ -236,6 +242,12 @@ export interface DataTableOptions<TRow> {
    */
   placeholderRows?: number;
 }
+
+/**
+ * M6 phase 2: tab behavior option. Default 'exit' is APG-conformant.
+ * 'cells' is opt-in for products that need Tab-through-cells.
+ */
+export type TabBehavior = 'exit' | 'cells';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Row + Cell model (M1)

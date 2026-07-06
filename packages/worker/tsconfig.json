@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/**/*", "../core/src/**/*.ts", "../pivot/src/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "bench/**/*", "../core/src/**/__tests__/**", "../pivot/src/**/__tests__/**"]
+}

@@ -1,0 +1,12 @@
+{
+  "rowsFieldRef": [{ "field": "region" }],
+  "columnsFieldRef": [],
+  "measures": [
+    { "id": "sales_sum", "field": "sales", "aggregator": "sum" },
+    { "id": "count", "aggregator": "count" }
+  ],
+  "filters": [{ "field": "region", "op": "equals", "value": "West" }],
+  "totals": { "grandTotalRow": true, "grandTotalColumn": true, "grandTotalColumnPosition": "end" },
+  "expandedPaths": ["[\"West\"]"],
+  "pivotSorting": [{ "level": 0, "by": "measure", "measureId": "sales_sum", "desc": true }]
+}

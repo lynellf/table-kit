@@ -2,5 +2,10 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "display": "Root",
   "files": [],
-  "references": [{ "path": "./packages/core" }, { "path": "./packages/react" }]
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/pivot" },
+    { "path": "./packages/react" },
+    { "path": "./packages/worker" }
+  ]
 }

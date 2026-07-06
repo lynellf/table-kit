@@ -23,6 +23,9 @@ export { useResizeHandle } from './useResizeHandle';
 // ─── Keyboard nav hook (M2 Phase 5) ─────────────────────────────────────────
 export { useKeyboardNav } from './useKeyboardNav';
 
+// ─── Tab behavior (M6 Phase 2) ─────────────────────────────────────────────
+export { useTabBehavior } from './useTabBehavior';
+
 export const VERSION = '0.2.0' as const;
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
@@ -35,6 +38,58 @@ export type { UseDataSourceResult } from './useDataSource';
 
 // ─── Announcer (M1) ───────────────────────────────────────────────────────
 export { ReactAnnouncer, getReactAnnouncer } from './ReactAnnouncer';
+
+// ─── Pivot (M4) ────────────────────────────────────────────────────────────
+export { usePivotTable } from './usePivotTable';
+export type { UsePivotTableOptions, UsePivotTableResult } from './usePivotTable';
+
+export { resolveTreegridKeyAction, applyTreegridAction } from './usePivotKeyboardNav';
+export type { PivotKeyboardAction } from './usePivotKeyboardNav';
+
+// Re-export the pivot surface so consumers can import from one place.
+export {
+  VERSION as PIVOT_VERSION,
+  createPivotTable,
+  sumAggregator,
+  countAggregator,
+  minAggregator,
+  maxAggregator,
+  avgAggregator,
+  builtInAggregators,
+  getAggregator,
+  registerAggregator,
+  nameOfAggregator,
+} from '@lynellf/tablekit-pivot';
+
+export type {
+  Aggregator,
+  DEFAULT_PIVOT_STATE,
+  FieldValue,
+  RowPathKey,
+  LeafColumnId,
+  MeasureId,
+  FieldRef,
+  MeasureDef,
+  PivotFilter,
+  TotalsConfig,
+  PivotConfig,
+  PivotExpansionState,
+  PivotSortingState,
+  PivotTableState,
+  PivotQuery,
+  PivotResult,
+  PivotRowNode,
+  PivotColumnNode,
+  PivotLeafColumn,
+  AggregationEngine,
+  PivotTableInstance,
+  PivotTableOptions,
+} from '@lynellf/tablekit-pivot';
+
+// ─── i18n (M6 Phase 1) ──────────────────────────────────────────────────────
+// Re-export defaultMessages so consumers can inspect keys and copy for override.
+export { defaultMessages } from './messages';
+export type { AnnouncerKey, MessagesMap } from './messages';
 
 // ─── Re-export core surface for consumer convenience ─────────────────────────
 export {
@@ -121,4 +176,6 @@ export type {
   InteractionOptions,
   InteractionSource,
   Announcer,
+  // M6 phase 2
+  TabBehavior,
 } from '@lynellf/tablekit-core';

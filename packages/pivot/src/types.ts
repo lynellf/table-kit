@@ -17,6 +17,11 @@ import type {
   ColumnSizingState,
   Updater,
 } from '@lynellf/tablekit-core';
+import type { Announcer } from '@lynellf/tablekit-core';
+
+// Re-export core types for pivot package consumers
+export type { Updater } from '@lynellf/tablekit-core';
+export type { Announcer } from '@lynellf/tablekit-core';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Primitive aliases
@@ -370,6 +375,22 @@ export interface PivotTableInstance<TRow = unknown> {
   toggleExpanded(path: Array<FieldValue>): void;
   setPivotSorting(updater: Updater<PivotSortingState>): void;
   announce(message: string, politeness?: 'polite' | 'assertive'): void;
+  /** Prop getter for the root treegrid element. */
+  getGridProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  /** Prop getter for the body rowgroup. */
+  getBodyProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  /** Prop getter for a row. */
+  getRowProps(row: PivotRowNode<TRow>, consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  /** Prop getter for a row-header cell. */
+  getRowHeaderProps(row: PivotRowNode<TRow>, consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  /** Prop getter for a column header. */
+  getHeaderProps(node: PivotColumnNode | PivotLeafColumn, consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  /** Prop getter for the expand/collapse toggle. */
+  getToggleExpandedProps(row: PivotRowNode<TRow>, consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  /** Prop getter for the footer rowgroup (grand-total row). Returns null if totals.row is disabled. */
+  getFooterProps(consumerProps?: Record<string, unknown>): Record<string, unknown> | null;
+  /** Prop getter for a totals column leaf. */
+  getTotalsColumnProps(leaf: PivotLeafColumn<TRow>, consumerProps?: Record<string, unknown>): Record<string, unknown>;
 }
 
 /** Options accepted by `createPivotTable`. Full surface in phase 4. */
@@ -388,4 +409,10 @@ export interface PivotTableOptions<TRow = unknown> {
   announcer?: import('@lynellf/tablekit-core').Announcer;
   /** getRowId for the source dataset. Default: index-based dev fallback (warning in M4). */
   getRowId?: (row: TRow, index: number) => string;
+  /**
+   * M6 phase 2: how Tab behaves inside the pivot grid.
+   * - 'exit' (default, APG-conformant): Tab moves focus out of the grid.
+   * - 'cells' (opt-in): Tab focuses the first cell; Arrow keys move within the row.
+   */
+  tabBehavior?: import('@lynellf/tablekit-core').TabBehavior;
 }

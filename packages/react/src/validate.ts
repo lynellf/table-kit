@@ -197,5 +197,65 @@ export const validateGridStructure =
           lastRowIndex = idx;
         }
 
+        // ─── Treegrid-specific rules (M4 phase 5) ───────────────────────────────
+        if (rootRole === 'treegrid') {
+          // Treegrid root must have tabIndex=0 (not -1) when no cell is focused.
+          const rootTabIndex = (rootEl as HTMLElement).tabIndex;
+          if (rootTabIndex !== 0) {
+            violations.push({
+              path: pathFor(rootEl),
+              rule: 'treegrid-tabindex',
+              message: `Treegrid root must have tabIndex=0; got ${rootTabIndex}.`,
+              node: rootEl,
+            });
+          }
+
+          // Every row with data-has-children="true" must have aria-expanded.
+          const rowsWithChildren = rootEl.querySelectorAll('[data-has-children="true"]');
+          for (const row of Array.from(rowsWithChildren)) {
+            if (row.getAttribute('aria-expanded') === null) {
+              violations.push({
+                path: pathFor(row),
+                rule: 'treegrid-row-expanded',
+                message: 'Row with data-has-children="true" must have aria-expanded.',
+                node: row,
+              });
+            }
+          }
+
+          // aria-level monotonicity (strictly increasing across rendered rows).
+          const treegridRows = rootEl.querySelectorAll('[role="row"]');
+          let lastLevel = 0;
+          for (const row of Array.from(treegridRows)) {
+            const levelAttr = row.getAttribute('aria-level');
+            if (levelAttr === null) continue;
+            const level = Number.parseInt(levelAttr, 10);
+            if (Number.isNaN(level)) continue;
+            if (level <= lastLevel && lastLevel !== 0) {
+              violations.push({
+                path: pathFor(row),
+                rule: 'treegrid-level-monotonic',
+                message: `aria-level must be strictly increasing across rendered rows; got ${level} after ${lastLevel}.`,
+                node: row,
+              });
+            }
+            lastLevel = level;
+          }
+
+          // role="rowheader" cells must be inside a row.
+          const rowHeaders = rootEl.querySelectorAll('[role="rowheader"]');
+          for (const cell of Array.from(rowHeaders)) {
+            const parent = cell.parentElement;
+            if (parent?.getAttribute('role') !== 'row') {
+              violations.push({
+                path: pathFor(cell),
+                rule: 'treegrid-rowheader-ownership',
+                message: 'role="rowheader" cell must be inside a row.',
+                node: cell,
+              });
+            }
+          }
+        }
+
         return { valid: violations.length === 0, violations };
       };

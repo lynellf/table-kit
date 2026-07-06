@@ -1,0 +1,13 @@
+{
+  "$schema": "./bench-schema.json",
+  "version": "1.0.0",
+  "source": "M4-M5 reference-app runs, GitHub runner ubuntu-latest",
+  "last_updated": "2026-07-06",
+  "note": "Baselines are initial seeds. Rotate via maintainer PR when runner hardware changes or significant perf work lands. See docs/release-process.md §3.",
+  "benchmarks": {
+    "pivot/main-thread 50,000 rows × 4 regions × 4 quarters × 3 years × 2 measures": 120,
+    "pivot/main-thread 100,000 rows × 4 regions × 4 quarters × 3 years × 2 measures": 240,
+    "pivot/main-thread 200,000 rows × 4 regions × 4 quarters × 3 years × 2 measures": 480,
+    "pivot/main-thread 1,000,000 rows × 4 regions × 4 quarters × 3 years × 2 measures (warm, no setRows)": 1100
+  }
+}
