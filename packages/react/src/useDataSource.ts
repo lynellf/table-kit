@@ -7,14 +7,14 @@
  * exposes status: 'idle' | 'loading' | 'error', error, and refetch()."
  */
 
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import type { DataTableInstance, DataTableOptions } from '@lynellf/tablekit-core';
 import type {
   DataSource,
   DataSourceState,
   DataSourceStatus,
 } from '@lynellf/tablekit-core/dataSource';
 import { validateModeConfiguration } from '@lynellf/tablekit-core/dataSource';
-import type { DataTableInstance, DataTableOptions } from '@lynellf/tablekit-core';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 
 /** Return type. `data` is the latest successful result; consumers use it as the `data` prop. */
 export interface UseDataSourceResult<TRow> {
@@ -46,14 +46,8 @@ export const useDataSource = <TRow>(
   source: DataSource<TRow>,
 ): UseDataSourceResult<TRow> => {
   // Subscribe to the table's data source state.
-  const subscribe = useCallback(
-    (onChange: () => void) => table.subscribe(onChange),
-    [table],
-  );
-  const getSnapshot = useCallback(
-    () => table.__getDataSourceState(),
-    [table],
-  );
+  const subscribe = useCallback((onChange: () => void) => table.subscribe(onChange), [table]);
+  const getSnapshot = useCallback(() => table.__getDataSourceState(), [table]);
 
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
@@ -99,74 +93,77 @@ export const useDataSource = <TRow>(
       if (fetchingRef.current) return false;
       fetchingRef.current = true;
 
-      try {
-        const query = table.__buildRowsQuery(sourceRef.current.capabilities);
+      const query = table.__buildRowsQuery(sourceRef.current.capabilities);
 
-        abortRef.current?.abort();
-        const controller = new AbortController();
-        abortRef.current = controller;
+      // Abort the in-flight request, if any, before starting a new one.
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-        const priorState = table.__getDataSourceState();
-        const loadingState: DataSourceState<TRow> = {
-          status: 'loading',
-          data: priorState.data,
+      const priorState = table.__getDataSourceState();
+      const loadingState: DataSourceState<TRow> = {
+        status: 'loading',
+        data: priorState.data,
+        refetch,
+      };
+      if (priorState.error !== undefined) {
+        loadingState.error = priorState.error;
+      }
+      table.__setDataSourceState(loadingState);
+
+      // Hoist handlers so the catch (synchronous getRows throw) can reach them.
+      const handleResult = (awaited: { rows: TRow[]; totalRowCount?: number }) => {
+        if (controller.signal.aborted) return;
+
+        const successState: DataSourceState<TRow> = {
+          status: 'success',
+          data: awaited.rows,
           refetch,
         };
-        if (priorState.error !== undefined) {
-          loadingState.error = priorState.error;
+        if (awaited.totalRowCount !== undefined) {
+          successState.totalRowCount = awaited.totalRowCount;
         }
-        table.__setDataSourceState(loadingState);
+        table.__setDataSourceState(successState);
+        table.announce(`Loaded ${awaited.rows.length} rows`);
 
+        if (
+          sourceRef.current.capabilities.paginate === 'server' &&
+          typeof awaited.totalRowCount === 'number'
+        ) {
+          table.setOptions({
+            data: [],
+            columns: [],
+            manualPagination: true,
+            rowCount: awaited.totalRowCount,
+          });
+        }
+      };
+
+      const handleError = (err: unknown) => {
+        if (controller.signal.aborted) return;
+        const errorState: DataSourceState<TRow> = {
+          status: 'error',
+          data: priorState.data,
+          error: err instanceof Error ? err : new Error(String(err)),
+          refetch,
+        };
+        table.__setDataSourceState(errorState);
+      };
+
+      try {
         const result = sourceRef.current.getRows(query, { signal: controller.signal });
 
-        const handleResult = (awaited: { rows: TRow[]; totalRowCount?: number }) => {
-          if (controller.signal.aborted) return;
-
-          const successState: DataSourceState<TRow> = {
-            status: 'success',
-            data: awaited.rows,
-            refetch,
-          };
-          if (awaited.totalRowCount !== undefined) {
-            successState.totalRowCount = awaited.totalRowCount;
-          }
-          table.__setDataSourceState(successState);
-          table.announce(`Loaded ${awaited.rows.length} rows`);
-
-          if (
-            sourceRef.current.capabilities.paginate === 'server' &&
-            typeof awaited.totalRowCount === 'number'
-          ) {
-            table.setOptions({
-              data: [],
-              columns: [],
-              manualPagination: true,
-              rowCount: awaited.totalRowCount,
-            });
-          }
-        };
-
-        const handleError = (err: unknown) => {
-          if (controller.signal.aborted) return;
-
-          const errorState: DataSourceState<TRow> = {
-            status: 'error',
-            data: priorState.data,
-            error: err instanceof Error ? err : new Error(String(err)),
-            refetch,
-          };
-          table.__setDataSourceState(errorState);
-        };
-
         if (result instanceof Promise) {
-          result.then(handleResult).catch(handleError).finally(() => {
-            fetchingRef.current = false;
-          });
+          result
+            .then(handleResult)
+            .catch(handleError)
+            .finally(() => {
+              fetchingRef.current = false;
+            });
         } else {
           handleResult(result);
           fetchingRef.current = false;
         }
-
         return true;
       } catch (err) {
         handleError(err);
@@ -188,8 +185,7 @@ export const useDataSource = <TRow>(
       abortRef.current?.abort();
       unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, table]);
+  }, [refetch, table]);
 
   // Build return with only defined optional fields.
   const result: UseDataSourceResult<TRow> = {

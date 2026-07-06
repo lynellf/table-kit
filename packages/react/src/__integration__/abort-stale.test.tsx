@@ -5,12 +5,12 @@
  * Uses plain functions (no vi.fn()) for reliability.
  */
 
-import { act, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { useDataTable } from '../useDataTable';
 import type { DataSource } from '@lynellf/tablekit-core/dataSource';
 import { __resetMixedModeWarningForTests } from '@lynellf/tablekit-core/dataSource';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { useDataTable } from '../useDataTable';
 
 interface Row {
   id: string;
@@ -18,14 +18,18 @@ interface Row {
 }
 
 // Track calls with a module-level array (persists across renders)
-const getRowsCalls: Array<{ pagination?: { pageIndex: number; pageSize: number }; timestamp: number }> = [];
+const getRowsCalls: Array<{
+  pagination?: { pageIndex: number; pageSize: number };
+  timestamp: number;
+}> = [];
 
 function makeServerSource(): DataSource<Row> {
   return {
     capabilities: { sort: 'server', filter: 'server', paginate: 'server' },
     getRows: (q) => {
       getRowsCalls.push({ pagination: q.pagination, timestamp: Date.now() });
-      return { rows: [{ id: '1', name: 'Alice' }], totalRowCount: 1 };
+      // Return totalRowCount > pageSize so the Next button is enabled
+      return { rows: [{ id: '1', name: 'Alice' }], totalRowCount: 100 };
     },
   };
 }
@@ -56,6 +60,7 @@ describe('abort-stale integration', () => {
         <div>
           <span data-testid="status">{dataSourceState?.status}</span>
           <button
+            type="button"
             data-testid="next-page"
             onClick={() => {
               console.log('Click handler, current pagination:', pagination);
@@ -77,7 +82,10 @@ describe('abort-stale integration', () => {
     });
 
     console.log('Before click, calls:', getRowsCalls.length);
-    console.log('Before click, pagination in last call:', getRowsCalls[getRowsCalls.length - 1]?.pagination);
+    console.log(
+      'Before click, pagination in last call:',
+      getRowsCalls[getRowsCalls.length - 1]?.pagination,
+    );
 
     // Clear calls from initial setup
     const initialCount = getRowsCalls.length;
@@ -98,9 +106,9 @@ describe('abort-stale integration', () => {
     });
 
     // Check if any call has the new pagination
-    const hasNewPagination = getRowsCalls.slice(initialCount).some(
-      (call) => call.pagination?.pageIndex === 1,
-    );
+    const hasNewPagination = getRowsCalls
+      .slice(initialCount)
+      .some((call) => call.pagination?.pageIndex === 1);
     expect(hasNewPagination).toBe(true);
   });
 });

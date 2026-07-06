@@ -1,10 +1,13 @@
+import type { DataSource } from '@lynellf/tablekit-core/dataSource';
 /** @jsxImportSource react */
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { useDataTable } from '../useDataTable';
-import type { DataSource } from '@lynellf/tablekit-core/dataSource';
 
-interface Row { id: string; name: string; }
+interface Row {
+  id: string;
+  name: string;
+}
 
 // Promise-based data source
 const source: DataSource<Row> = {
@@ -24,7 +27,7 @@ describe('async test', () => {
     }
     const { container } = render(<App />);
     // Give the microtask a chance to run
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
     expect(container.textContent).toContain('success');
   });
 });

@@ -58,8 +58,8 @@ async function findTestFiles(dir, baseDir = dir) {
       const stats = await stat(fullPath);
 
       // Check if this test file is in a nested __tests__ directory
-      const isNested = relPath.includes('__tests__/__tests__') ||
-                       /__tests__\/.*\/__tests__/.test(relPath);
+      const isNested =
+        relPath.includes('__tests__/__tests__') || /__tests__\/.*\/__tests__/.test(relPath);
 
       files.push({
         path: relPath,
@@ -91,7 +91,7 @@ async function findRecursiveDirs(dir, baseDir = dir) {
       // This is a test directory - check if it contains nested test directories
       const children = await readdir(fullPath, { withFileTypes: true });
       const hasNestedTests = children.some(
-        c => c.isDirectory() && (c.name === '__tests__' || c.name === '__specs__')
+        (c) => c.isDirectory() && (c.name === '__tests__' || c.name === '__specs__'),
       );
 
       if (hasNestedTests) {
@@ -100,7 +100,9 @@ async function findRecursiveDirs(dir, baseDir = dir) {
     } else {
       // Recurse into non-test directories
       const nested = await findRecursiveDirs(fullPath, baseDir);
-      nested.forEach(d => recursiveDirs.add(d));
+      for (const d of nested) {
+        recursiveDirs.add(d);
+      }
     }
   }
 
@@ -126,7 +128,9 @@ async function audit() {
       const recursiveDirs = await findRecursiveDirs(srcDir);
 
       allFiles.push(...files);
-      recursiveDirs.forEach(d => allRecursiveDirs.add(d));
+      for (const d of recursiveDirs) {
+        allRecursiveDirs.add(d);
+      }
     } catch (err) {
       // Directory might not exist, skip
       console.warn(`Warning: Could not audit ${srcDir}: ${err.message}`);
@@ -134,9 +138,7 @@ async function audit() {
   }
 
   // Filter to only nested files that aren't in the allowed set
-  const nestedFiles = allFiles.filter(
-    f => f.nested && !ALLOWED_NESTED.has(f.path)
-  );
+  const nestedFiles = allFiles.filter((f) => f.nested && !ALLOWED_NESTED.has(f.path));
 
   return {
     files: allFiles,
@@ -155,20 +157,20 @@ async function calibrate() {
 
   const result = await audit();
 
-  console.log(`\n📊 Project Stats:`);
+  console.log('\n📊 Project Stats:');
   console.log(`   Total test files: ${result.files.length}`);
   console.log(`   Nested test files: ${result.nestedFiles.length}`);
   console.log(`   Recursive directories: ${result.recursiveDirs.size}`);
 
   if (result.nestedFiles.length > 0) {
-    console.log(`\n⚠️  Nested test files detected:`);
+    console.log('\n⚠️  Nested test files detected:');
     for (const file of result.nestedFiles) {
       console.log(`   - ${file.path}`);
     }
   }
 
   if (result.recursiveDirs.size > 0) {
-    console.log(`\n⚠️  Recursive test directories detected:`);
+    console.log('\n⚠️  Recursive test directories detected:');
     for (const dir of result.recursiveDirs) {
       console.log(`   - ${dir}`);
     }
@@ -226,7 +228,7 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Fatal error:', err);
   process.exit(2);
 });

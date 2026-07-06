@@ -9,7 +9,9 @@ export default defineWorkspace([
   'packages/core',
   'packages/react',
 
+  // M4: Pivot
+  'packages/pivot',
+
   // Future milestones:
-  // 'packages/pivot',     // M4
   // 'packages/worker',    // M5
 ]);

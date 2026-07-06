@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BUILT_IN_FILTER_FNS, builtInFilterFns, getFilterFn, registerFilterFn, nameOfFilterFn } from './filtering';
+import {
+  BUILT_IN_FILTER_FNS,
+  builtInFilterFns,
+  getFilterFn,
+  nameOfFilterFn,
+  registerFilterFn,
+} from './filtering';
 
 describe('filtering registry', () => {
   describe('built-ins', () => {

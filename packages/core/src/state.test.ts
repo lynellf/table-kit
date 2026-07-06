@@ -110,4 +110,42 @@ describe('state engine', () => {
       expect(stateChangedOnSlices(a, b, ['pagination'])).toBe(true);
     });
   });
+
+  describe('stateChangedOnSlices (object-slice regression — M3 abort-stale)', () => {
+    it('reports no change when a re-derived pagination object has identical values', () => {
+      const prev: DataTableState = {
+        ...DEFAULT_STATE,
+        pagination: { pageIndex: 0, pageSize: 10 },
+      };
+      const next: DataTableState = {
+        ...prev,
+        pagination: { pageIndex: 0, pageSize: 10 }, // new ref, same values
+      };
+      expect(stateChangedOnSlices(prev, next, ['pagination'])).toBe(false);
+    });
+
+    it('reports a change when pagination values differ', () => {
+      const prev: DataTableState = {
+        ...DEFAULT_STATE,
+        pagination: { pageIndex: 0, pageSize: 10 },
+      };
+      const next: DataTableState = {
+        ...prev,
+        pagination: { pageIndex: 1, pageSize: 10 },
+      };
+      expect(stateChangedOnSlices(prev, next, ['pagination'])).toBe(true);
+    });
+
+    it('reports no change for columnPinning when contents match across new refs', () => {
+      const prev: DataTableState = {
+        ...DEFAULT_STATE,
+        columnPinning: { left: ['a'], right: [] },
+      };
+      const next: DataTableState = {
+        ...prev,
+        columnPinning: { left: ['a'], right: [] },
+      };
+      expect(stateChangedOnSlices(prev, next, ['columnPinning'])).toBe(false);
+    });
+  });
 });

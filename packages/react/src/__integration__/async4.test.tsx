@@ -1,10 +1,13 @@
+import type { DataSource } from '@lynellf/tablekit-core/dataSource';
 /** @jsxImportSource react */
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { useDataTable } from '../useDataTable';
-import type { DataSource } from '@lynellf/tablekit-core/dataSource';
 
-interface Row { id: string; name: string; }
+interface Row {
+  id: string;
+  name: string;
+}
 
 // Real Promise - no vitest mocks
 const source: DataSource<Row> = {

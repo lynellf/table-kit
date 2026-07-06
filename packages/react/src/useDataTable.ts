@@ -10,13 +10,10 @@
  */
 
 import { createDataTable } from '@lynellf/tablekit-core';
-import type {
-  DataSource,
-  DataSourceState,
-} from '@lynellf/tablekit-core/dataSource';
 import type { DataTableInstance, DataTableOptions, DataTableState } from '@lynellf/tablekit-core';
+import type { DataSource, DataSourceState } from '@lynellf/tablekit-core/dataSource';
 import React from 'react';
-import { useCallback, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import type { ReactElement } from 'react';
 import { ReactAnnouncer } from './ReactAnnouncer';
 import { useDataSource } from './useDataSource';
@@ -56,8 +53,27 @@ export const useDataTable = <TRow>(
   }
   const table = ref.current;
 
-  // Push the latest options into the instance on every render.
-  table.setOptions(options);
+  // ── Side-effect: push the latest options into the instance.
+  //
+  // setOptions is a side effect: it can call notify(), which schedules a
+  // re-render via useSyncExternalStore. We intentionally run it in an effect
+  // (after commit) rather than during render — React 19's concurrent renderer
+  // will otherwise coalesce the notify into the in-flight render cycle and
+  // trip "Maximum update depth exceeded" once any controlled object-valued
+  // slice (e.g., pagination) re-derives to the same values via the broken
+  // shallowEqual. The dep is `[options, table]` because:
+  //   - We MUST re-fire after every render so the instance picks up the
+  //     latest controlled-slice values (`state`, `columns`, `data`, …).
+  //     Using only `[table]` would leave the instance with a stale snapshot
+  //     of options on subsequent renders and the controlled-slice contract
+  //     would silently break.
+  //   - We rely on `sliceValuesEqual` to keep setOptions a no-op when the
+  //     post-commit options derive the same state, so the per-render effect
+  //     does not storm notifications.
+  useEffect(() => {
+    table.setOptions(options);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, table]);
 
   // subscribe: useCallback so React doesn't re-subscribe every render.
   const subscribe = useCallback((onChange: () => void) => table.subscribe(onChange), [table]);
@@ -70,8 +86,7 @@ export const useDataTable = <TRow>(
   // M3 phase 3: dataSource wiring
   const dataSourceState = options.dataSource
     ? useDataSource(
-        table as DataTableInstance<TRow> &
-          Parameters<typeof useDataSource<TRow>>[0],
+        table as DataTableInstance<TRow> & Parameters<typeof useDataSource<TRow>>[0],
         options.dataSource,
       )
     : undefined;

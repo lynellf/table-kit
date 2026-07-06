@@ -233,3 +233,7 @@ ValidatorResult
 - All types are TypeScript-erased at runtime; no runtime type checks.
 - The `DataTableInstance` interface includes internal methods (`__setScrollState`, `__setColumnScrollState`, `startResize`, `adjustResize`, `commitResize`, `cancelResize`, `navigateCell`, `navigateToEdge`, `navigateByPage`, `setResizeMode`, `getResizeMode`, `setNavigationMode`, `getNavigationMode`, `togglePin`, `pinColumns`, `unpinColumns`, `__setViewportRowCount`) that are not part of the public API but may be used by adapter implementations.
 - Subpath exports are tree-shakeable; consumers importing only specific subpaths pay only for that code.
+
+## M3 Cross-reference
+
+M3 adds the `dataSource` subpath and `useDataSource` hook. M0/M1/M2 surface is unchanged. See [`docs/m3-server-modes/api-freeze.md`](../m3-server-modes/api-freeze.md) for the M3 additions.

@@ -14,7 +14,8 @@
       "**/coverage/**",
       "**/.vitest-cache/**",
       "pnpm-lock.yaml",
-      "**/*.tsbuildinfo"
+      "**/*.tsbuildinfo",
+      "**/__tests__/fixtures/**"
     ]
   },
   "formatter": {

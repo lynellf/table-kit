@@ -58,6 +58,7 @@
   },
   "scripts": {
     "build": "vite build",
+    "build:subpaths": "node vite.subpaths.config.mjs",
     "typecheck": "tsc -b"
   },
   "devDependencies": {},

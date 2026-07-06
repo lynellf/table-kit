@@ -3,11 +3,11 @@
  * Uses synchronous mock to avoid async timing issues.
  */
 
+import type { DataSource } from '@lynellf/tablekit-core/dataSource';
+import { __resetMixedModeWarningForTests } from '@lynellf/tablekit-core/dataSource';
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDataTable } from '../useDataTable';
-import type { DataSource } from '@lynellf/tablekit-core/dataSource';
-import { __resetMixedModeWarningForTests } from '@lynellf/tablekit-core/dataSource';
 
 interface Row {
   id: string;

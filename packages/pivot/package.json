@@ -1,0 +1,56 @@
+{
+  "name": "@lynellf/tablekit-pivot",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Framework-free PivotTable config, main-thread aggregation engine, and treegrid rendering primitives.",
+  "type": "module",
+  "main": "./dist/tablekit-pivot.es.js",
+  "module": "./dist/tablekit-pivot.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/tablekit-pivot.es.js"
+    },
+    "./aggregators": {
+      "types": "./dist/aggregators/index.d.ts",
+      "import": "./dist/aggregators/index.es.js"
+    },
+    "./engine": {
+      "types": "./dist/engine/index.d.ts",
+      "import": "./dist/engine/index.es.js"
+    },
+    "./pivotTable": {
+      "types": "./dist/pivotTable/index.d.ts",
+      "import": "./dist/pivotTable/index.es.js"
+    },
+    "./serialize": {
+      "types": "./dist/serialize/index.d.ts",
+      "import": "./dist/serialize/index.es.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lynellf/tablekit"
+  },
+  "bugs": {
+    "url": "https://github.com/lynellf/tablekit/issues"
+  },
+  "homepage": "https://github.com/lynellf/tablekit",
+  "keywords": ["table", "headless", "pivot", "data-grid", "aggregation"],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "vite build",
+    "build:subpaths": "node vite.subpaths.config.mjs",
+    "typecheck": "tsc -b",
+    "bench": "vitest bench --run bench/main-thread.bench.ts"
+  },
+  "peerDependencies": {
+    "@lynellf/tablekit-core": "workspace:*"
+  }
+}

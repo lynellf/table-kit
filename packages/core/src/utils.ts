@@ -39,6 +39,56 @@ export const shallowEqual = <T extends object>(a: T, b: T): boolean => {
 };
 
 /**
+ * Equality helper for controlled-slice values used by `stateChangedOnSlices`.
+ *
+ * Built on top of `shallowEqual` but with one structural difference: non-array
+ * plain objects are compared key-by-key with `Object.is`, instead of falling
+ * back to reference equality. This is what fixes the M3 `abort-stale` render
+ * loop: re-deriving a slice (e.g., `pagination = { pageIndex: 0, pageSize: 10 }`)
+ * from options on a subsequent render produces a new object reference even
+ * though the values are unchanged, and `shallowEqual`'s "objects must match by
+ * reference" rule was reporting a false-positive state change.
+ *
+ * Constraints:
+ *   - State slices are JSON-serializable per spec §4.2, so one-level equality
+ *     is sufficient (no nested-object walk needed).
+ *   - Arrays compare elements by value (structural equality) since state slices
+ *     often contain new array references from spread operators.
+ *   - Primitives, `null`, and `undefined` use `Object.is`.
+ */
+export const sliceValuesEqual = <T>(a: T, b: T): boolean => {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!Object.is(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (
+    typeof a === 'object' &&
+    typeof b === 'object' &&
+    a !== null &&
+    b !== null &&
+    !Array.isArray(a) &&
+    !Array.isArray(b)
+  ) {
+    // Exclude React/DOM-like objects with prototypes we don't want to enumerate;
+    // state slices are plain records per spec §4.2.
+    const aRec = a as Record<string, unknown>;
+    const bRec = b as Record<string, unknown>;
+    const aKeys = Object.keys(aRec);
+    if (aKeys.length !== Object.keys(bRec).length) return false;
+    for (const key of aKeys) {
+      // Recurse for nested values within objects (e.g., arrays inside columnPinning)
+      if (!sliceValuesEqual(aRec[key], bRec[key])) return false;
+    }
+    return true;
+  }
+  return false;
+};
+
+/**
  * Exhaustiveness helper. Causes a compile error if a discriminated union
  * is not handled in full.
  *

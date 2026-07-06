@@ -11,14 +11,9 @@
  */
 
 import type { Column } from '../columns';
-import type {
-  DataSourceCapabilities,
-  RowsQuery,
-  SerializedFilter,
-  BuildRowsQueryOptions,
-} from './types';
-import type { DataTableState } from '../types';
 import { nameOfFilterFn } from '../registries/filtering';
+import type { DataTableState } from '../types';
+import type { BuildRowsQueryOptions, RowsQuery, SerializedFilter } from './types';
 
 /**
  * Resolve a column's filterFn to its registry name, or undefined if unknown.
@@ -98,8 +93,7 @@ const warnInlineFilterFn = (columnId: string): void => {
   if (process.env.NODE_ENV === 'production') return;
   // eslint-disable-next-line no-console
   console.warn(
-    `[tablekit] Column "${columnId}" has an inline filterFn paired with capabilities.filter === 'server'. ` +
-      `Register the filter with registerFilterFn(name, fn) and pass filterFn: name on the column def.`,
+    `[tablekit] Column "${columnId}" has an inline filterFn paired with capabilities.filter === 'server'. Register the filter with registerFilterFn(name, fn) and pass filterFn: name on the column def.`,
   );
 };
 

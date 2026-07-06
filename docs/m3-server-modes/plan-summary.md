@@ -81,7 +81,8 @@ Full rationale for each is in [`overview.md` §3](../m3-server-modes/overview.md
 | 3 | [React `useDataSource` hook](./phase-3-react-data-source-hook.md) | `useDataSource` hook, `dataSource` option on `useDataTable`, abort wiring, status state, refetch | ~20-30 |
 | 4 | [Loading / aria-busy contract](./phase-4-loading-and-aria-busy.md) | Placeholder rows, `aria-busy`/`aria-invalid` emission, "Loaded N rows" announcer, integration tests for the four patterns | ~25-35 |
 | 5 | [Reference app + goldens + api-freeze](./phase-5-reference-app-and-integration.md) | `examples/m3-server-modes/` Vite app, serialization golden fixtures, api-freeze update | ~15-25 |
-| | **Total M3 tests** | | **~110-160** (on top of M0/M1/M2's 302) |
+| 6 | [Abort-stale render-loop fix](./phase-6-abort-stale-render-loop-fix.md) | Fix M3 phase 3 render storm in `abort-stale.test.tsx`: `sliceValuesEqual` in core (one-level structural object compare), wrap `setOptions` in `useEffect` in `useDataTable.ts` | ~4 |
+| | **Total M3 tests** | | **~114-164** (on top of M0/M1/M2's 302) |
 
 Each phase's file ends with §3 Commands + §4 Verification + §5 Out-of-scope + §6 Risks. The phases are independently runnable; `pnpm verify` is green after each.
 

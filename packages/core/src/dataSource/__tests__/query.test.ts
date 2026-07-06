@@ -5,10 +5,10 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildRowsQuery, __resetInlineFilterFnWarningForTests } from '../query';
+import { createColumns } from '../../columns';
 import type { DataTableState } from '../../types';
 import type { ColumnDef } from '../../types';
-import { createColumns } from '../../columns';
+import { __resetInlineFilterFnWarningForTests, buildRowsQuery } from '../query';
 
 describe('buildRowsQuery', () => {
   const baseState: DataTableState = {
@@ -26,11 +26,19 @@ describe('buildRowsQuery', () => {
   const baseColumns: ColumnDef<Record<string, unknown>, unknown>[] = [
     { id: 'name', accessor: 'name' },
     { id: 'region', accessor: 'region', enableFiltering: true, filterFn: 'equalsString' },
-    { id: 'sales', accessor: 'sales', enableSorting: true, enableFiltering: true, filterFn: 'inNumberRange' },
+    {
+      id: 'sales',
+      accessor: 'sales',
+      enableSorting: true,
+      enableFiltering: true,
+      filterFn: 'inNumberRange',
+    },
   ];
 
   it('empty state returns empty sorting + filters + no pagination', () => {
-    const q = buildRowsQuery(baseState, [], { capabilities: { sort: 'client', filter: 'client', paginate: 'client' } });
+    const q = buildRowsQuery(baseState, [], {
+      capabilities: { sort: 'client', filter: 'client', paginate: 'client' },
+    });
     expect(q.sorting).toEqual([]);
     expect(q.filters).toEqual([]);
     expect(q.pagination).toBeUndefined();
@@ -38,34 +46,47 @@ describe('buildRowsQuery', () => {
 
   it('includes sorting regardless of capability', () => {
     const state = { ...baseState, sorting: [{ id: 'name', desc: false }] };
-    const q = buildRowsQuery(state, [], { capabilities: { sort: 'client', filter: 'client', paginate: 'client' } });
+    const q = buildRowsQuery(state, [], {
+      capabilities: { sort: 'client', filter: 'client', paginate: 'client' },
+    });
     expect(q.sorting).toEqual([{ id: 'name', desc: false }]);
   });
 
   it('sorting is included when capability is server', () => {
     const state = { ...baseState, sorting: [{ id: 'name', desc: true }] };
-    const q = buildRowsQuery(state, [], { capabilities: { sort: 'server', filter: 'client', paginate: 'client' } });
+    const q = buildRowsQuery(state, [], {
+      capabilities: { sort: 'server', filter: 'client', paginate: 'client' },
+    });
     expect(q.sorting).toEqual([{ id: 'name', desc: true }]);
   });
 
   it('multi-sort: includes all sort items', () => {
     const state = {
       ...baseState,
-      sorting: [{ id: 'region', desc: false }, { id: 'sales', desc: true }],
+      sorting: [
+        { id: 'region', desc: false },
+        { id: 'sales', desc: true },
+      ],
     };
-    const q = buildRowsQuery(state, [], { capabilities: { sort: 'server', filter: 'client', paginate: 'client' } });
+    const q = buildRowsQuery(state, [], {
+      capabilities: { sort: 'server', filter: 'client', paginate: 'client' },
+    });
     expect(q.sorting).toHaveLength(2);
     expect(q.sorting[0]).toEqual({ id: 'region', desc: false });
     expect(q.sorting[1]).toEqual({ id: 'sales', desc: true });
   });
 
   it('includes pagination when paginate is server', () => {
-    const q = buildRowsQuery(baseState, [], { capabilities: { sort: 'client', filter: 'client', paginate: 'server' } });
+    const q = buildRowsQuery(baseState, [], {
+      capabilities: { sort: 'client', filter: 'client', paginate: 'server' },
+    });
     expect(q.pagination).toEqual({ pageIndex: 0, pageSize: 25 });
   });
 
   it('omits pagination when paginate is client', () => {
-    const q = buildRowsQuery(baseState, [], { capabilities: { sort: 'client', filter: 'client', paginate: 'client' } });
+    const q = buildRowsQuery(baseState, [], {
+      capabilities: { sort: 'client', filter: 'client', paginate: 'client' },
+    });
     expect(q.pagination).toBeUndefined();
   });
 
@@ -75,7 +96,9 @@ describe('buildRowsQuery', () => {
       columnFilters: [{ id: 'region', value: 'West' }],
     };
     const resolvedColumns = createColumns(baseColumns, state);
-    const q = buildRowsQuery(state, resolvedColumns, { capabilities: { sort: 'client', filter: 'server', paginate: 'client' } });
+    const q = buildRowsQuery(state, resolvedColumns, {
+      capabilities: { sort: 'client', filter: 'server', paginate: 'client' },
+    });
     expect(q.filters).toEqual([{ id: 'region', value: 'West', filterFn: 'equalsString' }]);
   });
 
@@ -88,7 +111,9 @@ describe('buildRowsQuery', () => {
       columnFilters: [{ id: 'id', value: '1' }],
     };
     const resolvedColumns = createColumns(columns, state);
-    const q = buildRowsQuery(state, resolvedColumns, { capabilities: { sort: 'client', filter: 'server', paginate: 'client' } });
+    const q = buildRowsQuery(state, resolvedColumns, {
+      capabilities: { sort: 'client', filter: 'server', paginate: 'client' },
+    });
     expect(q.filters[0]).toEqual({ id: 'id', value: '1' });
     expect(q.filters[0]).not.toHaveProperty('filterFn');
   });
@@ -99,7 +124,9 @@ describe('buildRowsQuery', () => {
       columnFilters: [{ id: 'region', value: 'West' }],
     };
     const resolvedColumns = createColumns(baseColumns, state);
-    const q = buildRowsQuery(state, resolvedColumns, { capabilities: { sort: 'client', filter: 'server', paginate: 'client' } });
+    const q = buildRowsQuery(state, resolvedColumns, {
+      capabilities: { sort: 'client', filter: 'server', paginate: 'client' },
+    });
     expect(q.filters[0]).toHaveProperty('filterFn', 'equalsString');
   });
 
@@ -109,7 +136,9 @@ describe('buildRowsQuery', () => {
       columnFilters: [{ id: 'unknown-col', value: 'foo' }],
     };
     const resolvedColumns = createColumns(baseColumns, state);
-    const q = buildRowsQuery(state, resolvedColumns, { capabilities: { sort: 'client', filter: 'server', paginate: 'client' } });
+    const q = buildRowsQuery(state, resolvedColumns, {
+      capabilities: { sort: 'client', filter: 'server', paginate: 'client' },
+    });
     expect(q.filters).toEqual([]);
   });
 
@@ -125,7 +154,7 @@ describe('buildRowsQuery', () => {
       {
         id: 'name',
         accessor: 'name',
-        filterFn: (row: Record<string, unknown>) => String(row['name']).startsWith('A'),
+        filterFn: (row: Record<string, unknown>) => String(row.name).startsWith('A'),
       },
     ];
     const state = {
@@ -134,8 +163,12 @@ describe('buildRowsQuery', () => {
     };
     const resolvedColumns = createColumns(inlineColumns, state);
 
-    buildRowsQuery(state, resolvedColumns, { capabilities: { sort: 'client', filter: 'server', paginate: 'client' } });
-    buildRowsQuery(state, resolvedColumns, { capabilities: { sort: 'client', filter: 'server', paginate: 'client' } });
+    buildRowsQuery(state, resolvedColumns, {
+      capabilities: { sort: 'client', filter: 'server', paginate: 'client' },
+    });
+    buildRowsQuery(state, resolvedColumns, {
+      capabilities: { sort: 'client', filter: 'server', paginate: 'client' },
+    });
 
     // Once per column id (not once per call) — module-level Set persists across calls
     expect(warn).toHaveBeenCalledTimes(1);
@@ -149,8 +182,12 @@ describe('buildRowsQuery', () => {
       columnFilters: [{ id: 'region', value: 'West' }],
     };
     const resolvedColumns = createColumns(baseColumns, state);
-    const q1 = buildRowsQuery(state, resolvedColumns, { capabilities: { sort: 'server', filter: 'server', paginate: 'server' } });
-    const q2 = buildRowsQuery(state, resolvedColumns, { capabilities: { sort: 'server', filter: 'server', paginate: 'server' } });
+    const q1 = buildRowsQuery(state, resolvedColumns, {
+      capabilities: { sort: 'server', filter: 'server', paginate: 'server' },
+    });
+    const q2 = buildRowsQuery(state, resolvedColumns, {
+      capabilities: { sort: 'server', filter: 'server', paginate: 'server' },
+    });
     expect(JSON.stringify(q1)).toBe(JSON.stringify(q2));
   });
 
@@ -162,7 +199,9 @@ describe('buildRowsQuery', () => {
       pagination: { pageIndex: 2, pageSize: 25 },
     };
     const resolvedColumns = createColumns(baseColumns, state);
-    const q = buildRowsQuery(state, resolvedColumns, { capabilities: { sort: 'server', filter: 'server', paginate: 'server' } });
+    const q = buildRowsQuery(state, resolvedColumns, {
+      capabilities: { sort: 'server', filter: 'server', paginate: 'server' },
+    });
     expect(q.sorting).toEqual([{ id: 'name', desc: false }]);
     expect(q.filters).toEqual([{ id: 'region', value: 'West', filterFn: 'equalsString' }]);
     expect(q.pagination).toEqual({ pageIndex: 2, pageSize: 25 });

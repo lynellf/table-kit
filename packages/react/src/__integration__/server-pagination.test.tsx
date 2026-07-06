@@ -5,11 +5,11 @@
  * Uses synchronous data sources for reliability.
  */
 
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useDataTable } from '../useDataTable';
 import type { DataSource } from '@lynellf/tablekit-core/dataSource';
 import { __resetMixedModeWarningForTests } from '@lynellf/tablekit-core/dataSource';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useDataTable } from '../useDataTable';
 
 interface Row {
   id: string;

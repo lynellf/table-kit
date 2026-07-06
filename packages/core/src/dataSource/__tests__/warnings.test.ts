@@ -4,12 +4,8 @@
  * Tests for validateModeConfiguration (mixed-mode trap detection).
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  validateModeConfiguration,
-  __resetMixedModeWarningForTests,
-} from '../warnings';
-import type { DataTableOptions } from '../../types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { __resetMixedModeWarningForTests, validateModeConfiguration } from '../warnings';
 
 describe('validateModeConfiguration', () => {
   beforeEach(() => {
@@ -71,9 +67,7 @@ describe('validateModeConfiguration', () => {
       manualFiltering: true,
     });
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('allowWithinPageOperations'),
-    );
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('allowWithinPageOperations'));
   });
 
   it('warns when manualPagination=true and manualFiltering=false (client filter)', () => {

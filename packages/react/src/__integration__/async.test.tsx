@@ -1,10 +1,13 @@
+import type { DataSource } from '@lynellf/tablekit-core/dataSource';
 /** @jsxImportSource react */
 import { render, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { useDataTable } from '../useDataTable';
-import type { DataSource } from '@lynellf/tablekit-core/dataSource';
 
-interface Row { id: string; name: string; }
+interface Row {
+  id: string;
+  name: string;
+}
 
 // Promise-based data source
 const source: DataSource<Row> = {
@@ -24,8 +27,11 @@ describe('async test', () => {
     }
     const { container } = render(<App />);
     // Wait for the promise to resolve
-    await waitFor(() => {
-      expect(container.textContent).toContain('success');
-    }, { timeout: 1000 });
+    await waitFor(
+      () => {
+        expect(container.textContent).toContain('success');
+      },
+      { timeout: 1000 },
+    );
   });
 });

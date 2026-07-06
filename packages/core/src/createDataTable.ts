@@ -6,14 +6,14 @@
  * pagination helpers, and `autoResetPageIndex`.
  */
 
-import { noopAnnouncer, getGlobalAnnouncer } from './announcer';
+import { getGlobalAnnouncer, noopAnnouncer } from './announcer';
 import { defaultGetRowId } from './columns';
-import { buildRowsQuery } from './dataSource/query';
-import { synthesizePlaceholderRows } from './dataSource/placeholderRows';
-import { validateModeConfiguration } from './dataSource/warnings';
-import type { DataSourceCapabilities, DataSourceState } from './dataSource/types';
 import type { Column } from './columns';
 import { createColumns } from './columns';
+import { synthesizePlaceholderRows } from './dataSource/placeholderRows';
+import { buildRowsQuery } from './dataSource/query';
+import type { DataSourceCapabilities, DataSourceState } from './dataSource/types';
+import { validateModeConfiguration } from './dataSource/warnings';
 import { buildHeaderGroups } from './headers';
 import type { HeaderContext } from './headers';
 import {
@@ -127,38 +127,71 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   }
 
   setOptions(next: DataTableOptions<TRow>): void {
-    if (Object.is(next, this.options)) return;
-    const prev = this.options;
+    const prevOptions = this.options;
+    // Track first setOptions call to ensure notify() is called on initial render.
+    // Since the constructor sets this.options directly (not via setOptions),
+    // we check if this.options was already set to determine if this is the first call.
+    const isFirstSetOptions = prevOptions === undefined;
+
     const prevState = this.state;
     this.options = next;
-    this.state = mergeInitialState(next.initialState, next.state);
+
+    // When next.state is undefined (e.g., useDataSource's setOptions calls),
+    // preserve the controlled slices from the current state. This prevents
+    // useDataSource's setOptions from resetting controlled slices to defaults.
+    // When next.state is provided, use it directly.
+    const controlledState =
+      next.state ??
+      (() => {
+        const keys = controlledSliceKeys(prevOptions?.state);
+        if (keys.length === 0) return undefined;
+        const partial: Partial<DataTableState> = {};
+        for (const key of keys) {
+          (partial as Record<string, unknown>)[key] = this.state[key];
+        }
+        return partial;
+      })();
+
+    const nextState = mergeInitialState(next.initialState, controlledState);
+
+    // Only update this.state if the derived state actually differs.
+    // This prevents useSyncExternalStore's getSnapshot() from returning
+    // a new reference when nothing changed, which would cause an infinite loop.
+    const slicesChanged = stateChangedOnSlices(prevState, nextState, [
+      'sorting',
+      'columnFilters',
+      'pagination',
+      'columnOrder',
+      'columnVisibility',
+      'columnPinning',
+      'columnSizing',
+      'columnSizingInfo',
+      'focusedCell',
+    ]);
+
+    if (slicesChanged) {
+      this.state = nextState;
+    }
+
     // M3 phase 1: re-validate when the option set changes (manual* flags flipped).
     if (
-      prev.manualSorting !== next.manualSorting ||
-      prev.manualFiltering !== next.manualFiltering ||
-      prev.manualPagination !== next.manualPagination ||
-      prev.allowWithinPageOperations !== next.allowWithinPageOperations
+      !isFirstSetOptions &&
+      prevOptions !== undefined &&
+      (prevOptions.manualSorting !== next.manualSorting ||
+        prevOptions.manualFiltering !== next.manualFiltering ||
+        prevOptions.manualPagination !== next.manualPagination ||
+        prevOptions.allowWithinPageOperations !== next.allowWithinPageOperations)
     ) {
       validateModeConfiguration(next);
     }
-    // Notify listeners if state actually changed (e.g., initialState change).
-    // Suppress notification during setOptions to prevent infinite loops with controlled state.
-    if (
-      stateChangedOnSlices(prevState, this.state, [
-        'sorting',
-        'columnFilters',
-        'pagination',
-        'columnOrder',
-        'columnVisibility',
-        'columnPinning',
-        'columnSizing',
-        'columnSizingInfo',
-        'focusedCell',
-      ])
-    ) {
-      this.suppressNotify = true;
+
+    // Notify listeners:
+    // - Always notify on first setOptions call (to initialize useSyncExternalStore)
+    // - After first call, only notify if state actually changed
+    // - Skip if options reference is unchanged (no-op call)
+    if (Object.is(next, prevOptions)) return;
+    if (isFirstSetOptions || slicesChanged) {
       this.notify();
-      this.suppressNotify = false;
     }
   }
 
@@ -183,8 +216,7 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // Spreading { ...prev, refetch } creates a new object even when data is same;
     // we use JSON stringify for deep comparison of the data field.
     const dataChanged =
-      prev.data !== state.data &&
-      JSON.stringify(prev.data) !== JSON.stringify(state.data);
+      prev.data !== state.data && JSON.stringify(prev.data) !== JSON.stringify(state.data);
     const statusChanged = prev.status !== state.status;
     const errorChanged = prev.error !== state.error;
     const totalRowCountChanged = prev.totalRowCount !== state.totalRowCount;
@@ -194,12 +226,8 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       return;
     }
     this.dataSourceState = state;
-    // NOTE: We intentionally do NOT call this.notify() here.
-    // The useDataSource hook manages its own local React state via useState/setSnapshot.
-    // Calling notify() would cause the table's subscribers (including useDataSource itself!)
-    // to fire, creating an infinite loop: runFetch -> __setDataSourceState -> notify -> runFetch
-    // The table's getGridProps/getBodyProps read this.dataSourceState directly,
-    // so they'll pick up the new state on the next render cycle.
+    // Always call notify() to trigger useSyncExternalStore re-renders
+    this.notify();
   }
 
   /**
@@ -214,13 +242,13 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   __buildRowsQuery(capabilities: DataSourceCapabilities) {
     // For controlled slices, use the options state instead of internal state
     const sorting = isSliceControlled(this.options.state, 'sorting')
-      ? this.options.state.sorting
+      ? this.options.state!.sorting!
       : this.state.sorting;
     const columnFilters = isSliceControlled(this.options.state, 'columnFilters')
-      ? this.options.state.columnFilters
+      ? this.options.state!.columnFilters!
       : this.state.columnFilters;
     const pagination = isSliceControlled(this.options.state, 'pagination')
-      ? this.options.state.pagination
+      ? this.options.state!.pagination!
       : this.state.pagination;
     const state = {
       ...this.state,

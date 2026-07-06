@@ -250,6 +250,25 @@ describe('createDataTable', () => {
       });
       expect(table.getState().pagination).toEqual({ pageIndex: 3, pageSize: 10 });
     });
+
+    it('does not notify when setOptions is called twice with equivalent controlled slices', () => {
+      const listener = vi.fn();
+      const opts1: DataTableOptions<{ id: string }> = {
+        data: [],
+        columns: [{ id: 'id', accessor: 'id' }],
+        state: { pagination: { pageIndex: 0, pageSize: 10 } },
+        onPaginationChange: () => {},
+      };
+      const opts2: DataTableOptions<{ id: string }> = {
+        ...opts1,
+        state: { pagination: { pageIndex: 0, pageSize: 10 } }, // different ref, same values
+      };
+      const t = createDataTable<{ id: string }>(opts1);
+      t.subscribe(listener);
+      listener.mockClear();
+      t.setOptions(opts2);
+      expect(listener).not.toHaveBeenCalled();
+    });
   });
 
   describe('getRowModel (M1)', () => {

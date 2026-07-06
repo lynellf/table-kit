@@ -384,5 +384,7 @@ export interface DataTableInstance<TRow> {
   /** @internal Write the data source state. Used by the React hook. */
   __setDataSourceState(state: import('./dataSource/types').DataSourceState<TRow>): void;
   /** @internal Build a RowsQuery from current state + capabilities. Used by the React hook. */
-  __buildRowsQuery(capabilities: import('./dataSource/types').DataSourceCapabilities): import('./dataSource/types').RowsQuery;
+  __buildRowsQuery(
+    capabilities: import('./dataSource/types').DataSourceCapabilities,
+  ): import('./dataSource/types').RowsQuery;
 }

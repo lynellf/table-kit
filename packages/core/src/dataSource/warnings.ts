@@ -26,9 +26,7 @@ let _warned = false;
  * `useDataSource` hook translates capabilities → `manual*` and re-runs this
  * check via the resulting options.
  */
-export const validateModeConfiguration = <TRow>(
-  options: DataTableOptions<TRow>,
-): void => {
+export const validateModeConfiguration = <TRow>(options: DataTableOptions<TRow>): void => {
   if (process.env.NODE_ENV === 'production') return;
   if (_warned) return;
   if (options.allowWithinPageOperations === true) return;

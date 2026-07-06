@@ -32,12 +32,9 @@ export const synthesizePlaceholderRows = <TRow>(count: number): PlaceholderRow<T
     const row: PlaceholderRow<TRow> = {
       id: `__placeholder_${i}`,
       index: i,
-      // biome-ignore lint/suspicious/noExplicitAny: empty placeholder; renderer is consumer's skeleton
       original: {} as TRow,
       isPlaceholder: true as const,
-      // biome-ignore lint/suspicious/noExplicitAny: intentional stub for self-referential row
       getVisibleCells: () => [] as unknown as ReturnType<Row<TRow>['getVisibleCells']>,
-      // biome-ignore lint/suspicious/noExplicitAny: stub prop getter
       getRowProps: (consumerProps?: Record<string, unknown>) => {
         // Filter out key from consumer props to avoid React JSX spread warning.
         // eslint-disable-next-line @typescript-eslint/no-unused-vars

@@ -4,11 +4,11 @@
  * Integration test: mixed-mode warning fires without allowWithinPageOperations.
  */
 
+import type { DataSource } from '@lynellf/tablekit-core/dataSource';
+import { __resetMixedModeWarningForTests } from '@lynellf/tablekit-core/dataSource';
 import { render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDataTable } from '../useDataTable';
-import type { DataSource } from '@lynellf/tablekit-core/dataSource';
-import { __resetMixedModeWarningForTests } from '@lynellf/tablekit-core/dataSource';
 
 interface Row {
   id: string;
@@ -43,9 +43,7 @@ describe('mixed-mode warning integration', () => {
 
     render(<App />);
 
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('allowWithinPageOperations'),
-    );
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('allowWithinPageOperations'));
     warn.mockRestore();
   });
 });

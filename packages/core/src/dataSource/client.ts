@@ -15,18 +15,17 @@
 
 import { createColumns } from '../columns';
 import type { Column } from '../columns';
-import { defaultGetRowId } from '../columns';
 import { filterRows } from '../pipeline/filter';
-import { sortRows } from '../pipeline/sort';
 import { paginateRows } from '../pipeline/paginate';
-import { validateModeConfiguration } from './warnings';
+import { sortRows } from '../pipeline/sort';
+import type { ColumnDef, DataTableOptions } from '../types';
 import type {
   CreateClientDataSourceOptions,
   DataSource,
   DataSourceCapabilities,
   RowsQuery,
 } from './types';
-import type { ColumnDef, DataTableOptions } from '../types';
+import { validateModeConfiguration } from './warnings';
 
 /**
  * Build a synchronous client-side `DataSource<TRow>` from a static rows array.

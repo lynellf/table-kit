@@ -10,11 +10,11 @@
  * the feature works.
  */
 
-import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useDataTable } from '../useDataTable';
 import type { DataSource } from '@lynellf/tablekit-core/dataSource';
 import { __resetMixedModeWarningForTests } from '@lynellf/tablekit-core/dataSource';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useDataTable } from '../useDataTable';
 
 interface Row {
   id: string;

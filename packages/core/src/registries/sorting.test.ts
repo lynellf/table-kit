@@ -3,8 +3,8 @@ import {
   BUILT_IN_SORTING_FNS,
   builtInSortingFns,
   getSortingFn,
-  registerSortingFn,
   nameOfSortingFn,
+  registerSortingFn,
 } from './sorting';
 
 describe('sorting registry', () => {

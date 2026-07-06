@@ -34,10 +34,16 @@
   },
   "scripts": {
     "build": "vite build",
+    "build:subpaths": "node vite.subpaths.config.mjs",
     "typecheck": "tsc -b"
   },
   "peerDependencies": {
+    "@lynellf/tablekit-core": "workspace:*",
+    "@lynellf/tablekit-pivot": "workspace:*",
     "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@lynellf/tablekit-pivot": { "optional": true }
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",

@@ -54,6 +54,12 @@ export {
   mergeInitialState,
   controlledSliceKeys,
   stateChangedOnSlices,
+  // M4 generic helpers (signature-compatible for M0 callers)
+  applySliceChangeGeneric,
+  mergeInitialStateGeneric,
+  isSliceControlledGeneric,
+  controlledSliceKeysGeneric,
+  stateChangedOnSlicesGeneric,
   type StateSliceKey,
   type SliceCallbacks,
   type SliceDispatchers,

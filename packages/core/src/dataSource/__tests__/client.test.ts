@@ -4,11 +4,11 @@
  * Tests for createClientDataSource (synchronous in-memory implementation).
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createClientDataSource } from '../client';
-import { __resetMixedModeWarningForTests } from '../warnings';
-import { __resetInlineFilterFnWarningForTests } from '../query';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ColumnDef } from '../../types';
+import { createClientDataSource } from '../client';
+import { __resetInlineFilterFnWarningForTests } from '../query';
+import { __resetMixedModeWarningForTests } from '../warnings';
 
 interface Row {
   id: string;
@@ -21,7 +21,13 @@ const columns: ColumnDef<Row, unknown>[] = [
   { id: 'id', accessor: 'id' },
   { id: 'name', accessor: 'name' },
   { id: 'region', accessor: 'region', enableFiltering: true, filterFn: 'equalsString' },
-  { id: 'sales', accessor: 'sales', enableSorting: true, enableFiltering: true, filterFn: 'inNumberRange' },
+  {
+    id: 'sales',
+    accessor: 'sales',
+    enableSorting: true,
+    enableFiltering: true,
+    filterFn: 'inNumberRange',
+  },
 ];
 
 const rows: Row[] = [
@@ -57,7 +63,10 @@ describe('createClientDataSource', () => {
   describe('getRows', () => {
     it('returns all rows when no query constraints', () => {
       const ds = createClientDataSource(rows, columns);
-      const result = ds.getRows({ sorting: [], filters: [] }, { signal: new AbortController().signal }) as { rows: Row[]; totalRowCount: number };
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number };
       expect(result.rows).toHaveLength(4);
       expect(result.totalRowCount).toBe(4);
     });
@@ -151,7 +160,10 @@ describe('createClientDataSource', () => {
         capabilities: { paginate: 'server' },
         totalRowCount: 1000,
       });
-      const result = ds.getRows({ sorting: [], filters: [] }, { signal: new AbortController().signal }) as { rows: Row[]; totalRowCount: number };
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number };
       expect(result.totalRowCount).toBe(1000);
     });
 
@@ -163,7 +175,10 @@ describe('createClientDataSource', () => {
       const ds = createClientDataSource(rowsWithCustomId, columns, {
         getRowId: (row) => row.id,
       });
-      const result = ds.getRows({ sorting: [], filters: [] }, { signal: new AbortController().signal }) as { rows: Row[]; totalRowCount: number };
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number };
       expect(result.rows[0]!.id).toBe('a');
     });
 
@@ -172,20 +187,27 @@ describe('createClientDataSource', () => {
       const controller = new AbortController();
       controller.abort();
       // Should not throw — signal is accepted but not used
-      const result = ds.getRows({ sorting: [], filters: [] }, { signal: controller.signal }) as { rows: Row[]; totalRowCount: number };
+      const result = ds.getRows({ sorting: [], filters: [] }, { signal: controller.signal }) as {
+        rows: Row[];
+        totalRowCount: number;
+      };
       expect(result.rows).toHaveLength(4);
     });
 
     it('warns on mixed-mode: paginate=server + sort=client', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      createClientDataSource(rows, columns, { capabilities: { paginate: 'server', sort: 'client' } });
+      createClientDataSource(rows, columns, {
+        capabilities: { paginate: 'server', sort: 'client' },
+      });
       expect(warn).toHaveBeenCalledTimes(1);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('allowWithinPageOperations'));
     });
 
     it('does not warn when paginate=server and all others are server', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      createClientDataSource(rows, columns, { capabilities: { paginate: 'server', sort: 'server', filter: 'server' } });
+      createClientDataSource(rows, columns, {
+        capabilities: { paginate: 'server', sort: 'server', filter: 'server' },
+      });
       expect(warn).not.toHaveBeenCalled();
     });
 

@@ -35,6 +35,12 @@ table.subscribe(() => { /* re-render */ });
 
 See the spec at [`docs/initial-spec.md`](./docs/initial-spec.md) for the full surface.
 
+## Server modes
+
+The library supports server-side pagination, sorting, and filtering via the `DataSource` interface and `useDataSource` hook. See [`docs/m3-server-modes/api-freeze.md`](./docs/m3-server-modes/api-freeze.md) for the API surface.
+
+A reference app demonstrating the four server mode patterns is at [`examples/m3-server-modes/`](./examples/m3-server-modes/).
+
 ## Bugs & Issues
 
 https://github.com/lynellf/tablekit/issues
