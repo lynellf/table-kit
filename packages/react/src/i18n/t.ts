@@ -20,19 +20,21 @@ import type { AnnouncerKey } from '../messages';
  */
 export function createT(
   // Accept the concrete MessagesMap type so callers get full autocomplete.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  messages?: { [K in AnnouncerKey]?: any },
+  // biome-disable-next-line lint/suspicious/noExplicitAny -- Flexible message values require unknown type
+  messages?: { [K in AnnouncerKey]?: unknown },
 ): (key: AnnouncerKey, ...args: unknown[]) => string {
   if (!messages) {
     return (key) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const val = defaultMessages[key] as any;
-      return typeof val === 'function' ? val() : val;
+      // biome-disable-next-line lint/suspicious/noExplicitAny -- Type assertion required for dynamic message access
+      const val = defaultMessages[key] as unknown;
+      return typeof val === 'function'
+        ? (val as (..._args: unknown[]) => string)()
+        : (val as string);
     };
   }
   // Merge: consumer overrides win; fall back to English defaults.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const merged: Record<string, any> = { ...defaultMessages, ...messages };
+  // biome-disable-next-line lint/suspicious/noExplicitAny -- Merging objects requires unknown for dynamic values
+  const merged: Record<string, unknown> = { ...defaultMessages, ...messages };
   return (key, ...args) => {
     const val = merged[key];
     if (typeof val === 'function') {

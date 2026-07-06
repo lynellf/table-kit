@@ -14,6 +14,8 @@
  * Uses the M4-widened state helpers from core.
  */
 
+import { createMainThreadEngine } from '../engine';
+import { buildPivotResult } from '../engine/treeBuilder';
 import type {
   AggregationEngine,
   Announcer,
@@ -31,9 +33,7 @@ import type {
   Updater,
 } from '../types';
 import { DEFAULT_PIVOT_STATE } from '../types';
-import { createMainThreadEngine } from '../engine';
-import { buildPivotResult } from '../engine/treeBuilder';
-import { getVisibleRows } from './visibleRows';
+import { announceExpansion, announceSorting } from './announcer';
 import { getHeaderRows } from './headerRows';
 import {
   getBodyProps,
@@ -42,15 +42,15 @@ import {
   getHeaderProps,
   getRowHeaderProps,
   getRowProps,
-  getToggleExpandedProps as makeToggleExpandedProps,
   getTotalsColumnProps,
+  getToggleExpandedProps as makeToggleExpandedProps,
 } from './propGetters';
-import { announceExpansion, announceSorting } from './announcer';
+import { getVisibleRows } from './visibleRows';
 
 export const createPivotTable = <TRow>(
   options: PivotTableOptions<TRow>,
 ): PivotTableInstance<TRow> => {
-  const engine: AggregationEngine<TRow> = options.engine ?? createMainThreadEngine<TRow>();
+  const _engine: AggregationEngine<TRow> = options.engine ?? createMainThreadEngine<TRow>();
   const announcer: Announcer = options.announcer ?? { announce: () => {} };
 
   // ─── Initial state ─────────────────────────────────────────────────────
@@ -74,12 +74,18 @@ export const createPivotTable = <TRow>(
 
   // ─── Engine query builder ──────────────────────────────────────────────
   const buildQuery = (): PivotQuery<TRow> => {
-    const rowsFieldRef = state.pivot.rows.length > 0
-      ? state.pivot.rows.map((r) => ({ field: typeof r === 'string' ? r : (r as { field: string }).field }))
-      : [];
-    const colsFieldRef = state.pivot.columns.length > 0
-      ? state.pivot.columns.map((c) => ({ field: typeof c === 'string' ? c : (c as { field: string }).field }))
-      : [];
+    const rowsFieldRef =
+      state.pivot.rows.length > 0
+        ? state.pivot.rows.map((r) => ({
+            field: typeof r === 'string' ? r : (r as { field: string }).field,
+          }))
+        : [];
+    const colsFieldRef =
+      state.pivot.columns.length > 0
+        ? state.pivot.columns.map((c) => ({
+            field: typeof c === 'string' ? c : (c as { field: string }).field,
+          }))
+        : [];
     return {
       rows: options.data,
       rowsFieldRef,
@@ -115,13 +121,15 @@ export const createPivotTable = <TRow>(
   // ─── Slice dispatchers ─────────────────────────────────────────────────
   const setPivot = (updater: Updater<PivotConfig<TRow>>): void => {
     if (options.state && 'pivot' in options.state) {
-      (options.onPivotChange as ((u: Updater<PivotConfig<TRow>>) => void))?.(updater);
+      (options.onPivotChange as (u: Updater<PivotConfig<TRow>>) => void)?.(updater);
       return;
     }
     const prev = state.pivot;
-    const next = (typeof updater === 'function'
-      ? (updater as (old: PivotConfig<TRow>) => PivotConfig<TRow>)(prev)
-      : updater) as PivotConfig<unknown>;
+    const next = (
+      typeof updater === 'function'
+        ? (updater as (old: PivotConfig<TRow>) => PivotConfig<TRow>)(prev)
+        : updater
+    ) as PivotConfig<unknown>;
     if (Object.is(prev, next)) return;
     state = { ...state, pivot: next };
     notify();
@@ -129,13 +137,14 @@ export const createPivotTable = <TRow>(
 
   const setExpanded = (updater: Updater<PivotExpansionState>): void => {
     if (options.state && 'expanded' in options.state) {
-      (options.onExpandedChange as ((u: Updater<PivotExpansionState>) => void))?.(updater);
+      (options.onExpandedChange as (u: Updater<PivotExpansionState>) => void)?.(updater);
       return;
     }
     const prev = state.expanded;
-    const next = (typeof updater === 'function'
-      ? (updater as (old: PivotExpansionState) => PivotExpansionState)(prev)
-      : updater);
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: PivotExpansionState) => PivotExpansionState)(prev)
+        : updater;
     if (Object.is(prev, next)) return;
     state = { ...state, expanded: next };
     notify();
@@ -159,13 +168,14 @@ export const createPivotTable = <TRow>(
 
   const setPivotSorting = (updater: Updater<PivotSortingState>): void => {
     if (options.state && 'pivotSorting' in options.state) {
-      (options.onPivotSortingChange as ((u: Updater<PivotSortingState>) => void))?.(updater);
+      (options.onPivotSortingChange as (u: Updater<PivotSortingState>) => void)?.(updater);
       return;
     }
     const prev = state.pivotSorting;
-    const next = (typeof updater === 'function'
-      ? (updater as (old: PivotSortingState) => PivotSortingState)(prev)
-      : updater);
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: PivotSortingState) => PivotSortingState)(prev)
+        : updater;
     if (Object.is(prev, next)) return;
     state = { ...state, pivotSorting: next };
     announceSorting(announcer, next);

@@ -2,11 +2,12 @@
  * Phase 5 — announcer routes through ReactAnnouncer.
  */
 
+import type { Announcer } from '@lynellf/tablekit-core';
 /** @jsxImportSource react */
 import { render } from '@testing-library/react';
+import { useEffect } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { usePivotTable } from '../usePivotTable';
-import type { Announcer } from '@lynellf/tablekit-core';
 
 interface Row {
   id: string;
@@ -24,7 +25,11 @@ describe('pivot announcer', () => {
         getRowId: (r) => r.id,
         announcer: mockAnnouncer,
       });
-      pivot.toggleExpanded(['West']);
+      // Call toggleExpanded after mount to avoid infinite render loop.
+      // Calling state setters during render triggers useSyncExternalStore, causing re-renders.
+      useEffect(() => {
+        pivot.toggleExpanded(['West']);
+      }, [pivot]);
       return null;
     };
     render(<Harness />);

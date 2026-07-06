@@ -19,8 +19,8 @@
  * - webpack: `new Worker(new URL('./worker.ts', import.meta.url))`
  */
 
-import { BUILT_IN_AGGREGATORS } from '@lynellf/tablekit-pivot/aggregators';
 import type { Aggregator } from '@lynellf/tablekit-pivot';
+import { BUILT_IN_AGGREGATORS } from '@lynellf/tablekit-pivot/aggregators';
 import type { WorkerResponse } from '../protocol';
 import { createDispatcher } from './dispatcher';
 
@@ -48,9 +48,7 @@ export const createWorkerEntry = (): WorkerEntryHandle => {
   const dispatcher = createDispatcher({ reply });
 
   // Pre-register built-in aggregators so the default registry is available
-  dispatcher.registerAggregators(
-    BUILT_IN_AGGREGATORS as unknown as Record<string, Aggregator>,
-  );
+  dispatcher.registerAggregators(BUILT_IN_AGGREGATORS as unknown as Record<string, Aggregator>);
 
   const listener = (event: MessageEvent) => {
     dispatcher.dispatch(event.data);

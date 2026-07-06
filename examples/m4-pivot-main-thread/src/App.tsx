@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { generateSales, type SalesRow } from './fakeSales';
 import { DemoPanel } from './DemoPanel';
 import { PerfBadge } from './PerfBadge';
+import { type SalesRow, generateSales } from './fakeSales';
 
 const ROW_COUNTS = [1_000, 10_000, 50_000, 100_000];
 
@@ -67,7 +67,11 @@ export const App = () => {
             rows: ['region'],
             columns: ['year'],
             measures: [{ id: 'sales_sum', field: 'sales' }],
-            totals: { grandTotalRow: true, grandTotalColumn: true, grandTotalColumnPosition: 'end' },
+            totals: {
+              grandTotalRow: true,
+              grandTotalColumn: true,
+              grandTotalColumnPosition: 'end',
+            },
           }}
           getRowId={(r) => r.id}
           onMeasure={setComputeTime}
@@ -76,8 +80,8 @@ export const App = () => {
 
       <footer>
         <p>
-          Last pivot compute: <strong>{computeTime ?? '—'}</strong> ms.
-          Spec §12 budget: ≤ ~200k source rows before docs recommend the worker engine (M5).
+          Last pivot compute: <strong>{computeTime ?? '—'}</strong> ms. Spec §12 budget: ≤ ~200k
+          source rows before docs recommend the worker engine (M5).
         </p>
       </footer>
     </div>

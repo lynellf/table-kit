@@ -22,7 +22,11 @@ const rows: Row[] = [
 // Two-level row hierarchy so West/East have children (level 1 groups have children at level 2)
 const opts: PivotTableOptions<Row> = {
   data: rows,
-  pivot: { rows: ['region', 'product'], columns: [], measures: [{ id: 'sales_sum', field: 'sales' }] },
+  pivot: {
+    rows: ['region', 'product'],
+    columns: [],
+    measures: [{ id: 'sales_sum', field: 'sales' }],
+  },
   getRowId: (r) => r.id,
 };
 
@@ -83,7 +87,10 @@ describe('getToggleExpandedProps', () => {
   it('emits role="button" + aria-expanded + onClick', () => {
     const p = createPivotTable(opts);
     const visible = p.getVisibleRows();
-    console.log('visible rows:', visible.map(r => ({ label: r.label, hasChildren: r.hasChildren, level: r.level })));
+    console.log(
+      'visible rows:',
+      visible.map((r) => ({ label: r.label, hasChildren: r.hasChildren, level: r.level })),
+    );
     const rowWithChildren = visible.find((r) => r.hasChildren)!;
     expect(rowWithChildren).toBeDefined();
     const props = p.getToggleExpandedProps(rowWithChildren);

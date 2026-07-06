@@ -16,7 +16,7 @@
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { extname, join } from 'node:path';
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const SCAN_DIRS = ['packages/react/src'];

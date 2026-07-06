@@ -158,9 +158,7 @@ export const getToggleExpandedProps = <TRow>(
     role: 'button',
     'aria-expanded': row.childState === 'loaded' ? 'true' : 'false',
     'aria-label':
-      row.childState === 'loaded'
-        ? `Collapse ${String(row.label)}`
-        : `Expand ${String(row.label)}`,
+      row.childState === 'loaded' ? `Collapse ${String(row.label)}` : `Expand ${String(row.label)}`,
     tabIndex: -1,
     onClick: (event: MouseEvent) => {
       if ((event as unknown as { defaultPrevented?: boolean }).defaultPrevented) return;

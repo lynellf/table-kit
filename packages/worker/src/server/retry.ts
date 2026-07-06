@@ -5,7 +5,12 @@
  * Used by PivotTableInstance.retryChildren(path).
  */
 
-import type { AggregationEngine, FieldValue, PivotQuery, PivotRowNode } from '@lynellf/tablekit-pivot';
+import type {
+  AggregationEngine,
+  FieldValue,
+  PivotQuery,
+  PivotRowNode,
+} from '@lynellf/tablekit-pivot';
 
 /**
  * Re-invoke `computeChildren` for a path that previously errored.
@@ -33,9 +38,7 @@ export const retryChildren = async <TRow>(
   ctx: { signal: AbortSignal },
 ): Promise<PivotRowNode<TRow>[]> => {
   if (!engine.computeChildren) {
-    throw new Error(
-      'Engine does not implement computeChildren; retryChildren is a no-op.',
-    );
+    throw new Error('Engine does not implement computeChildren; retryChildren is a no-op.');
   }
   return engine.computeChildren(path, q, ctx);
 };

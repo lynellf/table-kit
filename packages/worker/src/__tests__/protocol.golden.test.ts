@@ -5,14 +5,15 @@
  * correctly strips non-transferable fields.
  */
 
-import { describe, it, expect } from 'vitest';
-import { serializeQuery } from '../serialization/serializeQuery';
 import type { PivotQuery, WirePivotQuery } from '@lynellf/tablekit-pivot';
+import { describe, expect, it } from 'vitest';
 import type { WorkerRequest, WorkerResponse } from '../protocol';
+import { serializeQuery } from '../serialization/serializeQuery';
 
 describe('protocol serialization', () => {
   it('serializeQuery strips rows and inlineAccessors', () => {
     const q: PivotQuery = {
+      // biome-disable-next-line lint/suspicious/noExplicitAny -- Test requires flexible type
       rows: [{ a: 1 }] as any,
       rowsFieldRef: [{ field: 'region' }],
       columnsFieldRef: [],
@@ -22,6 +23,7 @@ describe('protocol serialization', () => {
       expandedPaths: [],
       pivotSorting: [],
       inlineAccessors: {
+        // biome-disable-next-line lint/suspicious/noExplicitAny -- Test requires flexible type
         rows: [{ field: 'region', accessor: (r: any) => r.region.toUpperCase() }],
       } as any,
     };

@@ -52,7 +52,8 @@ const resolveMeasureAccessor = <TRow>(
   _inlineAccessor: ((row: TRow) => unknown) | undefined,
 ): ((row: TRow) => unknown) => {
   if (def.accessor) return def.accessor;
-  if (def.field !== undefined) return (row: TRow) => (row as Record<string, unknown>)[def.field as string];
+  if (def.field !== undefined)
+    return (row: TRow) => (row as Record<string, unknown>)[def.field as string];
   // Count aggregator needs a value to count; return the row itself as a sentinel
   // (counting non-null values). When no field is provided, count all rows.
   return () => 1;
@@ -173,48 +174,74 @@ const buildColumnRoot = <TRow>(
     if (position === 'end') {
       leafColumns.push(...totalsLeaves);
       // Attach totals leaves as a sibling of regular leaves at the root.
+      // Only create wrapper nodes if existing children are intermediate levels (have children themselves).
+      // For leaf-level hierarchies (children have leaves but no children), add totals directly.
       const existingChildren = columnRoot.children ?? [];
       const regularLeaves = columnRoot.leaves ?? [];
-      columnRoot.children = [
-        ...existingChildren,
-        {
-          id: '__regular__',
-          path: [],
-          label: undefined,
-          colSpan: regularLeaves.length,
-          leaves: regularLeaves,
-        },
-        {
-          id: '__totals__',
-          path: ['__total__'],
-          label: undefined,
-          colSpan: totalsLeaves.length,
-          leaves: totalsLeaves,
-        },
-      ];
+      // Check if existing children are intermediate (have their own children) or leaf (have leaves only)
+      const hasIntermediateChildren = existingChildren.some(
+        (c) => c.children && c.children.length > 0,
+      );
+      if (hasIntermediateChildren) {
+        // Multi-level: add __totals__ as a sibling with undefined label (like __regular__)
+        columnRoot.children = [
+          ...existingChildren,
+          {
+            id: '__totals__',
+            path: ['__total__'],
+            label: undefined,
+            colSpan: totalsLeaves.length,
+            leaves: totalsLeaves,
+          },
+        ];
+      } else {
+        // Leaf-level: append totals as a child directly with '__total__' label
+        columnRoot.children = [
+          ...existingChildren,
+          {
+            id: '__totals__',
+            path: ['__total__'],
+            label: '__total__',
+            colSpan: totalsLeaves.length,
+            leaves: totalsLeaves,
+          },
+        ];
+      }
       columnRoot.colSpan = regularLeaves.length + totalsLeaves.length;
     } else {
       // 'start': prepend totals leaves.
       leafColumns.unshift(...totalsLeaves);
       const existingChildren = columnRoot.children ?? [];
       const regularLeaves = columnRoot.leaves ?? [];
-      columnRoot.children = [
-        {
-          id: '__totals__',
-          path: ['__total__'],
-          label: undefined,
-          colSpan: totalsLeaves.length,
-          leaves: totalsLeaves,
-        },
-        ...existingChildren,
-        {
-          id: '__regular__',
-          path: [],
-          label: undefined,
-          colSpan: regularLeaves.length,
-          leaves: regularLeaves,
-        },
-      ];
+      // Check if existing children are intermediate (have their own children) or leaf (have leaves only)
+      const hasIntermediateChildren = existingChildren.some(
+        (c) => c.children && c.children.length > 0,
+      );
+      if (hasIntermediateChildren) {
+        // Multi-level: add __totals__ as a sibling with undefined label
+        columnRoot.children = [
+          {
+            id: '__totals__',
+            path: ['__total__'],
+            label: undefined,
+            colSpan: totalsLeaves.length,
+            leaves: totalsLeaves,
+          },
+          ...existingChildren,
+        ];
+      } else {
+        // Leaf-level: prepend totals as a child directly with '__total__' label
+        columnRoot.children = [
+          {
+            id: '__totals__',
+            path: ['__total__'],
+            label: '__total__',
+            colSpan: totalsLeaves.length,
+            leaves: totalsLeaves,
+          },
+          ...existingChildren,
+        ];
+      }
       columnRoot.colSpan = regularLeaves.length + totalsLeaves.length;
     }
   }

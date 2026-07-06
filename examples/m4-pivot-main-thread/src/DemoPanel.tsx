@@ -1,10 +1,6 @@
-import { useEffect, useState } from 'react';
-import {
-  type PivotConfig,
-  type PivotExpansionState,
-  type PivotSortingState,
-} from '@lynellf/tablekit-pivot';
+import type { PivotConfig, PivotExpansionState, PivotSortingState } from '@lynellf/tablekit-pivot';
 import { usePivotTable } from '@lynellf/tablekit-react';
+import { useEffect, useState } from 'react';
 
 interface Props<TRow> {
   title: string;
@@ -53,16 +49,18 @@ export function DemoPanel<TRow>({
       <Announcer />
       <div {...instance.getGridProps({ className: 'pivot-treegrid' })}>
         <div role="rowgroup" className="pivot-header">
-          {headerRows.map((row, i) => (
-            <div key={i} role="row" className="pivot-header-row">
+          {headerRows.map((row, rowIdx) => (
+            // biome-disable-next-line lint/suspicious/noArrayIndexKey -- Header rows are static; stable composite keys would require structural changes
+            <div key={`header-row-${rowIdx}`} role="row" className="pivot-header-row">
               <div role="columnheader" className="pivot-row-header-cell" />
-              {row.map((entry, j) => {
+              {row.map((entry, colIdx) => {
                 const node = entry.node;
                 const label = 'label' in node ? String(node.label ?? '') : String(node.measureId);
                 const isTotal = 'isTotal' in node && node.isTotal;
                 return (
+                  // biome-disable-next-line lint/suspicious/noArrayIndexKey -- Header cells are static; stable composite keys would require structural changes
                   <div
-                    key={j}
+                    key={`header-${rowIdx}-${colIdx}`}
                     role="columnheader"
                     aria-colspan={entry.colSpan}
                     className={`pivot-cell ${isTotal ? 'pivot-cell-total' : ''}`}
@@ -106,7 +104,9 @@ export function DemoPanel<TRow>({
         {instance.getFooterProps() && (
           <div {...instance.getFooterProps({ className: 'pivot-footer' })}>
             <div role="row" data-total="row" aria-label="Grand total row">
-              <div role="rowheader" className="pivot-row-header">Total</div>
+              <div role="rowheader" className="pivot-row-header">
+                Total
+              </div>
               {leafColumns.map((leaf) => (
                 <div
                   key={leaf.id}

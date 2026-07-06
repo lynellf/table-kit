@@ -6,12 +6,12 @@
  */
 
 import type {
+  FieldValue,
+  LeafColumnId,
+  PivotColumnNode,
   PivotQuery,
   PivotResult,
   PivotRowNode,
-  FieldValue,
-  PivotColumnNode,
-  LeafColumnId,
 } from '@lynellf/tablekit-pivot';
 
 // Simulated "database" on the server side
@@ -83,7 +83,7 @@ export async function computeTopLevel(
   }
 
   const children: PivotRowNode<SalesRow>[] = Array.from(byRegion.entries()).map(
-    ([region, totals], idx) => ({
+    ([region, totals], _idx) => ({
       key: `["${region}"]`,
       path: [region],
       level: 0,
@@ -104,7 +104,7 @@ export async function computeTopLevel(
   );
 
   const grandTotalRevenue = SERVER_DATASET.reduce((s, r) => s + r.revenue, 0);
-  const grandTotalQuantity = SERVER_DATASET.reduce((s, r) => s + r.quantity, 0);
+  const _grandTotalQuantity = SERVER_DATASET.reduce((s, r) => s + r.quantity, 0);
 
   const result: ServerPivotResult = {
     columnRoot: {
@@ -120,10 +120,38 @@ export async function computeTopLevel(
       ],
     } as PivotColumnNode,
     leafColumns: [
-      { id: '["Q1"]::revenue_sum', path: ['Q1'], measureId: 'revenue', isTotal: false, size: 100, header: 'Q1 Revenue' },
-      { id: '["Q2"]::revenue_sum', path: ['Q2'], measureId: 'revenue', isTotal: false, size: 100, header: 'Q2 Revenue' },
-      { id: '["Q3"]::revenue_sum', path: ['Q3'], measureId: 'revenue', isTotal: false, size: 100, header: 'Q3 Revenue' },
-      { id: '["Q4"]::revenue_sum', path: ['Q4'], measureId: 'revenue', isTotal: false, size: 100, header: 'Q4 Revenue' },
+      {
+        id: '["Q1"]::revenue_sum',
+        path: ['Q1'],
+        measureId: 'revenue',
+        isTotal: false,
+        size: 100,
+        header: 'Q1 Revenue',
+      },
+      {
+        id: '["Q2"]::revenue_sum',
+        path: ['Q2'],
+        measureId: 'revenue',
+        isTotal: false,
+        size: 100,
+        header: 'Q2 Revenue',
+      },
+      {
+        id: '["Q3"]::revenue_sum',
+        path: ['Q3'],
+        measureId: 'revenue',
+        isTotal: false,
+        size: 100,
+        header: 'Q3 Revenue',
+      },
+      {
+        id: '["Q4"]::revenue_sum',
+        path: ['Q4'],
+        measureId: 'revenue',
+        isTotal: false,
+        size: 100,
+        header: 'Q4 Revenue',
+      },
     ] as unknown as PivotResult<SalesRow>['leafColumns'],
     rowRoot: {
       key: '[]',

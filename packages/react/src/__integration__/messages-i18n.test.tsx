@@ -11,10 +11,10 @@
  *   - Type-level: `AnnouncerKey` autocomplete on the messages option.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
-import { act, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useDataTable } from '../useDataTable';
+import { cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultMessages } from '../messages';
+import { useDataTable } from '../useDataTable';
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
 
@@ -23,9 +23,7 @@ interface Row {
   name: string;
 }
 
-const COLUMNS = [
-  { id: 'name', accessor: 'name' } as const,
-];
+const COLUMNS = [{ id: 'name', accessor: 'name' } as const];
 
 const ROWS: Row[] = [
   { id: '1', name: 'Alice' },

@@ -13,7 +13,7 @@ import type {
   PivotRowNode,
 } from '@lynellf/tablekit-pivot';
 import { createMainThreadEngine } from '@lynellf/tablekit-pivot/engine';
-import type { RequestId, WorkerRequest, WorkerResponse, WirePivotQuery } from '../protocol';
+import type { RequestId, WirePivotQuery, WorkerRequest, WorkerResponse } from '../protocol';
 import { createRowsStore } from './rowsStore';
 
 export interface DispatcherOptions {
@@ -24,8 +24,10 @@ export interface DispatcherOptions {
 /** Serialize an error for structured clone. */
 const serializeError = (err: unknown): { name: string; message: string; stack?: string } => {
   if (err instanceof Error) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: any = { name: err.name, message: err.message };
+    const result: { name: string; message: string; stack?: string } = {
+      name: err.name,
+      message: err.message,
+    };
     if (err.stack !== undefined) {
       result.stack = err.stack;
     }
@@ -131,7 +133,11 @@ export const createDispatcher = (opts: DispatcherOptions): DispatcherHandle => {
     Promise.resolve(engine.computeChildren!(req.path, query, { signal: controller.signal }))
       .then((children: PivotRowNode<TRow>[]) => {
         if (controller.signal.aborted) return;
-        reply({ type: 'computeChildren:ok', requestId: req.requestId, children: children as PivotRowNode[] });
+        reply({
+          type: 'computeChildren:ok',
+          requestId: req.requestId,
+          children: children as PivotRowNode[],
+        });
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
@@ -141,7 +147,9 @@ export const createDispatcher = (opts: DispatcherOptions): DispatcherHandle => {
   };
 
   const onDispose = (req: Extract<WorkerRequest, { type: 'dispose' }>) => {
-    pending.forEach((c) => c.abort());
+    for (const controller of pending.values()) {
+      controller.abort();
+    }
     pending.clear();
     store.clear();
     reply({ type: 'dispose:ok', requestId: req.requestId });

@@ -36,9 +36,7 @@ const serializeFieldRef = <TRow>(ref: FieldRef<TRow>): SerializedFieldRef => {
   return out;
 };
 
-const serializeMeasure = <TRow>(
-  m: import('../types').MeasureDef<TRow>,
-): SerializedMeasureDef => ({
+const serializeMeasure = <TRow>(m: import('../types').MeasureDef<TRow>): SerializedMeasureDef => ({
   id: m.id,
   ...(m.field !== undefined ? { field: m.field } : {}),
   aggregator: typeof m.aggregator === 'string' ? m.aggregator : 'sum',
@@ -50,12 +48,17 @@ const serializeFilter = <TRow>(
   f: import('../types').PivotFilter<TRow>,
   serialize: boolean,
 ): SerializedPivotFilter | null => {
-  if ('predicateRef' in f) return { predicateRef: f.predicateRef, args: 'args' in f ? f.args : undefined };
+  if ('predicateRef' in f)
+    return { predicateRef: f.predicateRef, args: 'args' in f ? f.args : undefined };
   if ('predicate' in f) {
     if (serialize) return null; // strip inline predicates when serializing
     return { predicate: f.predicate } as unknown as SerializedPivotFilter; // main-thread accepts inline
   }
-  return { field: f.field, op: f.op as 'equals' | 'in' | 'notIn' | 'range' | 'contains', value: f.value };
+  return {
+    field: f.field,
+    op: f.op as 'equals' | 'in' | 'notIn' | 'range' | 'contains',
+    value: f.value,
+  };
 };
 
 export const buildPivotQuery = <TRow>(
@@ -72,7 +75,11 @@ export const buildPivotQuery = <TRow>(
     .map((f) => serializeFilter(f, serialize))
     .filter((f): f is SerializedPivotFilter => f !== null);
 
-  const expandedPaths = opts.expandedPaths ?? Object.entries(expanded).filter(([, v]) => v).map(([k]) => k);
+  const expandedPaths =
+    opts.expandedPaths ??
+    Object.entries(expanded)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
 
   return {
     rows: data,
@@ -87,8 +94,12 @@ export const buildPivotQuery = <TRow>(
       ? {}
       : {
           inlineAccessors: {
-            rows: pivot.rows.filter((r): r is Exclude<FieldRef<TRow>, string> => typeof r !== 'string'),
-            columns: pivot.columns.filter((r): r is Exclude<FieldRef<TRow>, string> => typeof r !== 'string'),
+            rows: pivot.rows.filter(
+              (r): r is Exclude<FieldRef<TRow>, string> => typeof r !== 'string',
+            ),
+            columns: pivot.columns.filter(
+              (r): r is Exclude<FieldRef<TRow>, string> => typeof r !== 'string',
+            ),
             measures: pivot.measures.filter((m) => m.accessor !== undefined),
           },
         }),

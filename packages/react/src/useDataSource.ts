@@ -51,10 +51,12 @@ export const useDataSource = <TRow>(
   source: DataSource<TRow>,
   translator?: (key: AnnouncerKey, ...args: unknown[]) => string,
 ): UseDataSourceResult<TRow> => {
-  const t = translator ?? ((key: AnnouncerKey) => {
-    const val = defaultMessages[key];
-    return typeof val === 'function' ? (val as (...a: unknown[]) => string)() : (val as string);
-  });
+  const t =
+    translator ??
+    ((key: AnnouncerKey) => {
+      const val = defaultMessages[key];
+      return typeof val === 'function' ? (val as (...a: unknown[]) => string)() : (val as string);
+    });
   // Subscribe to the table's data source state.
   const subscribe = useCallback((onChange: () => void) => table.subscribe(onChange), [table]);
   const getSnapshot = useCallback(() => table.__getDataSourceState(), [table]);
@@ -195,7 +197,7 @@ export const useDataSource = <TRow>(
       abortRef.current?.abort();
       unsubscribe();
     };
-  }, [refetch, table]);
+  }, [refetch, table, t]);
 
   // Build return with only defined optional fields.
   const result: UseDataSourceResult<TRow> = {

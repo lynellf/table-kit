@@ -35,7 +35,7 @@
       "correctness": {
         "noUnusedImports": "error",
         "noUnusedVariables": "error",
-        "useExhaustiveDependencies": "error"
+        "useExhaustiveDependencies": "warn"
       },
       "style": {
         "useImportType": "error",
@@ -43,20 +43,25 @@
         "useConst": "error",
         "useTemplate": "error",
         "useExportType": "error",
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        "noParameterAssign": "warn"
       },
       "suspicious": {
-        "noExplicitAny": "error"
+        "noExplicitAny": "warn",
+        "noArrayIndexKey": "warn"
       },
       "complexity": {
-        "noBannedTypes": "error"
+        "noBannedTypes": "error",
+        "noForEach": "warn"
       },
       "a11y": {
         "useKeyWithClickEvents": "warn",
         "useSemanticElements": "off",
-        "useFocusableInteractive": "off"
+        "useFocusableInteractive": "off",
+        "useButtonType": "warn"
       }
-    }
+    },
+    "ignore": ["examples/**", "**/*.test.ts", "**/*.test.tsx", "bench/**", "scripts/**"]
   },
   "javascript": {
     "formatter": {

@@ -40,9 +40,7 @@ describe('getHeaderRows', () => {
     const p = createPivotTable(opts);
     const headerRows = p.getHeaderRows();
     const yearEntries = headerRows[0]!;
-    const yearLabels = yearEntries
-      .map((e) => (e.node as { label?: unknown }).label)
-      .sort();
+    const yearLabels = yearEntries.map((e) => (e.node as { label?: unknown }).label).sort();
     expect(yearLabels).toEqual([2023, 2024, '__total__']);
   });
 

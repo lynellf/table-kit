@@ -19,8 +19,8 @@
  *   0 — always (this is advisory only)
  */
 
-import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,10 +38,17 @@ function loadBaseline() {
     if (parsed.benchmarks) return parsed.benchmarks;
     // Strip metadata fields.
     const { $schema, version, source, last_updated, note, ...benches } = parsed;
-    void $schema; void version; void source; void last_updated; void note;
+    void $schema;
+    void version;
+    void source;
+    void last_updated;
+    void note;
     return benches;
   } catch (err) {
-    console.warn('bench-compare: Could not load baseline.json:', (err instanceof Error) ? err.message : err);
+    console.warn(
+      'bench-compare: Could not load baseline.json:',
+      err instanceof Error ? err.message : err,
+    );
     return {};
   }
 }
@@ -63,7 +70,9 @@ function parseVitestBenchJson(content) {
     for (const task of json.tasks ?? []) {
       if (!task.result) continue;
       const name = task.name ?? task.id ?? 'unknown';
-      const mean = task.result.mean ?? task.result.ops ??
+      const mean =
+        task.result.mean ??
+        task.result.ops ??
         (typeof task.result === 'number' ? task.result : null);
       if (mean != null) {
         entries.push({ name, mean });
@@ -87,7 +96,10 @@ function main() {
       const parsed = parseVitestBenchJson(content);
       entries.push(...parsed);
     } catch (err) {
-      console.warn(`bench-compare: Could not parse ${file}:`, (err instanceof Error) ? err.message : err);
+      console.warn(
+        `bench-compare: Could not parse ${file}:`,
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 
@@ -97,8 +109,8 @@ function main() {
 
   for (const entry of entries) {
     // Try to match against baseline by name (case-insensitive prefix match).
-    const baselineKey = Object.keys(baseline).find(
-      (k) => entry.name.toLowerCase().includes(k.toLowerCase()),
+    const baselineKey = Object.keys(baseline).find((k) =>
+      entry.name.toLowerCase().includes(k.toLowerCase()),
     );
     const baseMean = baselineKey ? baseline[baselineKey] : null;
 
@@ -151,7 +163,9 @@ function main() {
 
   mdLines.push('');
   if (warnings.length > 0) {
-    mdLines.push(`⚠️  ${warnings.length} soft regression(s) (> 1.2× baseline). See ::warning annotations above.`);
+    mdLines.push(
+      `⚠️  ${warnings.length} soft regression(s) (> 1.2× baseline). See ::warning annotations above.`,
+    );
   }
   if (errors.length > 0) {
     mdLines.push(`🚨 ${errors.length} hard regression(s) (> 2.0× baseline). Review required.`);
@@ -163,7 +177,9 @@ function main() {
   const mdPath = join(RESULTS_DIR, 'bench-results.md');
   writeFileSync(mdPath, mdLines.join('\n'));
   console.log(`bench-compare: Results written to ${mdPath}`);
-  console.log(`bench-compare: ${rows.length} entries, ${warnings.length} soft, ${errors.length} hard`);
+  console.log(
+    `bench-compare: ${rows.length} entries, ${warnings.length} soft, ${errors.length} hard`,
+  );
 
   // Advisory — always exit 0.
   process.exit(0);

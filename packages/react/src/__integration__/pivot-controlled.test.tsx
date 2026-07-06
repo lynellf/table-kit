@@ -2,12 +2,12 @@
  * Phase 5 — controlled slice behavior.
  */
 
+import type { PivotExpansionState } from '@lynellf/tablekit-pivot';
 /** @jsxImportSource react */
 import { render } from '@testing-library/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { usePivotTable } from '../usePivotTable';
-import type { PivotExpansionState } from '@lynellf/tablekit-pivot';
 
 interface Row {
   id: string;
@@ -28,7 +28,11 @@ const ControlledChild = ({
     state: { expanded },
     onExpandedChange: setExpanded,
   });
-  pivot.toggleExpanded(['West']);
+  // Call toggleExpanded after mount to avoid infinite render loop.
+  // Calling state setters during render triggers useSyncExternalStore, causing re-renders.
+  useEffect(() => {
+    pivot.toggleExpanded(['West']);
+  }, [pivot]);
   return null;
 };
 

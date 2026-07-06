@@ -16,13 +16,16 @@ import type {
 import { validatePivotQuery } from '@lynellf/tablekit-pivot/serialize';
 import { createRefetchOrchestrator } from './refetchOrchestrator';
 
-export interface ServerEngineComputeFn<TRow = unknown> {
-  (q: PivotQuery<TRow>, ctx: { signal: AbortSignal }): Promise<PivotResult<TRow>>;
-}
+export type ServerEngineComputeFn<TRow = unknown> = (
+  q: PivotQuery<TRow>,
+  ctx: { signal: AbortSignal },
+) => Promise<PivotResult<TRow>>;
 
-export interface ServerEngineComputeChildrenFn<TRow = unknown> {
-  (path: Array<FieldValue>, q: PivotQuery<TRow>, ctx: { signal: AbortSignal }): Promise<PivotRowNode<TRow>[]>;
-}
+export type ServerEngineComputeChildrenFn<TRow = unknown> = (
+  path: Array<FieldValue>,
+  q: PivotQuery<TRow>,
+  ctx: { signal: AbortSignal },
+) => Promise<PivotRowNode<TRow>[]>;
 
 export interface ServerEngineOptions<TRow = unknown> {
   /** Returns the collapsed top level (plus grand totals). */

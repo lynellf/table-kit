@@ -4,8 +4,8 @@
  * Tests the main-thread RPC adapter (createWorkerEngine) using a stub worker.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { WorkerResponse, WorkerRequest } from '../protocol';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WorkerRequest, WorkerResponse } from '../protocol';
 
 // Minimal stub Worker for testing
 // Uses a Map to store listeners so addEventListener and onmessage both work
@@ -24,7 +24,11 @@ class StubWorker {
         // Trigger both onmessage and addEventListener listeners
         this.onmessage?.(response);
         const listeners = this.listeners.get('message');
-        listeners?.forEach((fn) => fn(response));
+        if (listeners) {
+          for (const fn of listeners) {
+            fn(response);
+          }
+        }
       }, 0);
     }
   }

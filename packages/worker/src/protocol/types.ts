@@ -10,12 +10,7 @@
  *  - `inlineAccessors` (stripped by buildPivotQuery({ serialize: true }))
  */
 
-import type {
-  FieldValue,
-  PivotResult,
-  PivotRowNode,
-  RowPathKey,
-} from '@lynellf/tablekit-pivot';
+import type { FieldValue, PivotResult, PivotRowNode, RowPathKey } from '@lynellf/tablekit-pivot';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wire query — stripped of rows and inline accessors
@@ -45,7 +40,13 @@ export type WirePivotQuery = {
   expandedPaths: Array<RowPathKey>;
   pivotSorting: Array<
     | { level: number; by: 'label'; desc: boolean; comparator?: string }
-    | { level: number; by: 'measure'; measureId: string; columnPath?: Array<FieldValue>; desc: boolean }
+    | {
+        level: number;
+        by: 'measure';
+        measureId: string;
+        columnPath?: Array<FieldValue>;
+        desc: boolean;
+      }
   >;
 };
 
@@ -60,7 +61,12 @@ export type RequestId = number;
 export type WorkerRequest =
   | { type: 'setRows'; requestId: RequestId; rows: unknown[] }
   | { type: 'compute'; requestId: RequestId; query: WirePivotQuery }
-  | { type: 'computeChildren'; requestId: RequestId; path: Array<FieldValue>; query: WirePivotQuery }
+  | {
+      type: 'computeChildren';
+      requestId: RequestId;
+      path: Array<FieldValue>;
+      query: WirePivotQuery;
+    }
   | { type: 'dispose'; requestId: RequestId };
 
 /** Discriminated union of all messages sent from worker to main thread. */

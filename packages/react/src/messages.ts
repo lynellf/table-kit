@@ -93,8 +93,7 @@ export const defaultMessages: Readonly<MessagesMap> = Object.freeze({
     `Column ${id} moved from position ${from} to ${to}`,
 
   // Resize
-  resizeCommitted: (id: string, width: number) =>
-    `Column ${id} resized to ${width} pixels`,
+  resizeCommitted: (id: string, width: number) => `Column ${id} resized to ${width} pixels`,
 
   // Expansion (pivot)
   expandStarted: 'Loading child rows',

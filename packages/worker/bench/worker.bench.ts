@@ -8,9 +8,9 @@
  * These benchmarks are ADVISORY — CI logs numbers but does not gate on them.
  */
 
+import type { PivotQuery } from '@lynellf/tablekit-pivot';
 import { bench, describe } from 'vitest';
 import { createWorkerEngine } from '../src/engine/createWorkerEngine';
-import type { PivotQuery } from '@lynellf/tablekit-pivot';
 
 interface SalesRow {
   id: number;
@@ -29,10 +29,11 @@ const CATEGORIES = ['Electronics', 'Apparel', 'Home', 'Sports'];
 const PRODUCTS = ['Laptop', 'Phone', 'Tablet', 'Headphones', 'Camera'];
 
 function mulberry32(seed: number) {
-  return function () {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  let s = seed;
+  return () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
@@ -74,7 +75,11 @@ class StubWorker {
         },
       };
       const listeners = this.listeners.get('message');
-      listeners?.forEach((fn) => fn(response as { data: unknown }));
+      if (listeners) {
+        for (const fn of listeners) {
+          fn(response as { data: unknown });
+        }
+      }
     }, 10);
   }
 
@@ -106,43 +111,52 @@ describe('worker engine — 1M-row budget', () => {
   // Generate 1M rows once for all benchmarks
   const rows = generateRows(1_000_000);
 
-  bench('cold: createWorkerEngine + setRows + first compute', async () => {
-    const stub = new StubWorker();
-    const engine = createWorkerEngine<SalesRow>({ createWorker: () => stub });
+  bench(
+    'cold: createWorkerEngine + setRows + first compute',
+    async () => {
+      const stub = new StubWorker();
+      const engine = createWorkerEngine<SalesRow>({ createWorker: () => stub });
 
-    await engine.setRows(rows);
-    await engine.compute(QUERY, { signal: new AbortController().signal });
+      await engine.setRows(rows);
+      await engine.compute(QUERY, { signal: new AbortController().signal });
 
-    engine.dispose();
-  }, { iterations: 3, time: 30_000 });
+      engine.dispose();
+    },
+    { iterations: 3, time: 30_000 },
+  );
 
-  bench('warm: re-pivot (config change, no setRows)', async () => {
-    const stub = new StubWorker();
-    const engine = createWorkerEngine<SalesRow>({ createWorker: () => stub });
+  bench(
+    'warm: re-pivot (config change, no setRows)',
+    async () => {
+      const stub = new StubWorker();
+      const engine = createWorkerEngine<SalesRow>({ createWorker: () => stub });
 
-    // Warm up: set rows and initial compute
-    await engine.setRows(rows);
-    await engine.compute(QUERY, { signal: new AbortController().signal });
+      // Warm up: set rows and initial compute
+      await engine.setRows(rows);
+      await engine.compute(QUERY, { signal: new AbortController().signal });
 
-    // Re-pivot: toggle a measure
-    const nextQuery: PivotQuery<SalesRow> = {
-      ...QUERY,
-      measures: [
-        ...QUERY.measures,
-        { id: 'cost', field: 'cost', aggregator: 'sum' },
-      ],
-    };
-    await engine.compute(nextQuery, { signal: new AbortController().signal });
+      // Re-pivot: toggle a measure
+      const nextQuery: PivotQuery<SalesRow> = {
+        ...QUERY,
+        measures: [...QUERY.measures, { id: 'cost', field: 'cost', aggregator: 'sum' }],
+      };
+      await engine.compute(nextQuery, { signal: new AbortController().signal });
 
-    engine.dispose();
-  }, { iterations: 5, time: 30_000 });
+      engine.dispose();
+    },
+    { iterations: 5, time: 30_000 },
+  );
 
-  bench('setRows only: 1M row transfer', async () => {
-    const stub = new StubWorker();
-    const engine = createWorkerEngine<SalesRow>({ createWorker: () => stub });
+  bench(
+    'setRows only: 1M row transfer',
+    async () => {
+      const stub = new StubWorker();
+      const engine = createWorkerEngine<SalesRow>({ createWorker: () => stub });
 
-    await engine.setRows(rows);
+      await engine.setRows(rows);
 
-    engine.dispose();
-  }, { iterations: 3, time: 15_000 });
+      engine.dispose();
+    },
+    { iterations: 3, time: 15_000 },
+  );
 });

@@ -51,13 +51,10 @@ export const createWorkerEngine = <TRow = unknown>(
   const worker = opts.createWorker();
   const rpc = createRpc({ worker });
 
-  let rowsSet = false;
+  let _rowsSet = false;
 
   const engine: WorkerEngine<TRow> = {
-    async compute(
-      q: PivotQuery<TRow>,
-      ctx: { signal: AbortSignal },
-    ): Promise<PivotResult<TRow>> {
+    async compute(q: PivotQuery<TRow>, ctx: { signal: AbortSignal }): Promise<PivotResult<TRow>> {
       validatePivotQuery(q as PivotQuery);
       const wireQuery = serializeQuery(q);
       return rpc.send<PivotResult<TRow>>({ type: 'compute', query: wireQuery }, ctx.signal);
@@ -76,8 +73,11 @@ export const createWorkerEngine = <TRow = unknown>(
     },
 
     async setRows(rows: TRow[]): Promise<void> {
-      await rpc.send<void>({ type: 'setRows', rows: rows as unknown[] }, new AbortController().signal);
-      rowsSet = true;
+      await rpc.send<void>(
+        { type: 'setRows', rows: rows as unknown[] },
+        new AbortController().signal,
+      );
+      _rowsSet = true;
     },
 
     dispose() {

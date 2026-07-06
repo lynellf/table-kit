@@ -5,8 +5,8 @@
  * request ID correlation, and AbortSignal propagation.
  */
 
-import type { RequestId, WorkerRequest, WorkerResponse, WirePivotQuery } from '../protocol';
 import type { FieldValue } from '@lynellf/tablekit-pivot';
+import type { RequestId, WirePivotQuery, WorkerResponse } from '../protocol';
 
 export interface PendingEntry {
   resolve: (value: unknown) => void;
@@ -46,7 +46,11 @@ export const createRpc = (opts: RpcOptions) => {
   opts.worker.addEventListener('message', onMessage);
 
   const send = <T>(
-    message: { type: 'setRows'; rows: unknown[] } | { type: 'compute'; query: WirePivotQuery } | { type: 'computeChildren'; path: FieldValue[]; query: WirePivotQuery } | { type: 'dispose' },
+    message:
+      | { type: 'setRows'; rows: unknown[] }
+      | { type: 'compute'; query: WirePivotQuery }
+      | { type: 'computeChildren'; path: FieldValue[]; query: WirePivotQuery }
+      | { type: 'dispose' },
     signal: AbortSignal,
   ): Promise<T> => {
     const requestId = ++nextRequestId;
@@ -72,10 +76,10 @@ export const createRpc = (opts: RpcOptions) => {
   return {
     send,
     dispose() {
-      pending.forEach((entry) => {
+      for (const entry of pending.values()) {
         entry.controller.abort();
         entry.reject(new DOMException('Worker disposed', 'AbortError'));
-      });
+      }
       pending.clear();
       opts.worker.removeEventListener('message', onMessage);
     },

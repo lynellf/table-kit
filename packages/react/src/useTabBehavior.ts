@@ -12,8 +12,8 @@
  * applies to the static content.
  */
 
-import { useEffect, useRef } from 'react';
 import type { TabBehavior } from '@lynellf/tablekit-core';
+import { useEffect, useRef } from 'react';
 
 interface UseTabBehaviorOptions {
   /**

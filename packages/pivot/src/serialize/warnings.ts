@@ -21,7 +21,12 @@ export const validatePivotQuery = <TRow>(q: PivotQuery<TRow>): void => {
   const inlineMeas = q.inlineAccessors.measures?.filter((m) => m.accessor !== undefined) ?? [];
   const inlinePreds = q.filters.filter((f) => 'predicate' in f);
 
-  if (inlineRows.length === 0 && inlineCols.length === 0 && inlineMeas.length === 0 && inlinePreds.length === 0) {
+  if (
+    inlineRows.length === 0 &&
+    inlineCols.length === 0 &&
+    inlineMeas.length === 0 &&
+    inlinePreds.length === 0
+  ) {
     return;
   }
 

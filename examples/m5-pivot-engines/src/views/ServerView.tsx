@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
 import { createServerEngine } from '@lynellf/tablekit-worker/server';
+import { useMemo } from 'react';
 import { mockServerApi } from '../data/mockServerApi';
 
 export function ServerView() {
@@ -7,10 +7,9 @@ export function ServerView() {
   const engine = useMemo(
     () =>
       createServerEngine({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        compute: (q: any, ctx: { signal: AbortSignal }) =>
-          mockServerApi.computeTopLevel(q, ctx),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // biome-disable-next-line lint/suspicious/noExplicitAny -- Server query types require generic flexibility
+        compute: (q: any, ctx: { signal: AbortSignal }) => mockServerApi.computeTopLevel(q, ctx),
+        // biome-disable-next-line lint/suspicious/noExplicitAny -- Server query types require generic flexibility
         computeChildren: (path: any, q: any, ctx: { signal: AbortSignal }) =>
           mockServerApi.computeChildren(path, q, ctx),
         debounceMs: 50,
@@ -39,8 +38,8 @@ export function ServerView() {
         <p>Server engine initialized with lazy expansion.</p>
         <p>Expand rows to trigger server API calls with simulated latency.</p>
         <p className="hint">
-          The server engine uses computeTopLevel for collapsed rows and
-          computeChildren when expanding — demonstrating server expansion patterns.
+          The server engine uses computeTopLevel for collapsed rows and computeChildren when
+          expanding — demonstrating server expansion patterns.
         </p>
       </div>
 

@@ -9,7 +9,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { usePivotTable } from '../usePivotTable';
-import { validateGridStructure } from '../validate';
 
 interface SalesRow {
   id: string;
@@ -45,11 +44,13 @@ const PivotHarness = () => {
       <Announcer />
       <div {...pivot.getGridProps({ 'data-testid': 'grid' })}>
         <div {...pivot.getBodyProps()}>
-          {headerRows.map((row, i) => (
-            <div key={i} role="row">
-              {row.map((entry, j) => (
-                <div key={j} {...pivot.getHeaderProps(entry.node)}>
-                  {String('label' in entry.node ? entry.node.label ?? '' : '')}
+          {headerRows.map((row, rowIdx) => (
+            // biome-disable-next-line lint/suspicious/noArrayIndexKey -- Static header rows, index acceptable
+            <div key={`header-row-${rowIdx}`} role="row">
+              {row.map((entry, colIdx) => (
+                // biome-disable-next-line lint/suspicious/noArrayIndexKey -- Static header cells, index acceptable
+                <div key={`header-${rowIdx}-${colIdx}`} {...pivot.getHeaderProps(entry.node)}>
+                  {String('label' in entry.node ? (entry.node.label ?? '') : '')}
                 </div>
               ))}
             </div>

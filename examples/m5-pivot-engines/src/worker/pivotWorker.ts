@@ -8,7 +8,7 @@
 import { createWorkerEntry } from '@lynellf/tablekit-worker';
 
 // Create the worker entry point
-const entry = createWorkerEntry();
+const _entry = createWorkerEntry();
 
 // Note: The worker uses the same aggregator registry as the main thread.
 // Custom aggregators should be registered via the AggregatorRegistration interface:

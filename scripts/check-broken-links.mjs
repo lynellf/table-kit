@@ -17,8 +17,8 @@
  *   1 — broken links found (FAIL)
  */
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join, extname, relative, isAbsolute } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { extname, isAbsolute, join, relative } from 'node:path';
 import { argv } from 'node:process';
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ const DOCS_ROOT = 'docs';
 // [text](url)
 // [text]: url  (reference-style)
 const MARKDOWN_LINK_PATTERN = /\[([^\]]+)\]\(([^)]+)\)/g;
-const REF_LINK_PATTERN = /^\s*\[[^\]]+\]:\s*(.+)$/gm;
+const _REF_LINK_PATTERN = /^\s*\[[^\]]+\]:\s*(.+)$/gm;
 
 function* walkDir(dir) {
   let entries = [];
@@ -68,9 +68,9 @@ function extractLinks(filePath) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    let match;
     MARKDOWN_LINK_PATTERN.lastIndex = 0;
-    while ((match = MARKDOWN_LINK_PATTERN.exec(line)) !== null) {
+    let match = MARKDOWN_LINK_PATTERN.exec(line);
+    while (match !== null) {
       const target = match[2].trim();
       // Skip external links, anchors, and javascript.
       if (SKIP_PROTOCOLS.some((p) => target.startsWith(p))) continue;
@@ -79,6 +79,7 @@ function extractLinks(filePath) {
       // Skip images and other non-link files.
       if (SKIP_EXTENSIONS.some((e) => target.endsWith(e))) continue;
       links.push({ target, lineNumber: i + 1, line: line.trim() });
+      match = MARKDOWN_LINK_PATTERN.exec(line);
     }
 
     // Reference-style links: [label]: url
@@ -137,7 +138,7 @@ function main() {
     const links = extractLinks(file);
     for (const { target, lineNumber, line } of links) {
       // Handle links with anchors: "file.md#section"
-      const [pathPart, anchorPart] = target.split('#');
+      const [pathPart, _anchorPart] = target.split('#');
       const resolvedPath = resolveLink(pathPart, file);
 
       if (!existsSync(resolvedPath)) {

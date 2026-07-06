@@ -44,11 +44,7 @@ function MinimalGrid({
         Outside button
       </button>
       {/* Grid element — gridRef must be attached for Tab behavior to work. */}
-      <div
-        {...table.getGridProps()}
-        ref={gridRef}
-        data-testid="grid"
-      >
+      <div {...table.getGridProps()} ref={gridRef} data-testid="grid">
         {/* Simple row rendering without the header model. */}
         {(table.getRowModel() as Row[]).map((row) => (
           <div key={row.id} data-row-id={row.id}>

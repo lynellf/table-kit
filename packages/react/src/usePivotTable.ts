@@ -14,12 +14,16 @@
 import { setGlobalAnnouncer } from '@lynellf/tablekit-core';
 import type { Announcer, TabBehavior } from '@lynellf/tablekit-core';
 import { createPivotTable } from '@lynellf/tablekit-pivot';
-import type { PivotTableInstance, PivotTableOptions, PivotTableState } from '@lynellf/tablekit-pivot';
+import type {
+  PivotTableInstance,
+  PivotTableOptions,
+  PivotTableState,
+} from '@lynellf/tablekit-pivot';
 import React, { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import type { ReactElement } from 'react';
 import { ReactAnnouncer } from './ReactAnnouncer';
-import { useTabBehavior } from './useTabBehavior';
 import type { MessagesMap } from './messages';
+import { useTabBehavior } from './useTabBehavior';
 
 export interface UsePivotTableOptions<TRow> extends PivotTableOptions<TRow> {
   /**
@@ -72,10 +76,7 @@ export const usePivotTable = <TRow>(
 
     // Always call setOptions on first render (prev is undefined).
     // On subsequent renders, only call if the pivot config changed.
-    const pivotChanged =
-      !prev ||
-      prev.pivot !== curr.pivot ||
-      prev.data !== curr.data;
+    const pivotChanged = !prev || prev.pivot !== curr.pivot || prev.data !== curr.data;
 
     if (pivotChanged) {
       pivot.setOptions(curr);

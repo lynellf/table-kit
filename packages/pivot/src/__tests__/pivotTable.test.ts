@@ -3,9 +3,9 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { __resetPivotDefaultGetRowIdWarningForTests } from '../defaultGetRowId';
 import { createPivotTable } from '../pivotTable/factory';
 import type { PivotTableOptions } from '../types';
-import { __resetPivotDefaultGetRowIdWarningForTests } from '../defaultGetRowId';
 
 interface Row {
   id: string;
@@ -65,7 +65,10 @@ describe('createPivotTable', () => {
     const p = createPivotTable({ ...baseOpts(), announcer });
     p.toggleExpanded(['West']);
     expect(p.getState().expanded['["West"]']).toBe(true);
-    expect(announcer.announce).toHaveBeenCalledWith(expect.stringContaining('Expanded West'), 'polite');
+    expect(announcer.announce).toHaveBeenCalledWith(
+      expect.stringContaining('Expanded West'),
+      'polite',
+    );
   });
 
   it('toggleExpanded collapses an already-expanded path', () => {
@@ -74,7 +77,10 @@ describe('createPivotTable', () => {
     p.toggleExpanded(['West']);
     p.toggleExpanded(['West']);
     expect(p.getState().expanded['["West"]']).toBe(false);
-    expect(announcer.announce).toHaveBeenLastCalledWith(expect.stringContaining('Collapsed'), 'polite');
+    expect(announcer.announce).toHaveBeenLastCalledWith(
+      expect.stringContaining('Collapsed'),
+      'polite',
+    );
   });
 
   it('setPivotSorting triggers notify and announces', () => {

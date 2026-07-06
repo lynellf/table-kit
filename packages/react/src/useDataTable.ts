@@ -10,16 +10,21 @@
  */
 
 import { createDataTable } from '@lynellf/tablekit-core';
-import type { DataTableInstance, DataTableOptions, DataTableState, TabBehavior } from '@lynellf/tablekit-core';
+import type {
+  DataTableInstance,
+  DataTableOptions,
+  DataTableState,
+  TabBehavior,
+} from '@lynellf/tablekit-core';
 import type { DataSource, DataSourceState } from '@lynellf/tablekit-core/dataSource';
 import React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { ReactElement } from 'react';
-import { createT } from './i18n/t';
 import { ReactAnnouncer } from './ReactAnnouncer';
+import { createT } from './i18n/t';
+import type { MessagesMap } from './messages';
 import { useDataSource } from './useDataSource';
 import { useTabBehavior } from './useTabBehavior';
-import type { MessagesMap } from './messages';
 
 export interface UseDataTableOptions<TRow> extends DataTableOptions<TRow> {
   /** M3 phase 3: wire a data source for server modes. */

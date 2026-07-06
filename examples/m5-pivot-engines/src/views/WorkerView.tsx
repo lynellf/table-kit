@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
 import { createWorkerEngine } from '@lynellf/tablekit-worker';
-import { generateRows, formatRowCount } from '../data/generateRows';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { formatRowCount, generateRows } from '../data/generateRows';
 import type { SalesRow } from '../data/generateRows';
 
 // Dynamic import for worker
@@ -31,19 +31,21 @@ export function WorkerView() {
   useEffect(() => {
     let mounted = true;
 
-    loadWorker().then((w) => {
-      if (!mounted) {
-        w.terminate();
-        return;
-      }
-      workerInstance = w;
-      engineInstance = createWorkerEngine<SalesRow>({
-        createWorker: () => workerInstance!,
+    loadWorker()
+      .then((w) => {
+        if (!mounted) {
+          w.terminate();
+          return;
+        }
+        workerInstance = w;
+        engineInstance = createWorkerEngine<SalesRow>({
+          createWorker: () => workerInstance!,
+        });
+        setEngineReady(true);
+      })
+      .catch((err) => {
+        console.error('Failed to create worker:', err);
       });
-      setEngineReady(true);
-    }).catch((err) => {
-      console.error('Failed to create worker:', err);
-    });
 
     const engineToDispose = engineInstance;
     const workerToTerminate = workerInstance;
@@ -93,9 +95,7 @@ export function WorkerView() {
         { id: 'count', aggregator: 'count' },
       ],
       filters:
-        Math.random() > 0.5
-          ? [{ field: 'region', op: 'equals' as const, value: 'North' }]
-          : [],
+        Math.random() > 0.5 ? [{ field: 'region', op: 'equals' as const, value: 'North' }] : [],
       totals: { grandTotalRow: true },
       expandedPaths: [],
       pivotSorting: [],
@@ -133,7 +133,7 @@ export function WorkerView() {
           <span className="info-value">{computeTime || 'Initializing...'}</span>
         </div>
         {perfBadge && <div className="perf-badge">{perfBadge}</div>}
-        <button className="action-button" onClick={handleRepivot}>
+        <button type="button" className="action-button" onClick={handleRepivot}>
           Re-pivot
         </button>
       </div>

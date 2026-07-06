@@ -2,10 +2,10 @@
  * Phase 5 — treegrid keyboard navigation (spec §7.5 conformance).
  */
 
+import { createPivotTable } from '@lynellf/tablekit-pivot';
 /** @jsxImportSource react */
 import { describe, expect, it } from 'vitest';
-import { createPivotTable } from '@lynellf/tablekit-pivot';
-import { resolveTreegridKeyAction, applyTreegridAction } from '../usePivotKeyboardNav';
+import { applyTreegridAction, resolveTreegridKeyAction } from '../usePivotKeyboardNav';
 
 interface Row {
   id: string;

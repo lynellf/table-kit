@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { createPivotTable } from '@lynellf/tablekit-pivot';
+import { useEffect, useState } from 'react';
 
 interface PerfBadgeProps<TRow> {
   rowCount: number;

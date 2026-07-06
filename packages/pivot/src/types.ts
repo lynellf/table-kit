@@ -17,7 +17,6 @@ import type {
   ColumnSizingState,
   Updater,
 } from '@lynellf/tablekit-core';
-import type { Announcer } from '@lynellf/tablekit-core';
 
 // Re-export core types for pivot package consumers
 export type { Updater } from '@lynellf/tablekit-core';
@@ -380,17 +379,32 @@ export interface PivotTableInstance<TRow = unknown> {
   /** Prop getter for the body rowgroup. */
   getBodyProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
   /** Prop getter for a row. */
-  getRowProps(row: PivotRowNode<TRow>, consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  getRowProps(
+    row: PivotRowNode<TRow>,
+    consumerProps?: Record<string, unknown>,
+  ): Record<string, unknown>;
   /** Prop getter for a row-header cell. */
-  getRowHeaderProps(row: PivotRowNode<TRow>, consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  getRowHeaderProps(
+    row: PivotRowNode<TRow>,
+    consumerProps?: Record<string, unknown>,
+  ): Record<string, unknown>;
   /** Prop getter for a column header. */
-  getHeaderProps(node: PivotColumnNode | PivotLeafColumn, consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  getHeaderProps(
+    node: PivotColumnNode | PivotLeafColumn,
+    consumerProps?: Record<string, unknown>,
+  ): Record<string, unknown>;
   /** Prop getter for the expand/collapse toggle. */
-  getToggleExpandedProps(row: PivotRowNode<TRow>, consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  getToggleExpandedProps(
+    row: PivotRowNode<TRow>,
+    consumerProps?: Record<string, unknown>,
+  ): Record<string, unknown>;
   /** Prop getter for the footer rowgroup (grand-total row). Returns null if totals.row is disabled. */
   getFooterProps(consumerProps?: Record<string, unknown>): Record<string, unknown> | null;
   /** Prop getter for a totals column leaf. */
-  getTotalsColumnProps(leaf: PivotLeafColumn<TRow>, consumerProps?: Record<string, unknown>): Record<string, unknown>;
+  getTotalsColumnProps(
+    leaf: PivotLeafColumn<TRow>,
+    consumerProps?: Record<string, unknown>,
+  ): Record<string, unknown>;
 }
 
 /** Options accepted by `createPivotTable`. Full surface in phase 4. */
