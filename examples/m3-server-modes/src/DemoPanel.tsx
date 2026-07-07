@@ -53,13 +53,15 @@ export const DemoPanel = ({
         Status: <strong>{dataSourceState?.status}</strong>
       </p>
       <div {...table.getGridProps()} className="grid">
-        <div {...table.getHeaderGroupProps()} className="header">
-          {table.getHeaderGroups()[0]?.headers.map((h) => (
-            <div key={h.id} {...h.getHeaderProps()} className="cell header-cell">
-              {String(h.column.def.header ?? h.id)}
-            </div>
-          ))}
-        </div>
+        {table.getHeaderGroups().map((headerGroup) => (
+          <div key={headerGroup.id} {...headerGroup.getHeaderGroupProps()} className="header">
+            {headerGroup.headers.map((h) => (
+              <div key={h.id} {...h.getHeaderProps()} className="cell header-cell">
+                {String(h.column.def.header ?? h.id)}
+              </div>
+            ))}
+          </div>
+        ))}
         <div {...table.getBodyProps()} className="body">
           {table.getRowModel().map((row) => (
             <div key={row.id} {...row.getRowProps()} className="row">

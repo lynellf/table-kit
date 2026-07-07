@@ -23,8 +23,11 @@
  * The function form is invoked synchronously by the engine when the slice is
  * uncontrolled. When the slice is controlled, the engine hands the updater
  * to the consumer via the slice-specific callback without invoking it.
+ *
+ * React state setters (`Dispatch<SetStateAction<T>>`) are also accepted,
+ * since they follow the same value-or-function pattern (with void return).
  */
-export type Updater<T> = T | ((old: T) => T);
+export type Updater<T> = T | ((old: T) => T) | ((prev: T) => void);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State slices
@@ -293,6 +296,8 @@ export interface Row<TRow> {
   readonly index: number;
   /** Reference to the original input row. */
   readonly original: TRow;
+  /** True for skeleton/placeholder rows rendered during loading states (M3 phase 4). */
+  readonly isPlaceholder?: boolean;
   getVisibleCells(): Cell<TRow>[];
   /** Returns prop getter for this row. */
   getRowProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
