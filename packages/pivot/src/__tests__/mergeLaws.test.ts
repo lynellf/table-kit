@@ -61,7 +61,10 @@ const foldWith = <TAcc, TIn>(agg: Aggregator<TIn, TAcc>, values: TIn[]): TAcc =>
   return acc;
 };
 
-const chunkedMerge = <TAcc>(agg: Aggregator<unknown, NonNullable<TAcc>>, chunks: NonNullable<TAcc>[]): TAcc => {
+const chunkedMerge = <TAcc>(
+  agg: Aggregator<unknown, NonNullable<TAcc>>,
+  chunks: NonNullable<TAcc>[],
+): TAcc => {
   if (chunks.length === 0) return agg.init();
   let acc = chunks[0]!;
   for (let i = 1; i < chunks.length; i++) {

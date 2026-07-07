@@ -80,7 +80,9 @@ describe('lazy expansion', () => {
       expandedPaths: [],
       pivotSorting: [],
     };
-    const children = await engine.computeChildren!(['West'], q, { signal: new AbortController().signal });
+    const children = await engine.computeChildren!(['West'], q, {
+      signal: new AbortController().signal,
+    });
     expect(children).toHaveLength(2);
     expect(children.map((c) => String(c.label)).sort()).toEqual(['A', 'B']);
   });

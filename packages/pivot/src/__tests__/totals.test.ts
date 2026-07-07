@@ -104,6 +104,9 @@ describe('totals', () => {
     const result = await engine.compute(q, { signal: new AbortController().signal });
     const totalsLeaves = result.leafColumns.filter((l: { isTotal: boolean }) => l.isTotal);
     expect(totalsLeaves).toHaveLength(2);
-    expect(totalsLeaves.map((l: { measureId: string }) => l.measureId).sort()).toEqual(['count', 'sales_sum']);
+    expect(totalsLeaves.map((l: { measureId: string }) => l.measureId).sort()).toEqual([
+      'count',
+      'sales_sum',
+    ]);
   });
 });

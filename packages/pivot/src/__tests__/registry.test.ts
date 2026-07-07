@@ -75,13 +75,21 @@ describe('nameOfAggregator', () => {
   });
 
   it('returns name for custom aggregator', () => {
-    const custom: Aggregator<number, number, number> = { init: () => 0, accumulate: (a: number) => a, merge: (a: number, b: number) => a + b };
+    const custom: Aggregator<number, number, number> = {
+      init: () => 0,
+      accumulate: (a: number) => a,
+      merge: (a: number, b: number) => a + b,
+    };
     registerAggregator('custom', custom);
     expect(nameOfAggregator(custom)).toBe('custom');
   });
 
   it('returns undefined for unregistered / inline aggregator', () => {
-    const inline: Aggregator<number, number, number> = { init: () => 0, accumulate: (a: number) => a, merge: (a: number, b: number) => a + b };
+    const inline: Aggregator<number, number, number> = {
+      init: () => 0,
+      accumulate: (a: number) => a,
+      merge: (a: number, b: number) => a + b,
+    };
     expect(nameOfAggregator(inline)).toBeUndefined();
   });
 
