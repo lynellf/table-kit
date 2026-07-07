@@ -20,13 +20,20 @@ const table = createDataTable({ data, columns });
 
 ## Status
 
-v0.1.0 — early stage. The public API is stabilizing.
+v1.0.0 — stable. The public API is frozen. See the [v1.0 API contract](https://github.com/lynellf/tablekit/tree/main/docs/m6-hardening/api-freeze.md).
 
-## Resources
+## Packages
 
-- [Spec](./docs/initial-spec.md)
-- [Bugs & issues](https://github.com/lynellf/tablekit/issues)
+| Package | Description |
+|---|---|
+| [`@lynellf/tablekit-react`](/packages/react) | React hooks, prop getters, announcer, and a11y validator built on top of `@lynellf/tablekit-core`. |
+| [`@lynellf/tablekit-pivot`](/packages/pivot) | PivotTable primitives and aggregation engine. |
+| [`@lynellf/tablekit-worker`](/packages/worker) | Worker-based pivot engine for off-thread aggregation. |
+
+## Bugs & Issues
+
+https://github.com/lynellf/tablekit/issues
 
 ## License
 
-[MIT](../../LICENSE)
+[MIT](./LICENSE)

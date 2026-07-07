@@ -1,6 +1,6 @@
 {
   "name": "@lynellf/tablekit-worker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": false,
   "description": "Worker pivot engine + message protocol + tiny in-worker data store, plus a server engine reference factory.",
   "type": "module",

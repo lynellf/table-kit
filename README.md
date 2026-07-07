@@ -1,6 +1,6 @@
 # table-kit
 
-Headless table primitives for the modern web — framework-free state engine, row pipeline, column model, and a first-class React adapter.
+Headless table primitives for the modern web — framework-free state engine, row pipeline, column model, PivotTable support, and first-class React adapters.
 
 **Status:** v1.0.0 — stable. The public API is frozen. See [`docs/m6-hardening/api-freeze.md`](./docs/m6-hardening/api-freeze.md) for the v1.0 contract.
 
@@ -10,6 +10,8 @@ Headless table primitives for the modern web — framework-free state engine, ro
 |---|---|
 | [`@lynellf/tablekit-core`](/packages/core) | Framework-agnostic state engine, row pipeline, column model, and event system. |
 | [`@lynellf/tablekit-react`](/packages/react) | React hooks, prop getters, announcer, and a11y validator for `@lynellf/tablekit-core`. |
+| [`@lynellf/tablekit-pivot`](/packages/pivot) | Framework-free PivotTable primitives, aggregation engine, and treegrid prop getters. |
+| [`@lynellf/tablekit-worker`](/packages/worker) | Worker-based pivot engine + message protocol + server engine reference factory. |
 
 ## Install
 
@@ -19,6 +21,10 @@ npm install @lynellf/tablekit-core
 
 # With React adapter
 npm install @lynellf/tablekit-core @lynellf/tablekit-react
+
+# With PivotTable support
+npm install @lynellf/tablekit-core @lynellf/tablekit-pivot
+npm install @lynellf/tablekit-core @lynellf/tablekit-pivot @lynellf/tablekit-worker
 ```
 
 Requires Node ≥ 20.
@@ -33,7 +39,7 @@ table.getState();       // current state snapshot
 table.subscribe(() => { /* re-render */ });
 ```
 
-See the spec at [`docs/initial-spec.md`](./docs/initial-spec.md) for the full surface.
+See the [v1.0 API contract](https://github.com/lynellf/tablekit/tree/main/docs/m6-hardening/api-freeze.md) for the full export surface.
 
 ## Server modes
 
@@ -53,6 +59,17 @@ Consumer-facing integration patterns. Each recipe is a self-contained copy-paste
 | [`docs/recipes/split-pane.md`](./docs/recipes/split-pane.md) | Three viewports with scroll sync (for transformed parent layouts) |
 
 See [`docs/recipes/README.md`](./docs/recipes/) for the full index.
+
+## Guides & agent skills
+
+Concept maps aligning table-kit's v1.0 feature surface against four external grid/pivot libraries. Guides ship inside the `@lynellf/tablekit-react` npm package at `node_modules/@lynellf/tablekit-react/docs/guides/<target>/`:
+
+| Target | Description |
+| --- | --- |
+| [`docs/guides/webix-datagrid/`](./docs/guides/webix-datagrid/) | Webix DataTable → `@lynellf/tablekit-react` |
+| [`docs/guides/webix-pivot/`](./docs/guides/webix-pivot/) | Webix Pivot → `@lynellf/tablekit-pivot` |
+| [`docs/guides/ag-grid-datagrid/`](./docs/guides/ag-grid-datagrid/) | AG-Grid DataGrid → `@lynellf/tablekit-react` |
+| [`docs/guides/ag-grid-pivot/`](./docs/guides/ag-grid-pivot/) | AG-Grid Pivot → `@lynellf/tablekit-pivot` |
 
 ## Bugs & Issues
 

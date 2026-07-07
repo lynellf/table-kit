@@ -1,6 +1,6 @@
 {
   "name": "table-kit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Headless table primitives (DataTable + PivotTable).",
   "license": "MIT",
@@ -30,8 +30,12 @@
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "pack:core": "pnpm -F @lynellf/tablekit-core build && pnpm -F @lynellf/tablekit-core pack --dry-run",
     "pack:react": "pnpm -F @lynellf/tablekit-react build && pnpm -F @lynellf/tablekit-react pack --dry-run",
+    "pack:pivot": "pnpm -F @lynellf/tablekit-pivot build && pnpm -F @lynellf/tablekit-pivot pack --dry-run",
+    "pack:worker": "pnpm -F @lynellf/tablekit-worker build && pnpm -F @lynellf/tablekit-worker pack --dry-run",
     "release:core": "pnpm build:core && pnpm -F @lynellf/tablekit-core publish --access public",
     "release:react": "pnpm build:react && pnpm -F @lynellf/tablekit-react publish --access public",
+    "release:pivot": "pnpm build:pivot && pnpm -F @lynellf/tablekit-pivot publish --access public",
+    "release:worker": "pnpm build:worker && pnpm -F @lynellf/tablekit-worker publish --access public",
     "prepare": "lefthook install"
   },
   "devDependencies": {

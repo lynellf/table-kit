@@ -13,7 +13,7 @@
  *  - buildPivotQuery / validatePivotQuery (phase 6 + M5 plumbing)
  */
 
-export const VERSION = '0.1.0' as const;
+export const VERSION = '1.0.0' as const;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export type {

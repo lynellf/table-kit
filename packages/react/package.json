@@ -1,6 +1,6 @@
 {
   "name": "@lynellf/tablekit-react",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": false,
   "description": "React adapter for @lynellf/tablekit-core — hooks, prop getters, announcer, and a11y validator.",
   "type": "module",
@@ -17,7 +17,7 @@
       "import": "./dist/validate.es.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "docs"],
   "sideEffects": false,
   "license": "MIT",
   "repository": {
@@ -33,7 +33,8 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && pnpm copy:guides",
+    "copy:guides": "node -e \"const{cpSync,existsSync,mkdirSync}=require('fs');const d='../../docs/guides';if(existsSync(d)){mkdirSync('docs',{recursive:true});cpSync(d,'docs/guides',{recursive:true});console.log('\\u2713 Copied docs/guides into package');}\"",
     "build:subpaths": "node vite.subpaths.config.mjs",
     "typecheck": "tsc -b"
   },
