@@ -3,7 +3,7 @@
 Worker pivot engine + message protocol + tiny in-worker data store, plus a server engine reference factory.
 
 **v1.0.0** — stable. The public API is frozen.
-[API contract →](https://github.com/lynellf/tablekit/blob/main/docs/m6-hardening/api-freeze.md)
+[API contract →](https://github.com/lynellf/table-kit/blob/main/docs/m6-hardening/api-freeze.md)
 
 ---
 
@@ -99,7 +99,7 @@ import MyWorker from './worker/pivotWorker?worker';
 const engine = createWorkerEngine({ createWorker: () => new MyWorker() });
 ```
 
-→ See [docs/bundler-recipes.md](https://github.com/lynellf/tablekit/blob/main/docs/bundler-recipes.md) for the full Vite pattern.
+→ See [docs/bundler-recipes.md](https://github.com/lynellf/table-kit/blob/main/docs/bundler-recipes.md) for the full Vite pattern.
 
 #### webpack 5
 
@@ -109,7 +109,7 @@ const engine = createWorkerEngine({
 });
 ```
 
-→ See [docs/bundler-recipes.md](https://github.com/lynellf/tablekit/blob/main/docs/bundler-recipes.md) for the full webpack pattern.
+→ See [docs/bundler-recipes.md](https://github.com/lynellf/table-kit/blob/main/docs/bundler-recipes.md) for the full webpack pattern.
 
 #### Rollup
 
@@ -387,7 +387,7 @@ Type-only subpath. Exports wire types useful for consumers who want to type thei
 - **Worker engine:** §12 perf budget — cold `setRows` for 1M rows ≈ 2–4 s on a mid-tier laptop; warm re-pivot < 1.5 s. The UI thread never blocks for > 50 ms.
 - **Main-thread engine:** documented in [`packages/pivot/README.md`](/packages/pivot). The pivot docs recommend the worker engine at ≥ ~200 k source rows.
 - **Server engine:** latency is dominated by network RTT and server-side pivot execution. `debounceMs` coalesces expansion churn.
-- **Reference benchmark:** `packages/worker/bench/worker.bench.ts` — run with `pnpm --filter @lynellf/tablekit-worker bench`. See [examples/m5-pivot-engines](https://github.com/lynellf/tablekit/tree/main/examples/m5-pivot-engines) for a working reference implementation of both engines.
+- **Reference benchmark:** `packages/worker/bench/worker.bench.ts` — run with `pnpm --filter @lynellf/tablekit-worker bench`. See [examples/m5-pivot-engines](https://github.com/lynellf/table-kit/tree/main/examples/m5-pivot-engines) for a working reference implementation of both engines.
 
 ---
 
@@ -403,7 +403,7 @@ Type-only subpath. Exports wire types useful for consumers who want to type thei
 
 ## Bugs & Issues
 
-https://github.com/lynellf/tablekit/issues
+https://github.com/lynellf/table-kit/issues
 
 ## License
 

@@ -44,7 +44,8 @@ for (let i = 0; i < subpaths.length; i++) {
       ...baseConfig,
       build: {
         ...baseConfig.build,
-        emptyOutDir: i === 0,
+        // The main build already owns cleanup; preserve emitted declarations.
+        emptyOutDir: false,
         lib: {
           entry,
           name: 'TableKitWorker',

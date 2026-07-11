@@ -11,11 +11,23 @@ export default defineConfig({
     alias: [
       {
         find: /^@lynellf\/tablekit-core$/,
-        replacement: '/Users/ezellfrazier/Documents/GitHub/table-kit/packages/core/src/index.ts',
+        replacement: new URL('../core/src/index.ts', import.meta.url).pathname,
       },
       {
-        find: /^@lynellf\/tablekit-core\/(.*)/,
-        replacement: '/Users/ezellfrazier/Documents/GitHub/table-kit/packages/core/src/$1/index.ts',
+        find: /^@lynellf\/tablekit-core\/dataSource$/,
+        replacement: new URL('../core/src/dataSource/index.ts', import.meta.url).pathname,
+      },
+      {
+        find: /^@lynellf\/tablekit-core\/virtualization$/,
+        replacement: new URL('../core/src/virtualization/index.ts', import.meta.url).pathname,
+      },
+      {
+        find: /^@lynellf\/tablekit-core\/src\/state$/,
+        replacement: new URL('../core/src/state.ts', import.meta.url).pathname,
+      },
+      {
+        find: /^@lynellf\/tablekit-pivot$/,
+        replacement: new URL('../pivot/src/index.ts', import.meta.url).pathname,
       },
     ],
   },

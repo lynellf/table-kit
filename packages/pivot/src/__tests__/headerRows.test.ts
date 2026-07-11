@@ -50,4 +50,92 @@ describe('getHeaderRows', () => {
     const entry = headerRows[0]!.find((e) => (e.node as { label?: unknown }).label === 2024);
     expect(entry?.colSpan).toBe(1); // single measure
   });
+
+  it('renders children at the next header depth for two column dimensions', () => {
+    const p = createPivotTable({
+      data: [
+        { role: 'orchestrator', status: 'success', sales: 1 },
+        { role: 'orchestrator', status: 'failed', sales: 2 },
+        { role: 'implementer', status: 'success', sales: 3 },
+      ],
+      pivot: {
+        rows: [],
+        columns: ['role', 'status'],
+        measures: [{ id: 'sales', field: 'sales', aggregator: 'sum' }],
+        totals: { grandTotalColumn: false },
+      },
+    });
+
+    const rows = p.getHeaderRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.map(({ node }) => ('label' in node ? node.label : undefined))).toEqual([
+      'orchestrator',
+      'implementer',
+    ]);
+    expect(rows[1]!.map(({ node }) => ('label' in node ? node.label : undefined))).toEqual([
+      'success',
+      'failed',
+      'success',
+      'failed',
+    ]);
+    expect(rows.flatMap((row) => row.map(({ colSpan }) => colSpan))).toEqual([2, 2, 1, 1, 1, 1]);
+  });
+
+  it('renders one level per field for three column dimensions', () => {
+    const p = createPivotTable({
+      data: [
+        { role: 'orchestrator', status: 'success', environment: 'prod', sales: 1 },
+        { role: 'orchestrator', status: 'success', environment: 'staging', sales: 2 },
+      ],
+      pivot: {
+        rows: [],
+        columns: ['role', 'status', 'environment'],
+        measures: [{ id: 'sales', field: 'sales', aggregator: 'sum' }],
+        totals: { grandTotalColumn: false },
+      },
+    });
+
+    const rows = p.getHeaderRows();
+    expect(rows).toHaveLength(3);
+    expect(rows[0]!.map(({ node }) => ('label' in node ? node.label : undefined))).toEqual([
+      'orchestrator',
+    ]);
+    expect(rows[1]!.map(({ node }) => ('label' in node ? node.label : undefined))).toEqual([
+      'success',
+    ]);
+    expect(rows[2]!.map(({ node }) => ('label' in node ? node.label : undefined))).toEqual([
+      'prod',
+      'staging',
+    ]);
+  });
+
+  it('keeps totals labeled without adding an extra hierarchy row', () => {
+    const p = createPivotTable({
+      data: [
+        { role: 'orchestrator', status: 'success', sales: 1 },
+        { role: 'orchestrator', status: 'failed', sales: 2 },
+        { role: 'implementer', status: 'success', sales: 3 },
+      ],
+      pivot: {
+        rows: [],
+        columns: ['role', 'status'],
+        measures: [{ id: 'sales', field: 'sales', aggregator: 'sum' }],
+      },
+    });
+
+    const rows = p.getHeaderRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.map(({ node }) => ('label' in node ? node.label : undefined))).toEqual([
+      'orchestrator',
+      'implementer',
+      '__total__',
+    ]);
+    expect(rows[0]!.map(({ colSpan }) => colSpan)).toEqual([2, 2, 1]);
+    expect(rows[1]!.map(({ node }) => ('label' in node ? node.label : undefined))).toEqual([
+      'success',
+      'failed',
+      'success',
+      'failed',
+    ]);
+  });
 });

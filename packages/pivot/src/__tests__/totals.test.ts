@@ -83,7 +83,7 @@ describe('totals', () => {
     };
     const result = await engine.compute(q, { signal: new AbortController().signal });
     expect(result.leafColumns.find((l: { isTotal: boolean }) => l.isTotal)).toBeUndefined();
-    expect(Object.keys(result.grandTotals)).toHaveLength(0);
+    expect(result.grandTotals['[]::sales_sum']).toBe(600);
   });
 
   it('multi-measure: one totals leaf per measure', async () => {
@@ -108,5 +108,64 @@ describe('totals', () => {
       'count',
       'sales_sum',
     ]);
+  });
+
+  it('populates grand totals for regular column leaves as well as the total column', async () => {
+    const engine = createMainThreadEngine<{ region: string; role: string; sales: number }>();
+    const q: PivotQuery<{ region: string; role: string; sales: number }> = {
+      rows: [
+        { region: 'West', role: 'orchestrator', sales: 10 },
+        { region: 'East', role: 'orchestrator', sales: 20 },
+        { region: 'West', role: 'implementer', sales: 30 },
+      ],
+      rowsFieldRef: [{ field: 'region' }],
+      columnsFieldRef: [{ field: 'role' }],
+      measures: [{ id: 'sales', field: 'sales', aggregator: 'sum' }],
+      filters: [],
+      totals: { grandTotalRow: true, grandTotalColumn: true },
+      expandedPaths: [],
+      pivotSorting: [],
+    };
+    const result = await engine.compute(q, { signal: new AbortController().signal });
+
+    expect(result.grandTotals).toEqual({
+      '["orchestrator"]::sales': 30,
+      '["implementer"]::sales': 30,
+      '__total__::sales': 60,
+    });
+  });
+
+  it('keeps grand-total row and grand-total column independent', async () => {
+    const engine = createMainThreadEngine<{ role: string; sales: number }>();
+    const base: PivotQuery<{ role: string; sales: number }> = {
+      rows: [
+        { role: 'orchestrator', sales: 10 },
+        { role: 'implementer', sales: 20 },
+      ],
+      rowsFieldRef: [],
+      columnsFieldRef: [{ field: 'role' }],
+      measures: [{ id: 'sales', field: 'sales', aggregator: 'sum' }],
+      filters: [],
+      totals: {},
+      expandedPaths: [],
+      pivotSorting: [],
+    };
+
+    const rowOnly = await engine.compute(
+      { ...base, totals: { grandTotalRow: true, grandTotalColumn: false } },
+      { signal: new AbortController().signal },
+    );
+    expect(rowOnly.leafColumns.every((leaf) => !leaf.isTotal)).toBe(true);
+    expect(rowOnly.grandTotals).toEqual({
+      '["orchestrator"]::sales': 10,
+      '["implementer"]::sales': 20,
+    });
+
+    const columnOnly = await engine.compute(
+      { ...base, totals: { grandTotalRow: false, grandTotalColumn: true } },
+      { signal: new AbortController().signal },
+    );
+    expect(columnOnly.grandTotals).toEqual({});
+    expect(columnOnly.rowRoot.values['__total__::sales']).toBe(30);
   });
 });

@@ -67,8 +67,8 @@ for (let i = 0; i < subpaths.length; i++) {
       ...baseConfig,
       build: {
         ...baseConfig.build,
-        // Only clear dist on the first entry to start fresh.
-        emptyOutDir: i === 0,
+        // The main build already owns cleanup; preserve emitted declarations.
+        emptyOutDir: false,
         lib: {
           entry,
           name: 'TableKitCore',

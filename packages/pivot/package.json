@@ -34,18 +34,19 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lynellf/tablekit"
+    "url": "https://github.com/lynellf/table-kit"
   },
   "bugs": {
-    "url": "https://github.com/lynellf/tablekit/issues"
+    "url": "https://github.com/lynellf/table-kit/issues"
   },
-  "homepage": "https://github.com/lynellf/tablekit",
+  "homepage": "https://github.com/lynellf/table-kit",
   "keywords": ["table", "headless", "pivot", "data-grid", "aggregation"],
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && pnpm build:types",
+    "build:types": "tsc -p tsconfig.build.json",
     "build:subpaths": "node vite.subpaths.config.mjs",
     "typecheck": "tsc -b",
     "bench": "vitest bench --run bench/main-thread.bench.ts"

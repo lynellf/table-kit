@@ -61,29 +61,12 @@ export const usePivotTable = <TRow>(
   }
   const pivot = ref.current;
 
-  // Push latest options after every render.
-  // We use a ref to track the previous options to avoid calling setOptions
-  // on every render when nothing relevant changed. This prevents infinite loops
-  // that can occur when setOptions always creates a new state object reference.
-  const prevOptionsRef = useRef<UsePivotTableOptions<TRow> | undefined>(undefined);
-  const optionsRef = useRef(options);
-  optionsRef.current = options;
-
+  // Push the latest options after commit. The factory compares the semantic
+  // pivot slices, so inline option objects do not create a render loop while
+  // callbacks and controlled slices still stay current.
   useEffect(() => {
-    // Deep compare the pivot config to avoid unnecessary setOptions calls.
-    const prev = prevOptionsRef.current;
-    const curr = optionsRef.current;
-
-    // Always call setOptions on first render (prev is undefined).
-    // On subsequent renders, only call if the pivot config changed.
-    const pivotChanged = !prev || prev.pivot !== curr.pivot || prev.data !== curr.data;
-
-    if (pivotChanged) {
-      pivot.setOptions(curr);
-      prevOptionsRef.current = curr;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pivot]);
+    pivot.setOptions(options);
+  }, [pivot, options]);
 
   // Side-effect: register the ReactAnnouncer globally if no announcer was provided.
   useEffect(() => {

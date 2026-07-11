@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "composite": false,
+    "incremental": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "baseUrl": "../..",
+    "paths": {
+      "@lynellf/tablekit-core": ["packages/core/dist/index.d.ts"],
+      "@lynellf/tablekit-core/*": ["packages/core/dist/*"],
+      "@lynellf/tablekit-pivot": ["packages/pivot/dist/index.d.ts"],
+      "@lynellf/tablekit-pivot/*": ["packages/pivot/dist/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.spec.ts", "src/**/*.spec.tsx"]
+}

@@ -70,7 +70,10 @@ describe('guides — structural smoke test', () => {
   // The archive README remains at docs/archive/guides-agent-skills/README.md and indexes
   // all four targets via live-path links (updated in this phase). Verify it.
   it('docs/archive/guides-agent-skills/README.md exists and indexes all four targets', () => {
-    const readmePath = resolve(import.meta.dirname, '../../../../docs/archive/guides-agent-skills/README.md');
+    const readmePath = resolve(
+      import.meta.dirname,
+      '../../../../docs/archive/guides-agent-skills/README.md',
+    );
     const content = readFileSync(readmePath, 'utf8');
     expect(content.trim().length).toBeGreaterThan(0);
     for (const target of TARGETS) {

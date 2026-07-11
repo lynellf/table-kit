@@ -6,6 +6,8 @@ export type {
   SerializedFieldRef,
   SerializedMeasureDef,
   SerializedPivotFilter,
+  InlinePivotFilter,
+  PivotQueryFilter,
   PivotQuery,
 } from '../types';
 
