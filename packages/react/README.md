@@ -3,7 +3,7 @@
 React hooks, announcer component, virtualization adapters, and accessibility primitives for `@lynellf/tablekit-core` and `@lynellf/tablekit-pivot`.
 
 **v1.0.0** — stable. The public API is frozen.
-[API contract →](https://github.com/lynellf/tablekit/tree/main/docs/m6-hardening/api-freeze.md)
+[API contract →](https://github.com/lynellf/table-kit/tree/main/docs/m6-hardening/api-freeze.md)
 
 ---
 
@@ -155,7 +155,7 @@ function MyPivot({ data }) {
             <tr>
               <td>Grand Total</td>
               {leafColumns.map((col) => (
-                <td key={col.id}>{String(state.pivot.grandTotals?.[col.id] ?? '')}</td>
+                <td key={col.id}>{String(pivot.getResult().grandTotals[col.id] ?? '')}</td>
               ))}
             </tr>
           </tfoot>
@@ -407,7 +407,7 @@ Consumer-facing integration patterns:
 
 ## Bugs & Issues
 
-https://github.com/lynellf/tablekit/issues
+https://github.com/lynellf/table-kit/issues
 
 ## License
 

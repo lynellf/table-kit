@@ -25,7 +25,7 @@
       "import": "./dist/pinning.es.js"
     },
     "./keyboard-nav": {
-      "types": "./dist/keyboard-nav.d.ts",
+      "types": "./dist/keyboardNav.d.ts",
       "import": "./dist/keyboard-nav.es.js"
     },
     "./memo": {
@@ -46,18 +46,19 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lynellf/tablekit"
+    "url": "https://github.com/lynellf/table-kit"
   },
   "bugs": {
-    "url": "https://github.com/lynellf/tablekit/issues"
+    "url": "https://github.com/lynellf/table-kit/issues"
   },
-  "homepage": "https://github.com/lynellf/tablekit",
+  "homepage": "https://github.com/lynellf/table-kit",
   "keywords": ["table", "headless", "data-grid", "state-machine", "virtualization"],
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && pnpm build:types",
+    "build:types": "tsc -p tsconfig.build.json",
     "build:subpaths": "node vite.subpaths.config.mjs",
     "typecheck": "tsc -b"
   },

@@ -20,60 +20,28 @@ export interface HeaderEntry {
 export const getHeaderRows = (columnRoot: PivotColumnNode): HeaderEntry[][] => {
   const rows: HeaderEntry[][] = [];
 
-  // Check if a node has children (intermediate levels)
-  const hasChildren = (node: PivotColumnNode): boolean =>
-    !!(node.children && node.children.length > 0);
-
-  // Calculate depth: how many levels of branch nodes (not counting the root).
-  // The root's children form level 0.
-  const depth = (node: PivotColumnNode): number => {
-    if (!hasChildren(node)) return 1; // Leaf level (only has leaves)
-    return 1 + Math.max(...node.children!.map((c) => depth(c)));
-  };
-
-  const totalDepth = depth(columnRoot);
-
-  // For the first level, use the root's children directly instead of the root itself.
-  // This avoids including the root node (which has label: undefined) in the output.
-  if (totalDepth >= 1) {
-    const children = columnRoot.children;
-    if (children && children.length > 0) {
-      rows.push(
-        children.map((child) => ({
-          node: child as PivotColumnNode | PivotLeafColumn,
-          colSpan: child.colSpan ?? 1,
-        })),
-      );
+  // With no column dimensions, the root owns the measure leaves directly.
+  if (!columnRoot.children || columnRoot.children.length === 0) {
+    if (columnRoot.leaves && columnRoot.leaves.length > 0) {
+      rows.push(columnRoot.leaves.map((leaf) => ({ node: leaf, colSpan: 1 })));
     }
+    return rows;
   }
 
-  // For deeper levels, traverse the tree starting from the root's children.
-  // Only add rows if they contain at least one intermediate node (with children).
-  for (let level = 1; level < totalDepth; level++) {
+  // Each iteration represents one column-field depth. Branch nodes at the
+  // current depth belong in that row; their children are the next row. A
+  // totals wrapper has leaves but no children, so it is emitted once at the
+  // depth where it is attached without inventing unlabeled hierarchy rows.
+  let current = columnRoot.children;
+  while (current.length > 0) {
     const row: HeaderEntry[] = [];
-    const visit = (node: PivotColumnNode | PivotLeafColumn, currentLevel: number): void => {
-      const branch = node as PivotColumnNode;
-      if (currentLevel === level) {
-        // Only add this node if it has children (intermediate level).
-        // Leaf nodes (with only leaves) should not be added at this level.
-        if (hasChildren(branch)) {
-          row.push({ node, colSpan: branch.colSpan ?? 1 });
-        }
-      } else if (currentLevel < level) {
-        // Descend into children
-        if (hasChildren(branch)) {
-          for (const child of branch.children!) visit(child, currentLevel + 1);
-        }
-      }
-    };
-    // Start from root's children at level 1
-    if (columnRoot.children) {
-      for (const child of columnRoot.children) visit(child, 1);
+    const next: PivotColumnNode[] = [];
+    for (const node of current) {
+      row.push({ node, colSpan: node.colSpan });
+      if (node.children && node.children.length > 0) next.push(...node.children);
     }
-    // Only add this row if it has entries (has intermediate nodes at this level)
-    if (row.length > 0) {
-      rows.push(row);
-    }
+    rows.push(row);
+    current = next;
   }
 
   return rows;

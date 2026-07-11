@@ -35,6 +35,21 @@ describe('protocol serialization', () => {
     expect(wire.rowsFieldRef).toEqual([{ field: 'region' }]);
   });
 
+  it('serializeQuery strips inline predicates at the worker boundary', () => {
+    const q: PivotQuery<{ region: string }> = {
+      rows: [{ region: 'West' }],
+      rowsFieldRef: [{ field: 'region' }],
+      columnsFieldRef: [],
+      measures: [],
+      filters: [{ predicate: (row) => row.region === 'West' }],
+      totals: {},
+      expandedPaths: [],
+      pivotSorting: [],
+    };
+
+    expect(serializeQuery(q).filters).toEqual([]);
+  });
+
   it('WirePivotQuery is structurally compatible with Omit<PivotQuery, rows | inlineAccessors>', () => {
     // Compile-time structural check: WirePivotQuery can be assigned to the expected shape
     const _assignability: WirePivotQuery = {

@@ -20,7 +20,7 @@ const table = createDataTable({ data, columns });
 
 ## Status
 
-v1.0.0 — stable. The public API is frozen. See the [v1.0 API contract](https://github.com/lynellf/tablekit/tree/main/docs/m6-hardening/api-freeze.md).
+v1.0.0 — stable. The public API is frozen. See the [v1.0 API contract](https://github.com/lynellf/table-kit/tree/main/docs/m6-hardening/api-freeze.md).
 
 ## Packages
 
@@ -32,7 +32,7 @@ v1.0.0 — stable. The public API is frozen. See the [v1.0 API contract](https:/
 
 ## Bugs & Issues
 
-https://github.com/lynellf/tablekit/issues
+https://github.com/lynellf/table-kit/issues
 
 ## License
 

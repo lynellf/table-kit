@@ -78,6 +78,7 @@ export type {
   PivotTableState,
   PivotQuery,
   PivotResult,
+  PivotTableStatus,
   PivotRowNode,
   PivotColumnNode,
   PivotLeafColumn,

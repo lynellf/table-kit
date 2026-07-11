@@ -10,7 +10,9 @@
  */
 
 import type {
+  Aggregator,
   FieldRef,
+  InlinePivotFilter,
   PivotConfig,
   PivotExpansionState,
   PivotQuery,
@@ -47,12 +49,12 @@ const serializeMeasure = <TRow>(m: import('../types').MeasureDef<TRow>): Seriali
 const serializeFilter = <TRow>(
   f: import('../types').PivotFilter<TRow>,
   serialize: boolean,
-): SerializedPivotFilter | null => {
+): SerializedPivotFilter | InlinePivotFilter<TRow> | null => {
   if ('predicateRef' in f)
     return { predicateRef: f.predicateRef, args: 'args' in f ? f.args : undefined };
   if ('predicate' in f) {
     if (serialize) return null; // strip inline predicates when serializing
-    return { predicate: f.predicate } as unknown as SerializedPivotFilter; // main-thread accepts inline
+    return { predicate: f.predicate }; // main-thread accepts inline
   }
   return {
     field: f.field,
@@ -94,13 +96,23 @@ export const buildPivotQuery = <TRow>(
       ? {}
       : {
           inlineAccessors: {
-            rows: pivot.rows.filter(
-              (r): r is Exclude<FieldRef<TRow>, string> => typeof r !== 'string',
+            rows: pivot.rows.map((r) =>
+              typeof r === 'string'
+                ? { field: r }
+                : { field: r.field, ...(r.accessor ? { accessor: r.accessor } : {}) },
             ),
-            columns: pivot.columns.filter(
-              (r): r is Exclude<FieldRef<TRow>, string> => typeof r !== 'string',
+            columns: pivot.columns.map((r) =>
+              typeof r === 'string'
+                ? { field: r }
+                : { field: r.field, ...(r.accessor ? { accessor: r.accessor } : {}) },
             ),
             measures: pivot.measures.filter((m) => m.accessor !== undefined),
+            aggregators: pivot.measures.reduce<Record<string, Aggregator>>((out, measure) => {
+              if (typeof measure.aggregator === 'object' && measure.aggregator !== null) {
+                out[measure.id] = measure.aggregator;
+              }
+              return out;
+            }, {}),
           },
         }),
   };

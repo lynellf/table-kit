@@ -205,6 +205,9 @@ export interface Aggregator<TIn = unknown, TAcc = unknown, TOut = unknown> {
 /** MaybePromise utility, mirror of dataSource's MaybePromise. */
 export type MaybePromise<T> = T | Promise<T>;
 
+/** Lifecycle state for the latest aggregation request. */
+export type PivotTableStatus = 'idle' | 'loading' | 'success' | 'error';
+
 /**
  * The aggregation engine seam. M4 ships only the main-thread implementation;
  * worker and server engines are M5.
@@ -251,6 +254,14 @@ export type SerializedPivotFilter =
   | { field: string; op: 'equals' | 'in' | 'notIn' | 'range' | 'contains'; value: unknown }
   | { predicateRef: string; args?: unknown };
 
+/** Main-thread-only predicate retained on an executable PivotQuery. */
+export interface InlinePivotFilter<TRow = unknown> {
+  predicate: (row: TRow) => boolean;
+}
+
+/** A filter accepted by an engine before crossing a serialization boundary. */
+export type PivotQueryFilter<TRow = unknown> = SerializedPivotFilter | InlinePivotFilter<TRow>;
+
 /**
  * The query that travels to the engine. Always serializable when crossing a
  * worker/server boundary; inline forms are accepted by the main-thread engine.
@@ -263,7 +274,7 @@ export interface PivotQuery<TRow = unknown> {
   rowsFieldRef: Array<SerializedFieldRef>;
   columnsFieldRef: Array<SerializedFieldRef>;
   measures: Array<SerializedMeasureDef>;
-  filters: Array<SerializedPivotFilter>;
+  filters: Array<PivotQueryFilter<TRow>>;
   totals: TotalsConfig;
   expandedPaths: Array<RowPathKey>;
   pivotSorting: PivotSortingState;
@@ -325,8 +336,8 @@ export interface PivotColumnNode {
  *  - 'loaded': children materialized.
  *  - 'notLoaded': path NOT in `expandedPaths`; engine returned aggregated
  *    values but did not enumerate children.
- *  - 'loading' / 'error': reserved for M5 server expansion (main-thread engine
- *    never returns these states).
+ *  - 'loading' / 'error': used while an asynchronous engine materializes
+ *    children.
  */
 export interface PivotRowNode<TRow = unknown> {
   key: RowPathKey;
@@ -366,6 +377,8 @@ export interface PivotTableInstance<TRow = unknown> {
   setOptions(options: PivotTableOptions<TRow>): void;
   subscribe(listener: () => void): () => void;
   getResult(): PivotResult<TRow>;
+  getStatus(): PivotTableStatus;
+  getError(): Error | undefined;
   getVisibleRows(): Array<PivotRowNode<TRow>>;
   getHeaderRows(): Array<Array<{ node: PivotColumnNode | PivotLeafColumn; colSpan: number }>>;
   getLeafColumns(): Array<PivotLeafColumn<TRow>>;
@@ -405,6 +418,8 @@ export interface PivotTableInstance<TRow = unknown> {
     leaf: PivotLeafColumn<TRow>,
     consumerProps?: Record<string, unknown>,
   ): Record<string, unknown>;
+  /** Abort in-flight work and release engine resources. */
+  dispose(): void;
 }
 
 /** Options accepted by `createPivotTable`. Full surface in phase 4. */

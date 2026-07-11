@@ -39,7 +39,7 @@ table.getState();       // current state snapshot
 table.subscribe(() => { /* re-render */ });
 ```
 
-See the [v1.0 API contract](https://github.com/lynellf/tablekit/tree/main/docs/m6-hardening/api-freeze.md) for the full export surface.
+See the [v1.0 API contract](https://github.com/lynellf/table-kit/tree/main/docs/m6-hardening/api-freeze.md) for the full export surface.
 
 ## Server modes
 
@@ -73,7 +73,7 @@ Concept maps aligning table-kit's v1.0 feature surface against four external gri
 
 ## Bugs & Issues
 
-https://github.com/lynellf/tablekit/issues
+https://github.com/lynellf/table-kit/issues
 
 ## License
 

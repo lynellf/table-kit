@@ -2,7 +2,7 @@
 
 Consumer-facing integration patterns for `@lynellf/tablekit-react`. Each recipe is a self-contained copy-paste snippet with pitfalls and links back to the spec.
 
-All recipes are verified against the [v1.0 API contract](https://github.com/lynellf/tablekit/tree/main/docs/m6-hardening/api-freeze.md) (v1.0.0).
+All recipes are verified against the [v1.0 API contract](https://github.com/lynellf/table-kit/tree/main/docs/m6-hardening/api-freeze.md) (v1.0.0).
 
 | Recipe | What it solves | Library surface |
 | --- | --- | --- |

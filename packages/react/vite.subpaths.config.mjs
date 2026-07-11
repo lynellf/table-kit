@@ -15,7 +15,9 @@ import { build, defineConfig } from 'vite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
-const { dependencies = {} } = require('./package.json');
+const { dependencies = {}, peerDependencies = {} } = require('./package.json');
+const externalPackages = [...Object.keys(dependencies), ...Object.keys(peerDependencies)];
+const isExternal = (id) => externalPackages.some((pkg) => id === pkg || id.startsWith(`${pkg}/`));
 
 const src = resolve(__dirname, 'src');
 const dist = resolve(__dirname, 'dist');
@@ -33,19 +35,7 @@ const baseConfig = {
     emptyOutDir: false,
     cssCodeSplit: false,
     rollupOptions: {
-      // Externalize all workspace core subpaths — they are built separately and available
-      // at runtime from the @lynellf/tablekit-core package's dist artifacts.
-      external: [
-        ...Object.keys(dependencies),
-        '@lynellf/tablekit-core',
-        '@lynellf/tablekit-core/virtualization',
-        '@lynellf/tablekit-core/resize',
-        '@lynellf/tablekit-core/pinning',
-        '@lynellf/tablekit-core/keyboard-nav',
-        '@lynellf/tablekit-core/memo',
-        '@lynellf/tablekit-core/dataSource',
-        '@lynellf/tablekit-core/announcer',
-      ],
+      external: isExternal,
       output: { inlineDynamicImports: true },
     },
   },
@@ -59,7 +49,8 @@ for (let i = 0; i < subpaths.length; i++) {
       ...baseConfig,
       build: {
         ...baseConfig.build,
-        emptyOutDir: i === 0,
+        // The main build already owns cleanup; preserve emitted declarations.
+        emptyOutDir: false,
         lib: {
           entry,
           name: 'TableKitReact',

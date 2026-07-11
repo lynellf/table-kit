@@ -45,6 +45,12 @@ jobs:
             --bail \
             --reporter=basic
 
+      - name: Build packages
+        run: pnpm build
+
+      - name: Verify packed package artifacts
+        run: pnpm check:package-artifacts
+
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4

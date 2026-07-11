@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "incremental": false,
+    "baseUrl": ".",
+    "paths": {
+      "@lynellf/tablekit-core": ["packages/core/dist/index.d.ts"],
+      "@lynellf/tablekit-core/*": ["packages/core/dist/*"],
+      "@lynellf/tablekit-react": ["packages/react/dist/index.d.ts"],
+      "@lynellf/tablekit-react/*": ["packages/react/dist/*"],
+      "@lynellf/tablekit-pivot": ["packages/pivot/dist/index.d.ts"],
+      "@lynellf/tablekit-pivot/*": ["packages/pivot/dist/*"],
+      "@lynellf/tablekit-worker": ["packages/worker/dist/index.d.ts"],
+      "@lynellf/tablekit-worker/*": ["packages/worker/dist/*"]
+    }
+  },
+  "files": ["scripts/package-artifact-fixture.ts"]
+}

@@ -22,18 +22,19 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lynellf/tablekit"
+    "url": "https://github.com/lynellf/table-kit"
   },
   "bugs": {
-    "url": "https://github.com/lynellf/tablekit/issues"
+    "url": "https://github.com/lynellf/table-kit/issues"
   },
-  "homepage": "https://github.com/lynellf/tablekit",
+  "homepage": "https://github.com/lynellf/table-kit",
   "keywords": ["react", "table", "headless", "data-grid", "hooks"],
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "vite build && pnpm copy:guides",
+    "build": "vite build && pnpm build:types && pnpm copy:guides",
+    "build:types": "tsc -p tsconfig.build.json",
     "copy:guides": "node -e \"const{cpSync,existsSync,mkdirSync}=require('fs');const d='../../docs/guides';if(existsSync(d)){mkdirSync('docs',{recursive:true});cpSync(d,'docs/guides',{recursive:true});console.log('\\u2713 Copied docs/guides into package');}\"",
     "build:subpaths": "node vite.subpaths.config.mjs",
     "typecheck": "tsc -b"

@@ -3,7 +3,7 @@
 Framework-free PivotTable configuration, main-thread aggregation engine, and treegrid rendering primitives.
 
 **v1.0.0** — stable. The public API is frozen.
-[API contract →](https://github.com/lynellf/tablekit/tree/main/docs/m6-hardening/api-freeze.md)
+[API contract →](https://github.com/lynellf/table-kit/tree/main/docs/m6-hardening/api-freeze.md)
 
 ---
 
@@ -276,6 +276,8 @@ State accessors and prop getters returned by `createPivotTable`.
 | `getState()` | `PivotTableState` | Current full state snapshot. |
 | `subscribe(listener)` | `() => void` | Subscribe to any state change. Returns unsubscribe. |
 | `getResult()` | `PivotResult<TRow>` | Full engine result (columnRoot, leafColumns, rowRoot, grandTotals). |
+| `getStatus()` | `'idle' | 'loading' | 'success' | 'error'` | Lifecycle of the latest engine computation. |
+| `getError()` | `Error | undefined` | Error from the latest failed computation, if any. |
 | `getVisibleRows()` | `PivotRowNode<TRow>[]` | Rows visible given current expansion. |
 | `getHeaderRows()` | `HeaderEntry[][]` | Column header rows for rendering `<thead>`. |
 | `getLeafColumns()` | `PivotLeafColumn<TRow>[]` | Flat ordered list of leaf columns. |
@@ -289,6 +291,7 @@ State accessors and prop getters returned by `createPivotTable`.
 | `setExpanded(updater)` | Update the expansion map. |
 | `toggleExpanded(path)` | Toggle one row's expanded state. `path` is an array of field values, e.g. `['West', 'A']`. |
 | `setPivotSorting(updater)` | Update per-level sort. |
+| `dispose()` | Abort work and release engine resources. |
 
 **Announcements**
 
@@ -357,7 +360,8 @@ Default aggregator is `'sum'`.
 
 #### `PivotFilter<TRow>`
 
-Three shapes; only registry-name shapes cross worker/server boundaries:
+Three shapes; declarative and registry-name shapes cross worker/server boundaries,
+while inline predicate functions are main-thread-only:
 
 ```ts
 // Declarative — server/worker capable
@@ -373,6 +377,11 @@ Three shapes; only registry-name shapes cross worker/server boundaries:
 // Registry predicate — server/worker capable
 { predicateRef: 'highSales', args: { threshold: 500 } }
 ```
+
+Declarative filters are applied before grouping, column discovery, aggregation, and
+grand totals. Multiple filters use **AND** semantics. `range` is inclusive; `contains`
+matches a string substring or an item in an array. Equality uses `Object.is`, so a
+missing field is treated as `undefined` and does not equal `null`.
 
 #### `TotalsConfig`
 
@@ -483,7 +492,7 @@ interface PivotRowNode<TRow> {
 
 - `'loaded'`: children are materialized in `children`.
 - `'notLoaded'`: path is not in `expandedPaths`; aggregated values exist but children are not enumerated.
-- `'loading'` / `'error'`: reserved for future server-expansion engines.
+- `'loading'` / `'error'`: used while an asynchronous engine materializes children.
 
 ---
 
@@ -499,7 +508,7 @@ interface PivotRowNode<TRow> {
 
 ## Bugs & Issues
 
-https://github.com/lynellf/tablekit/issues
+https://github.com/lynellf/table-kit/issues
 
 ## License
 

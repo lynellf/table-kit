@@ -4,7 +4,7 @@
  * Strips rows and inlineAccessors from a PivotQuery to produce a WirePivotQuery.
  */
 
-import type { PivotQuery } from '@lynellf/tablekit-pivot';
+import type { PivotQuery, SerializedPivotFilter } from '@lynellf/tablekit-pivot';
 import type { WirePivotQuery } from '../protocol';
 
 /**
@@ -14,6 +14,9 @@ import type { WirePivotQuery } from '../protocol';
  */
 export const serializeQuery = <TRow>(q: PivotQuery<TRow>): WirePivotQuery => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { rows: _rows, inlineAccessors: _ia, ...wire } = q;
-  return wire as unknown as WirePivotQuery;
+  const { rows: _rows, inlineAccessors: _ia, filters, ...wire } = q;
+  const serializableFilters = filters.filter(
+    (filter): filter is SerializedPivotFilter => !('predicate' in filter),
+  );
+  return { ...wire, filters: serializableFilters } as unknown as WirePivotQuery;
 };

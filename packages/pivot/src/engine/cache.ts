@@ -13,28 +13,44 @@
 import type { PivotQuery, PivotResult } from '../types';
 
 export class PivotResultCache<TRow = unknown> {
-  private cache: Map<string, PivotResult<TRow>> = new Map();
+  private cache = new WeakMap<object, Map<string, PivotResult<TRow>>>();
+  private functionIds = new WeakMap<object, number>();
+  private nextFunctionId = 1;
 
-  private key(_rowsRef: unknown, query: PivotQuery<TRow>): string {
-    // Serialize the query to a stable JSON string. Skip the `rows` field
-    // (keyed separately by reference); keep the rest.
+  private functionKey(fn: object): string {
+    const existing = this.functionIds.get(fn);
+    if (existing !== undefined) return `__tablekit_function_${existing}`;
+    const id = this.nextFunctionId;
+    this.nextFunctionId += 1;
+    this.functionIds.set(fn, id);
+    return `__tablekit_function_${id}`;
+  }
+
+  private key(query: PivotQuery<TRow>): string {
+    // Serialize the query to a stable JSON string. The source rows reference
+    // is the WeakMap key, so replacement datasets cannot reuse old results.
     const { rows: _rows, ...rest } = query;
     const queryJson = JSON.stringify(rest, (_key, value) => {
-      if (typeof value === 'function') return undefined; // never serialize fns
+      if (typeof value === 'function') return this.functionKey(value);
       return value;
     });
     return `r:${queryJson}`;
   }
 
   get(rowsRef: unknown, query: PivotQuery<TRow>): PivotResult<TRow> | undefined {
-    return this.cache.get(this.key(rowsRef, query));
+    if (!rowsRef || (typeof rowsRef !== 'object' && typeof rowsRef !== 'function'))
+      return undefined;
+    return this.cache.get(rowsRef as object)?.get(this.key(query));
   }
 
   set(rowsRef: unknown, query: PivotQuery<TRow>, result: PivotResult<TRow>): void {
-    this.cache.set(this.key(rowsRef, query), result);
+    if (!rowsRef || (typeof rowsRef !== 'object' && typeof rowsRef !== 'function')) return;
+    const rowsCache = this.cache.get(rowsRef as object) ?? new Map<string, PivotResult<TRow>>();
+    rowsCache.set(this.key(query), result);
+    this.cache.set(rowsRef as object, rowsCache);
   }
 
   clear(): void {
-    this.cache.clear();
+    this.cache = new WeakMap();
   }
 }

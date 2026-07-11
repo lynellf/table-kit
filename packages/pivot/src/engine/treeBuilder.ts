@@ -38,8 +38,9 @@ import type {
 
 const resolveFieldAccessor = <TRow>(
   ref: FieldRef<TRow>,
-  _inlineAccessor: ((row: TRow) => FieldValue) | undefined,
+  inlineAccessor: ((row: TRow) => FieldValue) | undefined,
 ): ((row: TRow) => FieldValue) => {
+  if (inlineAccessor) return inlineAccessor;
   if (typeof ref === 'string') {
     return (row: TRow) => (row as Record<string, unknown>)[ref] as FieldValue;
   }
@@ -49,8 +50,9 @@ const resolveFieldAccessor = <TRow>(
 
 const resolveMeasureAccessor = <TRow>(
   def: MeasureDef<TRow>,
-  _inlineAccessor: ((row: TRow) => unknown) | undefined,
+  inlineAccessor: ((row: TRow) => unknown) | undefined,
 ): ((row: TRow) => unknown) => {
+  if (inlineAccessor) return inlineAccessor;
   if (def.accessor) return def.accessor;
   if (def.field !== undefined)
     return (row: TRow) => (row as Record<string, unknown>)[def.field as string];
@@ -89,6 +91,19 @@ const buildColumnRoot = <TRow>(
 ): { columnRoot: PivotColumnNode; leafColumns: PivotLeafColumn<TRow>[] } => {
   const leafColumns: PivotLeafColumn<TRow>[] = [];
   const columnFieldRefs = query.columnsFieldRef;
+  const dimensionValues = columnFieldRefs.map((_, fieldIndex) => {
+    const seen = new Map<string, FieldValue>();
+    const accessor = resolveFieldAccessor(
+      columnFieldRefs[fieldIndex]!.field,
+      query.inlineAccessors?.columns?.[fieldIndex]?.accessor,
+    );
+    for (const row of query.rows) {
+      const value = accessor(row);
+      const key = JSON.stringify(value ?? null);
+      if (!seen.has(key)) seen.set(key, value);
+    }
+    return [...seen.values()];
+  });
 
   const buildLeaves = (path: FieldValue[]): PivotLeafColumn<TRow>[] =>
     query.measures.map((m) => ({
@@ -100,7 +115,11 @@ const buildColumnRoot = <TRow>(
       header: m.label ?? m.id,
     }));
 
-  const buildLevel = (fieldRefs: Array<{ field: string }>, path: FieldValue[]): PivotColumnNode => {
+  const buildLevel = (
+    fieldRefs: Array<{ field: string }>,
+    path: FieldValue[],
+    fieldIndex: number,
+  ): PivotColumnNode => {
     if (fieldRefs.length === 0) {
       // Leaf level: one leaf per measure.
       const leaves = buildLeaves(path);
@@ -115,22 +134,15 @@ const buildColumnRoot = <TRow>(
     }
 
     // Branch level: enumerate unique field values.
-    const [head, ...tail] = fieldRefs;
-    const accessor = (row: TRow): FieldValue =>
-      (row as Record<string, unknown>)[head!.field] as FieldValue;
-    const seen = new Map<string, FieldValue>();
-    for (const row of query.rows) {
-      const v = accessor(row);
-      const k = JSON.stringify(v ?? null);
-      if (!seen.has(k)) seen.set(k, v);
-    }
+    const [, ...tail] = fieldRefs;
+    const values = dimensionValues[fieldIndex] ?? [];
     const children: PivotColumnNode[] = [];
     let totalSpan = 0;
-    for (const [, value] of seen) {
+    for (const value of values) {
       const childPath = [...path, value];
       let child: PivotColumnNode;
       if (tail.length > 0) {
-        child = buildLevel(tail, childPath);
+        child = buildLevel(tail, childPath, fieldIndex + 1);
       } else {
         // Last field: build leaves under this branch.
         const leaves = buildLeaves(childPath);
@@ -149,14 +161,14 @@ const buildColumnRoot = <TRow>(
     const self: PivotColumnNode = {
       id: JSON.stringify(path),
       path: [...path],
-      label: undefined,
+      label: path.length > 0 ? path[path.length - 1] : undefined,
       colSpan: totalSpan,
       children,
     };
     return self;
   };
 
-  const columnRoot = buildLevel(columnFieldRefs, []);
+  const columnRoot = buildLevel(columnFieldRefs, [], 0);
 
   // Append the grand-total column if enabled.
   if (query.totals?.grandTotalColumn !== false) {
@@ -171,13 +183,13 @@ const buildColumnRoot = <TRow>(
       header: m.label ?? `${m.id} (total)`,
       pinned,
     }));
+    const regularLeafCount = leafColumns.length;
     if (position === 'end') {
       leafColumns.push(...totalsLeaves);
       // Attach totals leaves as a sibling of regular leaves at the root.
       // Only create wrapper nodes if existing children are intermediate levels (have children themselves).
       // For leaf-level hierarchies (children have leaves but no children), add totals directly.
       const existingChildren = columnRoot.children ?? [];
-      const regularLeaves = columnRoot.leaves ?? [];
       // Check if existing children are intermediate (have their own children) or leaf (have leaves only)
       const hasIntermediateChildren = existingChildren.some(
         (c) => c.children && c.children.length > 0,
@@ -189,7 +201,7 @@ const buildColumnRoot = <TRow>(
           {
             id: '__totals__',
             path: ['__total__'],
-            label: undefined,
+            label: '__total__',
             colSpan: totalsLeaves.length,
             leaves: totalsLeaves,
           },
@@ -207,12 +219,11 @@ const buildColumnRoot = <TRow>(
           },
         ];
       }
-      columnRoot.colSpan = regularLeaves.length + totalsLeaves.length;
+      columnRoot.colSpan = regularLeafCount + totalsLeaves.length;
     } else {
       // 'start': prepend totals leaves.
       leafColumns.unshift(...totalsLeaves);
       const existingChildren = columnRoot.children ?? [];
-      const regularLeaves = columnRoot.leaves ?? [];
       // Check if existing children are intermediate (have their own children) or leaf (have leaves only)
       const hasIntermediateChildren = existingChildren.some(
         (c) => c.children && c.children.length > 0,
@@ -223,7 +234,7 @@ const buildColumnRoot = <TRow>(
           {
             id: '__totals__',
             path: ['__total__'],
-            label: undefined,
+            label: '__total__',
             colSpan: totalsLeaves.length,
             leaves: totalsLeaves,
           },
@@ -242,7 +253,7 @@ const buildColumnRoot = <TRow>(
           ...existingChildren,
         ];
       }
-      columnRoot.colSpan = regularLeaves.length + totalsLeaves.length;
+      columnRoot.colSpan = regularLeafCount + totalsLeaves.length;
     }
   }
 
@@ -260,6 +271,7 @@ interface BuildRowContext<TRow> {
   leafColumns: PivotLeafColumn<TRow>[];
   aggregators: Map<MeasureId, Aggregator>;
   measureAccessors: Map<MeasureId, (row: TRow) => unknown>;
+  columnAccessors: Array<(row: TRow) => FieldValue>;
   expandedPaths: Set<RowPathKey>;
 }
 
@@ -286,29 +298,50 @@ const aggregateRows = <TRow>(
   aggregators: Map<MeasureId, Aggregator>,
   measureAccessors: Map<MeasureId, (row: TRow) => unknown>,
   leafColumns: PivotLeafColumn<TRow>[],
+  columnAccessors: Array<(row: TRow) => FieldValue>,
 ): { values: Record<LeafColumnId, unknown>; rowTotals: Record<MeasureId, unknown> } => {
-  const accums: Record<MeasureId, unknown> = {};
+  const regularPaths = new Map<string, FieldValue[]>();
+  for (const leaf of leafColumns) {
+    if (!leaf.isTotal) regularPaths.set(JSON.stringify(leaf.path), leaf.path);
+  }
+
+  const totalAccums = new Map<MeasureId, unknown>();
+  const columnAccums = new Map<string, Map<MeasureId, unknown>>();
   for (const [measureId, agg] of aggregators.entries()) {
-    accums[measureId] = agg.init();
+    totalAccums.set(measureId, agg.init());
+  }
+  for (const pathKey of regularPaths.keys()) {
+    const accums = new Map<MeasureId, unknown>();
+    for (const [measureId, agg] of aggregators.entries()) {
+      accums.set(measureId, agg.init());
+    }
+    columnAccums.set(pathKey, accums);
   }
 
   for (const row of rows) {
+    const columnPathKey = JSON.stringify(columnAccessors.map((accessor) => accessor(row)));
+    const pathAccums = columnAccums.get(columnPathKey);
     for (const [measureId, agg] of aggregators.entries()) {
       const accessor = measureAccessors.get(measureId)!;
       const value = accessor(row);
-      accums[measureId] = agg.accumulate(accums[measureId], value, row);
+      totalAccums.set(measureId, agg.accumulate(totalAccums.get(measureId), value, row));
+      if (pathAccums) {
+        pathAccums.set(measureId, agg.accumulate(pathAccums.get(measureId), value, row));
+      }
     }
   }
 
   const values: Record<LeafColumnId, unknown> = {};
   const rowTotals: Record<MeasureId, unknown> = {};
   for (const [measureId, agg] of aggregators.entries()) {
-    const acc = accums[measureId];
-    const finalized = agg.finalize ? agg.finalize(acc) : acc;
+    const totalAcc = totalAccums.get(measureId);
+    const finalized = agg.finalize ? agg.finalize(totalAcc) : totalAcc;
     rowTotals[measureId] = finalized;
     for (const leaf of leafColumns) {
       if (leaf.measureId === measureId && !leaf.isTotal) {
-        values[leaf.id] = finalized;
+        const pathAccums = columnAccums.get(JSON.stringify(leaf.path));
+        const pathAcc = pathAccums?.get(measureId);
+        values[leaf.id] = agg.finalize ? agg.finalize(pathAcc) : pathAcc;
       }
     }
     if (leafColumns.some((l) => l.measureId === measureId && l.isTotal)) {
@@ -354,6 +387,7 @@ const buildRowTree = <TRow>(ctx: BuildRowContext<TRow>): PivotRowNode<TRow> => {
         ctx.aggregators,
         ctx.measureAccessors,
         ctx.leafColumns,
+        ctx.columnAccessors,
       );
 
       const node: PivotRowNode<TRow> = {
@@ -400,6 +434,7 @@ const buildRowTree = <TRow>(ctx: BuildRowContext<TRow>): PivotRowNode<TRow> => {
       ctx.aggregators,
       ctx.measureAccessors,
       ctx.leafColumns,
+      ctx.columnAccessors,
     );
     parent.values = parentAggregated.values;
     parent.rowTotals = parentAggregated.rowTotals;
@@ -414,6 +449,7 @@ const buildRowTree = <TRow>(ctx: BuildRowContext<TRow>): PivotRowNode<TRow> => {
       ctx.aggregators,
       ctx.measureAccessors,
       ctx.leafColumns,
+      ctx.columnAccessors,
     );
     root.values = aggregated.values;
     root.rowTotals = aggregated.rowTotals;
@@ -425,6 +461,66 @@ const buildRowTree = <TRow>(ctx: BuildRowContext<TRow>): PivotRowNode<TRow> => {
 // ─────────────────────────────────────────────────────────────────────────────
 // PivotResult builder
 // ─────────────────────────────────────────────────────────────────────────────
+
+const registeredFilterFns = new Map<string, (row: unknown, args?: unknown) => boolean>();
+
+const rowFieldValue = (row: unknown, field: string): unknown =>
+  (row as Record<string, unknown>)[field];
+
+const matchesDeclarativeFilter = (
+  row: unknown,
+  filter: Extract<import('../types').SerializedPivotFilter, { field: string }>,
+): boolean => {
+  const cell = rowFieldValue(row, filter.field);
+  switch (filter.op) {
+    case 'equals':
+      return Object.is(cell, filter.value);
+    case 'in':
+      return Array.isArray(filter.value) && filter.value.some((value) => Object.is(cell, value));
+    case 'notIn':
+      return Array.isArray(filter.value) && !filter.value.some((value) => Object.is(cell, value));
+    case 'range': {
+      if (!Array.isArray(filter.value) || filter.value.length !== 2) return false;
+      const [min, max] = filter.value;
+      if (cell === null || cell === undefined || min === null || min === undefined) return false;
+      if (max === null || max === undefined) return false;
+      if (
+        (typeof cell !== 'number' && typeof cell !== 'string') ||
+        (typeof min !== 'number' && typeof min !== 'string') ||
+        (typeof max !== 'number' && typeof max !== 'string')
+      ) {
+        return false;
+      }
+      return cell >= min && cell <= max;
+    }
+    case 'contains':
+      if (typeof cell === 'string' && typeof filter.value === 'string') {
+        return cell.includes(filter.value);
+      }
+      return Array.isArray(cell) && cell.some((value) => Object.is(value, filter.value));
+  }
+};
+
+const rowPassesFilters = <TRow>(row: TRow, filters: PivotQuery<TRow>['filters']): boolean => {
+  for (const filter of filters) {
+    if ('predicate' in filter) {
+      if (!filter.predicate(row)) return false;
+      continue;
+    }
+    if ('predicateRef' in filter) {
+      const predicate = registeredFilterFns.get(filter.predicateRef);
+      if (!predicate) {
+        throw new Error(
+          `[tablekit-pivot] Filter "${filter.predicateRef}" is not registered. Register it via __registerCoreFilterFn() before computing.`,
+        );
+      }
+      if (!predicate(row, filter.args)) return false;
+      continue;
+    }
+    if (!matchesDeclarativeFilter(row, filter)) return false;
+  }
+  return true;
+};
 
 export const buildPivotResult = <TRow>(query: PivotQuery<TRow>): PivotResult<TRow> => {
   // Resolve aggregators + accessors once.
@@ -438,29 +534,33 @@ export const buildPivotResult = <TRow>(query: PivotQuery<TRow>): PivotResult<TRo
     measureAccessors.set(m.id, resolveMeasureAccessor(m, inlineAccessor));
   }
 
-  // Build column hierarchy.
-  const { columnRoot, leafColumns } = buildColumnRoot(query);
-
   // Apply pre-aggregation filters (§9.1).
-  let filteredRows = query.rows;
-  if (query.filters.length > 0) {
-    filteredRows = query.rows.filter((row) => {
-      for (const f of query.filters) {
-        if (!('predicateRef' in f) && 'predicate' in f) {
-          // Inline predicate (main-thread only).
-          if (!(f as { predicate: (row: TRow) => boolean }).predicate(row)) return false;
-        }
-        // Registry-name and declarative filters are server/worker-only —
-        // main-thread engine skips them (documented limitation).
-      }
-      return true;
-    });
-  }
+  const filteredRows =
+    query.filters.length > 0
+      ? query.rows.filter((row) => rowPassesFilters(row, query.filters))
+      : query.rows;
+
+  // Build the column hierarchy from the filtered dataset so excluded values do
+  // not leave empty header branches behind.
+  const filteredQuery: PivotQuery<TRow> = { ...query, rows: filteredRows };
+  const { columnRoot, leafColumns } = buildColumnRoot(filteredQuery);
+
+  const rows = query.rowsFieldRef.map((ref, index) => {
+    const inline = query.inlineAccessors?.rows?.[index]?.accessor;
+    return inline ? { field: ref.field, accessor: inline } : ref.field;
+  }) as Array<FieldRef<TRow>>;
+  const columns = query.columnsFieldRef.map((ref, index) => {
+    const inline = query.inlineAccessors?.columns?.[index]?.accessor;
+    return inline ? { field: ref.field, accessor: inline } : ref.field;
+  }) as Array<FieldRef<TRow>>;
+  const columnAccessors = query.columnsFieldRef.map((ref, index) =>
+    resolveFieldAccessor(ref.field, query.inlineAccessors?.columns?.[index]?.accessor),
+  );
 
   // Build row tree with lazy expansion.
   const pivotConfig: PivotConfig<TRow> = {
-    rows: query.rowsFieldRef.map((r) => r.field as FieldRef<TRow>),
-    columns: query.columnsFieldRef.map((c) => c.field as FieldRef<TRow>),
+    rows,
+    columns,
     measures: query.measures as MeasureDef<TRow>[],
   };
   const expandedPaths = new Set(query.expandedPaths);
@@ -471,16 +571,23 @@ export const buildPivotResult = <TRow>(query: PivotQuery<TRow>): PivotResult<TRo
     leafColumns,
     aggregators,
     measureAccessors,
+    columnAccessors,
     expandedPaths,
   });
 
   // Grand totals — feed the footer row.
-  const grandAggregated = aggregateRows(filteredRows, aggregators, measureAccessors, leafColumns);
+  const grandAggregated = aggregateRows(
+    filteredRows,
+    aggregators,
+    measureAccessors,
+    leafColumns,
+    columnAccessors,
+  );
   const grandTotals: Record<LeafColumnId, unknown> = {};
-  for (const [measureId, finalized] of Object.entries(grandAggregated.rowTotals)) {
+  if (query.totals.grandTotalRow !== false) {
     for (const leaf of leafColumns) {
-      if (leaf.measureId === measureId && leaf.isTotal) {
-        grandTotals[leaf.id] = finalized;
+      if (Object.hasOwn(grandAggregated.values, leaf.id)) {
+        grandTotals[leaf.id] = grandAggregated.values[leaf.id];
       }
     }
   }
@@ -489,15 +596,14 @@ export const buildPivotResult = <TRow>(query: PivotQuery<TRow>): PivotResult<TRo
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Filter registry bridge (main-thread engine — inline predicates only)
+// Filter registry bridge
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** No-op for the filter registry bridge in M4. Server/worker filter wiring is M5. */
 export const __registerCoreFilterFn = (
-  _name: string,
-  _fn: (row: unknown, args?: unknown) => boolean,
+  name: string,
+  fn: (row: unknown, args?: unknown) => boolean,
 ): void => {
-  // Filter registry bridge: not wired in M4 (main-thread engine uses inline predicates only).
+  registeredFilterFns.set(name, fn);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
