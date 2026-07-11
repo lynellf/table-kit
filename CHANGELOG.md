@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-07-11
+
+### Added
+
+- **Pivot table lifecycle API** — Added `PivotTableStatus`, `getStatus()`, `getError()`, and `dispose()` for synchronous and asynchronous aggregation engines.
+- **Pivot query types** — Exported `InlinePivotFilter` and `PivotQueryFilter`, with support for inline field accessors, custom aggregators, and registered/declarative filters.
+- **Package artifact validation** — Added declaration-only package builds and automated checks for published type targets and runtime boundaries.
+
+### Changed
+
+- **Pivot updates** — Pivot tables now normalize configuration changes, cancel stale computations, and refresh results when data, options, or engines change.
+- **Package builds** — Main and subpath builds preserve generated declarations; React peer dependencies remain external in published bundles.
+- **Repository metadata** — Updated package links and the core keyboard-navigation declaration target to match the current repository.
+- **CI** — Pinned CI to the repository’s pnpm version and configured Vitest bail-count reporting.
+
+### Fixed
+
+- **Pivot aggregation** — Corrected row/column intersection values, grand totals, filtered column discovery, and handling of inline accessors and filters.
+- **Pivot caching and serialization** — Prevented stale results for replaced datasets or function-valued query options and stripped main-thread-only predicates before worker serialization.
+
 ## [1.0.1] — 2026-07-07
 
 ### Changed

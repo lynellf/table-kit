@@ -1,6 +1,6 @@
 {
   "name": "@lynellf/tablekit-react",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": false,
   "description": "React adapter for @lynellf/tablekit-core — hooks, prop getters, announcer, and a11y validator.",
   "type": "module",
