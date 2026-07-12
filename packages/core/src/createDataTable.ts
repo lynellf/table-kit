@@ -229,19 +229,45 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     return this.dataSourceState;
   }
 
+  /** @internal Previous data version for change detection. */
+  private _prevDataVersion?: string | number;
+
   /** @internal Write the data source state. Used by the React hook. */
   __setDataSourceState(state: DataSourceState<TRow>): void {
     const prev = this.dataSourceState;
+
     // F0.5: Treat data identity as reference-based by default.
-    // JSON.stringify is expensive for large datasets; reference equality is sufficient
-    // for typical data-fetching patterns where a new array means new data.
-    // Consumers who mutate data in-place should change the reference (or use dataVersion).
+    // Reference equality is sufficient for typical data-fetching patterns.
+    // For mutable data patterns (same reference, mutated content), check version.
     const dataChanged = prev.data !== state.data;
+
+    // R2 fix: If data reference is unchanged but dataVersion is configured,
+    // check if the version changed to detect mutable data updates.
+    let versionChanged = false;
+    if (!dataChanged && prev.data === state.data && this.options.dataVersion) {
+      const prevVersion = this._prevDataVersion ?? this.getDataVersion();
+      // Compute version from the new data
+      const dv = this.options.dataVersion;
+      const newVersion = dv.getVersion ? dv.getVersion(state.data ?? []) : dv.version;
+      versionChanged = prevVersion !== newVersion;
+      // Only track defined versions
+      if (newVersion !== undefined) {
+        this._prevDataVersion = newVersion;
+      }
+    }
+
     const statusChanged = prev.status !== state.status;
     const errorChanged = prev.error !== state.error;
     const totalRowCountChanged = prev.totalRowCount !== state.totalRowCount;
-    if (!statusChanged && !dataChanged && !errorChanged && !totalRowCountChanged) {
-      // Only refetch changed — skip to avoid unnecessary state updates.
+
+    if (
+      !statusChanged &&
+      !dataChanged &&
+      !errorChanged &&
+      !totalRowCountChanged &&
+      !versionChanged
+    ) {
+      // No meaningful change — skip to avoid unnecessary state updates.
       this.dataSourceState = state;
       return;
     }
