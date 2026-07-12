@@ -6,6 +6,8 @@
 
 **Last update (2026-07-12):** Corrected R2-CURSOR-001 fix - the previous fix was incomplete; the early-return condition did not account for `selectCursorTriggeredRef`, causing the effect to return early without fetching when `selectCursor` was called without other context changes. Added `!selectCursorTriggeredRef.current` to the early-return condition and reset the flag after checking. Also added 2 new integration tests specifically exercising `selectCursor` to verify correct behavior.
 
+**Round 8 update (2026-07-12):** Added `data-source-contract.test.tsx` for B7 contract evidence and strengthened `abort-stale.test.tsx` with stricter call count assertions.
+
 ## Implementation Summary
 
 This document records exact evidence from the bounded correction addressing R1, R3, R4, R5, R6, and R2 findings. All R1-R6 issues are addressed; R7 evidence is updated with current state and F0.1-F0.6 matrix.
@@ -233,6 +235,45 @@ The package artifact verification (`pnpm check:package-artifacts`) is authoritat
 16. `packages/react/src/useDataSource.ts` - R2-CURSOR-001 selectCursor cursor preservation fix (2026-07-12)
 17. `packages/react/src/__integration__/cursor-pagination.test.tsx` - Added 2 new tests for `selectCursor` triggering new requests (now 10 tests total)
 18. `packages/react/src/useDataSource.ts` - R2-CURSOR-001 early-return condition fix to ensure `selectCursor` triggers fetch (e7143e9)
+
+## Round 8 Bounded Correction (2026-07-12)
+
+### Commit: b188cf1
+
+Added `data-source-contract.test.tsx` covering B7 contract requirements:
+- **B7-REQUEST-TRIGGERING**: Exactly one call per descriptor key
+  - Non-null source mount starts exactly one request
+  - Source replacement starts exactly one new request and aborts old
+  - Page-size change starts exactly one new request
+  - Status publication does NOT start a new request
+- **B7-CURSOR-METADATA**: Cursor selection vs response metadata separation
+  - selectCursor triggers new request
+  - Source replacement resets cursor selection
+- **B7-MANUAL-CAPABILITY-PERSISTENCE**: Source capability overlay
+  - Source capability overlay survives normal option updates
+  - Source capability change replaces overlay before next query
+  - Source removal clears overlay
+- **R3-SWR-VERIFICATION**: Stale-while-revalidate metadata retention
+  - Successful result with dataVersion is published
+  - Prior metadata is retained during replacement loading
+- **R5-INSTANCE-CHANNEL**: Announcer isolation
+  - Each DataTable instance announces independently
+
+Strengthened `abort-stale.test.tsx`:
+- Added strict assertion for exactly one replacement call
+- Asserts replacement pagination `{ type: 'offset', offset: 10, limit: 10 }`
+
+### Test Results
+
+```
+data-source-contract.test.tsx: 12 passed
+abort-stale.test.tsx: 1 passed (stricter assertion)
+```
+
+### Files Changed
+
+1. `packages/react/src/__integration__/data-source-contract.test.tsx` - New file with 12 tests covering B7/R3/R5 contract requirements
+2. `packages/react/src/__integration__/abort-stale.test.tsx` - Strengthened assertions for exact call counts
 
 ## Status
 
