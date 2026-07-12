@@ -293,6 +293,81 @@ describe('multi-instance announcer isolation', () => {
     });
   });
 
+  // R5: Message content isolation tests — verify messages are routed to correct instances
+  describe('R5: message content isolation in live regions', () => {
+    it('R5: announcer is unique per instance (different announce function references)', async () => {
+      // Verify that each table instance gets its own announcer, not a shared singleton
+      const announceRefs: unknown[] = [];
+
+      function TwoInstancesAnnounceRef() {
+        const table1 = useDataTable({
+          data: simpleData,
+          columns: simpleColumns,
+          getRowId: (row) => row.id,
+        });
+        const table2 = useDataTable({
+          data: simpleData,
+          columns: simpleColumns,
+          getRowId: (row) => row.id,
+        });
+
+        // Collect announce function references
+        announceRefs.push(table1.table.announce);
+        announceRefs.push(table2.table.announce);
+
+        return <div data-testid="placeholder" />;
+      }
+
+      render(<TwoInstancesAnnounceRef />);
+
+      // Two announce functions should be collected
+      expect(announceRefs.length).toBe(2);
+
+      // Announce functions should be different references (not shared/singleton)
+      // This proves that each instance has its own announcer channel
+      expect(announceRefs[0]).not.toBe(announceRefs[1]);
+    });
+
+    it("R5: unmounting one instance does not affect the other's announcer DOM node", async () => {
+      // This test verifies the isolation property: unmounting sibling should not
+      // affect the remaining announcer.
+      function TwoInstancesControllable({ showFirst }: { showFirst: boolean }) {
+        return (
+          <div>
+            {showFirst && (
+              <div data-testid="announcer-1">
+                <DataTableWithAnnouncer id="dt1" initialMessage="First instance message" />
+              </div>
+            )}
+            <div data-testid="announcer-2">
+              <DataTableWithAnnouncer id="dt2" initialMessage="Second instance message" />
+            </div>
+          </div>
+        );
+      }
+
+      const { rerender } = render(<TwoInstancesControllable showFirst={true} />);
+
+      // Wait for both announcers to mount
+      await waitFor(() => {
+        expect(screen.queryAllByTestId('tablekit-announcer').length).toBe(2);
+      });
+
+      // Unmount first instance
+      await act(async () => {
+        rerender(<TwoInstancesControllable showFirst={false} />);
+      });
+
+      // Second instance's announcer should remain in DOM
+      await waitFor(() => {
+        const announcers = screen.queryAllByTestId('tablekit-announcer');
+        expect(announcers.length).toBe(1);
+        // The remaining announcer should be from dt2 (not dt1)
+        expect(screen.queryByTestId('announcer-2')).not.toBeNull();
+      });
+    });
+  });
+
   describe('Strict Mode', () => {
     it('R5: announcers work correctly under React Strict Mode remounting', async () => {
       // StrictMode causes double-invocation of effects in development

@@ -504,4 +504,71 @@ describe('data-source-contract', () => {
       });
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // R3-NULL-SOURCE-LIFECYCLE: null source is idle and unsubscribed
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('R3-NULL-SOURCE-LIFECYCLE: null source is idle and unsubscribed', () => {
+    it('R3: null source does NOT call getRows on mount', async () => {
+      function Wrapper({ source }: { source: DataSource<Person> | null }) {
+        return <DataTableWithSource source={source} />;
+      }
+
+      render(<Wrapper source={null} />);
+
+      // Wait to ensure no calls are made
+      await new Promise((r) => setTimeout(r, 50));
+
+      // No getRows calls should be made with null source
+      expect(getRowsCalls.length).toBe(0);
+    });
+
+    it('R3: adding a source to a null source triggers exactly one request', async () => {
+      const mockSource = createMockDataSource([{ rows: simpleData, totalRowCount: 2 }]);
+
+      function Wrapper({ source }: { source: DataSource<Person> | null }) {
+        return <DataTableWithSource source={source} />;
+      }
+
+      const { rerender } = render(<Wrapper source={null} />);
+
+      // Wait for any pending calls
+      await new Promise((r) => setTimeout(r, 50));
+      expect(getRowsCalls.length).toBe(0);
+
+      // Add source
+      act(() => {
+        rerender(<Wrapper source={mockSource} />);
+      });
+
+      // Should trigger exactly one request
+      await waitFor(() => {
+        expect(getRowsCalls.length).toBe(1);
+      });
+    });
+
+    it('R3: replacing null source with a source does not retain stale state', async () => {
+      const mockSource = createMockDataSource([
+        { rows: [{ id: 'new', name: 'New', age: 99 }], totalRowCount: 1 },
+      ]);
+
+      function Wrapper({ source }: { source: DataSource<Person> | null }) {
+        return <DataTableWithSource source={source} />;
+      }
+
+      const { rerender } = render(<Wrapper source={null} />);
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Add source
+      act(() => {
+        rerender(<Wrapper source={mockSource} />);
+      });
+
+      await waitFor(() => {
+        expect(getRowsCalls.length).toBe(1);
+      });
+    });
+  });
 });

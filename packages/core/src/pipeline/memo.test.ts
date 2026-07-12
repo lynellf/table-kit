@@ -126,6 +126,100 @@ describe('memoKeysEqual', () => {
     });
     expect(memoKeysEqual(a, b)).toBe(false);
   });
+
+  // R2: dataVersion comparison for mutable data identity
+  it('R2: memoKeysEqual returns true when same reference + same dataVersion', () => {
+    const data = baseOpts().data;
+    const key = buildMemoKey({
+      data,
+      columns: baseOpts().columns,
+      state: {
+        sorting: [],
+        columnFilters: [],
+        pagination: { pageIndex: 0, pageSize: 25 },
+        columnOrder: [],
+        columnVisibility: {},
+        columnPinning: { left: [], right: [] },
+        columnSizing: {},
+        columnSizingInfo: null,
+        focusedCell: null,
+      },
+      dataVersion: 42,
+      manualSorting: false,
+      manualFiltering: false,
+      manualPagination: false,
+    });
+    // Same reference + same dataVersion → cache hit
+    expect(memoKeysEqual(key, key)).toBe(true);
+  });
+
+  it('R2: memoKeysEqual returns false when dataVersion changes (same reference)', () => {
+    const data = baseOpts().data;
+    const keyA = buildMemoKey({
+      data,
+      columns: baseOpts().columns,
+      state: {
+        sorting: [],
+        columnFilters: [],
+        pagination: { pageIndex: 0, pageSize: 25 },
+        columnOrder: [],
+        columnVisibility: {},
+        columnPinning: { left: [], right: [] },
+        columnSizing: {},
+        columnSizingInfo: null,
+        focusedCell: null,
+      },
+      dataVersion: 1,
+      manualSorting: false,
+      manualFiltering: false,
+      manualPagination: false,
+    });
+    const keyB = buildMemoKey({
+      data, // same reference
+      columns: baseOpts().columns,
+      state: {
+        sorting: [],
+        columnFilters: [],
+        pagination: { pageIndex: 0, pageSize: 25 },
+        columnOrder: [],
+        columnVisibility: {},
+        columnPinning: { left: [], right: [] },
+        columnSizing: {},
+        columnSizingInfo: null,
+        focusedCell: null,
+      },
+      dataVersion: 2, // different version
+      manualSorting: false,
+      manualFiltering: false,
+      manualPagination: false,
+    });
+    // Same reference but different dataVersion → cache miss
+    expect(memoKeysEqual(keyA, keyB)).toBe(false);
+  });
+
+  it('R2: memoKeysEqual returns true when dataVersion is undefined on both (legacy behavior)', () => {
+    const data = baseOpts().data;
+    const key = buildMemoKey({
+      data,
+      columns: baseOpts().columns,
+      state: {
+        sorting: [],
+        columnFilters: [],
+        pagination: { pageIndex: 0, pageSize: 25 },
+        columnOrder: [],
+        columnVisibility: {},
+        columnPinning: { left: [], right: [] },
+        columnSizing: {},
+        columnSizingInfo: null,
+        focusedCell: null,
+      },
+      // No dataVersion — undefined on both
+      manualSorting: false,
+      manualFiltering: false,
+      manualPagination: false,
+    });
+    expect(memoKeysEqual(key, key)).toBe(true);
+  });
 });
 
 describe('RowModelCache', () => {

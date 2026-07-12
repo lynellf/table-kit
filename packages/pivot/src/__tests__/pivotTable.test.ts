@@ -585,6 +585,104 @@ describe('createPivotTable', () => {
       // With columns dimension, we should have leaf columns
       expect(leaves.length).toBeGreaterThan(0);
     });
+
+    it('R4: right-pinned columns have correct cumulative pinnedOffset values from the right edge', () => {
+      // When multiple columns are right-pinned, offsets accumulate from the right edge.
+      // The rightmost column gets offset 0; the next rightmost gets the width of the rightmost, etc.
+      // This is the R4-TOTAL-PIN-OFFSETS fix: default-right total leaves are included.
+      const p = createPivotTable({
+        data: rows,
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        getRowId: (r) => r.id,
+        state: {
+          columnPinning: { left: [], right: ['[]::sales_sum', '__total__::sales_sum'] },
+          columnSizing: {
+            '[]::sales_sum': 80,
+            '__total__::sales_sum': 60,
+          },
+        },
+      });
+      const leaves = p.getLeafColumns();
+      const leafMap = new Map(leaves.map((l) => [l.id, l]));
+
+      // __total__::sales_sum is rightmost (second in right array), gets offset 0
+      const totalLeaf = leafMap.get('__total__::sales_sum')!;
+      expect(totalLeaf.pinned).toBe('right');
+      expect(totalLeaf.pinnedOffset).toBe(0);
+
+      // []::sales_sum is leftmost of right-pinned (first in right array), gets offset 60 (total width)
+      const ordinaryLeaf = leafMap.get('[]::sales_sum')!;
+      expect(ordinaryLeaf.pinned).toBe('right');
+      expect(ordinaryLeaf.pinnedOffset).toBe(60); // width of __total__::sales_sum
+    });
+
+    it('R4: default-right total leaf gets correct pinnedOffset (first right-pinned = 0)', () => {
+      // When no explicit columnPinning.right is set, the grand total defaults to right pinned.
+      // As the only right-pinned column, it gets offset 0.
+      const p = createPivotTable({
+        data: rows,
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        getRowId: (r) => r.id,
+        state: {
+          columnSizing: {
+            '[]::sales_sum': 80,
+            '__total__::sales_sum': 60,
+          },
+        },
+        // No columnPinning state — total defaults to right
+      });
+      const leaves = p.getLeafColumns();
+      const totalLeaf = leaves.find((l) => l.isTotal)!;
+      expect(totalLeaf.pinned).toBe('right');
+      expect(totalLeaf.pinnedOffset).toBe(0); // first (only) right-pinned column
+
+      // Ordinary unpinned column should have no pinned property
+      const ordinaryLeaf = leaves.find((l) => !l.isTotal)!;
+      expect(ordinaryLeaf.pinned).toBeUndefined();
+      expect(ordinaryLeaf.pinnedOffset).toBeUndefined();
+    });
+
+    it('R4: getLeafColumns derives pinnedOffset from state (engine is not mutated)', () => {
+      // Verify that getLeafColumns derives pinnedOffset from state without mutating the engine.
+      // The engine's leafColumns has `pinned` set (for defaults), but pinnedOffset must come
+      // from getLeafColumns() computation over state, not from the engine result.
+      const p = createPivotTable({
+        data: rows,
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        getRowId: (r) => r.id,
+        state: {
+          columnPinning: { left: [], right: ['__total__::sales_sum'] },
+          columnSizing: { '__total__::sales_sum': 60 },
+        },
+      });
+
+      const engineResult = p.getResult();
+      // The engine sets `pinned` on leaf columns (for default-right), but does NOT
+      // set `pinnedOffset` — that must be computed by getLeafColumns from state.
+      const totalEngineLeaf = engineResult.leafColumns.find(
+        (l) => l.id === '__total__::sales_sum',
+      )!;
+      expect(totalEngineLeaf.pinned).toBe('right');
+      expect((totalEngineLeaf as any).pinnedOffset).toBeUndefined(); // engine does NOT set this
+
+      // getLeafColumns() should compute pinnedOffset from state
+      const publicLeaves = p.getLeafColumns();
+      const totalLeaf = publicLeaves.find((l) => l.id === '__total__::sales_sum')!;
+      expect(totalLeaf.pinned).toBe('right');
+      expect(totalLeaf.pinnedOffset).toBe(0); // computed from state
+    });
   });
 });
 

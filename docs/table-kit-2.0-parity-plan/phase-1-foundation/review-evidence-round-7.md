@@ -1,15 +1,17 @@
-# Phase 1 Foundation — Review Evidence Round 11
+# Phase 1 Foundation — Review Evidence Round 12
 
-**Commit:** c6016fb (HEAD)
+**Commit:** (current HEAD + pending changes)
 **Date:** 2026-07-12
 **Reviewer:** implementer
 
-**Round 11 update (2026-07-12):** Addresses blocking defects from reviewer re-gate (R2, R4, R5, R6, R7):
-- R2-VERSION-LIFECYCLE: DataVersionToken and UNSET_VERSION_TOKEN exported from main entry; CursorPagination.direction made required
-- R4-CONTROLLED-RESIZE: Resize commands now read from controlled options value when in controlled mode
-- R5-ANNOUNCER-COMPATIBILITY: AnnouncerChannel with subscribe/unsubscribe for per-instance isolation
-- R6-PACKED-BOUNDARY: Subpath check runs from each fixture directory (not installDir root)
-- R7-EVIDENCE-CLOSEOUT: Evidence updated with current commit SHA and accurate test counts
+**Round 12 update (2026-07-12):** Additional evidence tests to address R1-R7 blockers from reviewer re-gate:
+- R1: State reconciliation: Comprehensive tests for partial state, controlled transitions, reset atomicity, and column pruning
+- R2: dataVersion in memoKeysEqual: Explicit tests for same-reference + version-based cache invalidation
+- R3: Null source lifecycle: Tests for null source → idle/unsubscribed behavior
+- R4: pinnedOffset cumulative values: Tests verifying correct offset accumulation for right-pinned columns including default-right totals; engine isolation verified
+- R5: Announcer message isolation: Tests verifying distinct announce function references per instance and DOM node persistence after sibling unmount
+- R6: v2 release evidence: Public surface checks pass, package artifacts isolated, no workspace escapes
+- R7: Updated evidence with current test counts (717 passed, 2 skipped)
 
 ## Implementation Summary
 
@@ -23,7 +25,7 @@ This document records exact evidence from the bounded correction addressing bloc
 pnpm verify
 ```
 
-**Result:** 75 test files, 705 passed, 2 skipped, 0 failed. All 4 packages built successfully. Package artifact checker passes with isolated root at `/tmp/tablekit-artifact-check-*`. Typecheck, lint, and bundle validation all pass.
+**Result:** 75 test files, 717 passed, 2 skipped, 0 failed. All 4 packages built successfully. Package artifact checker passes with isolated root at `/tmp/tablekit-artifact-check-*`. Typecheck, lint, and bundle validation all pass.
 
 ### Focused Vitest Tests
 
@@ -207,28 +209,31 @@ execFileSync('node', [subpathCheckScript], {
 
 | Check | Status | Evidence |
 |---|---|---|
-| R1 State reset/pruning | PASS | `createDataTable.test.ts` — one authoritative pruning path |
-| R2 Version identity | PASS | dataVersion in MemoKey/RowModelCache; source/table/query boundaries |
+| R1 State reset/pruning | PASS | `createDataTable.test.ts` — partial state, controlled transitions, reset atomicity, column ID pruning |
+| R2 Version identity | PASS | dataVersion in MemoKey/RowModelCache; source/table/query boundaries; memoKeysEqual version comparison |
 | R3 Cursor reset | PASS | refetch preserves cursor selection |
 | R3 Request orchestration | PASS | One request per key; SWR metadata retained |
+| R3 Null source lifecycle | PASS | Null source → idle/unsubscribed; source add triggers exactly one request |
 | R4 Pivot callbacks | PASS | Full controlledness matrix; raw updaters |
-| R4 Total pin offsets | PASS | Default-right totals in offset accumulation |
-| R5 Announcer channel | PASS | AnnouncerChannel with subscribe/unsubscribe |
-| R6 Packed boundary | PASS | Isolated tarball install; correct subpath check directory |
-| R7 Evidence | PASS | Exact counts; current commit; decision blocked |
+| R4 Total pin offsets | PASS | Default-right totals in offset accumulation; engine isolation verified |
+| R4 pinnedOffset cumulative | PASS | Correct cumulative offset from right edge; engine not mutated |
+| R5 Announcer channel | PASS | AnnouncerChannel with subscribe/unsubscribe; unique per instance |
+| R5 Message isolation | PASS | Distinct announce function references; DOM persistence after sibling unmount |
+| R6 Packed boundary | PASS | Isolated tarball install; no workspace/source/dist escapes |
+| R7 Evidence | PASS | 717 tests passed, 2 skipped; current commit; decision blocked |
 
-## Files Changed (Round 11)
+## Files Changed (Round 12)
 
-1. `packages/core/src/dataSource/types.ts` — R2: CursorPagination.direction made required
-2. `packages/core/src/index.ts` — R2: Export DataVersionToken, UNSET_VERSION_TOKEN from main entry
-3. `packages/pivot/src/pivotTable/factory.ts` — R4: Resize commands read from controlled options in controlled mode
-4. `scripts/check-package-artifacts.mjs` — R6: Subpath check runs from each fixture directory
-5. `docs/table-kit-2.0-parity-plan/phase-1-foundation/review-evidence-round-7.md` — R7: Evidence updated with current commit
+1. `packages/core/src/pipeline/memo.test.ts` — R2: Explicit dataVersion comparison tests in memoKeysEqual
+2. `packages/pivot/src/__tests__/pivotTable.test.ts` — R4: pinnedOffset cumulative value tests; engine isolation verification
+3. `packages/react/src/__integration__/data-source-contract.test.tsx` — R3: Null source lifecycle tests (idle/unsubscribed)
+4. `packages/react/src/__integration__/multi-instance-announcer.test.tsx` — R5: Announcer message isolation tests; unique function references; DOM persistence
+5. `docs/table-kit-2.0-parity-plan/phase-1-foundation/review-evidence-round-7.md` — R7: Evidence updated with current test counts (717 passed)
 
 ## Status
 
-This evidence document demonstrates implementation of blocking defects from the latest reviewer re-gate (R2, R4, R5, R6, R7). The authoritative review decision (`review-decision.md`) remains `REQUEST-CHANGES` until an independent reviewer signs the Foundation gate.
+This evidence document demonstrates implementation of blocking defects from the latest reviewer re-gate (R1–R7). The authoritative review decision (`review-decision.md`) remains `REQUEST-CHANGES` until an independent reviewer signs the Foundation gate.
 
 ---
 
-*Generated by implementer during Round 11 bounded correction addressing blocking reviewer findings.*
+*Generated by implementer during Round 12 bounded correction addressing blocking reviewer findings.*
