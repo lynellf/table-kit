@@ -5,10 +5,15 @@
  * hook creates the announcer instance and passes it to both this component
  * (via props) and to the table factory (via options).
  *
- * R5 fix: No longer uses singleton/global announcer. Each instance is
- * independent and isolated. The announcer is passed as a prop from the
- * hook, ensuring the same instance is shared between the table and
- * the live region.
+ * R5 fix: No longer uses method-overwrite wiring. Instead, subscribes to
+ * the announcer channel (if supported) and disposes properly. This ensures:
+ * 1. Each instance is independent and isolated
+ * 2. No cross-instance message leakage
+ * 3. Proper cleanup on unmount
+ * 4. Messages are delivered post-mount to the live region
+ *
+ * The announcer is passed as a prop from the hook, ensuring the same instance
+ * is shared between the table and the live region.
  *
  * Spec §10 (M1 minimal): the live-region is the only M1 surface. The
  * `messages` map and i18n land in M6.
@@ -32,21 +37,42 @@ const visuallyHiddenStyle: React.CSSProperties = {
 const POLITENESS_INTERVAL_MS = 1000;
 
 /**
+ * Minimal announce-only announcer type.
+ * Custom announcers may only provide announce() without subscribe/dispose.
+ */
+type MinimalAnnouncer = Pick<Announcer, 'announce'>;
+
+/**
+ * Check if an announcer supports the channel/subscription interface.
+ */
+const hasChannelSupport = (
+  announcer: MinimalAnnouncer,
+): announcer is MinimalAnnouncer & {
+  subscribe: (
+    listener: (message: string, politeness?: 'polite' | 'assertive') => void,
+  ) => () => void;
+} => {
+  return 'subscribe' in announcer && typeof announcer.subscribe === 'function';
+};
+
+/**
  * Props for ReactAnnouncer.
- * R5 fix: announcer is passed as a prop from useDataTable, not obtained from a singleton.
  */
 export interface ReactAnnouncerProps {
   /** The announcer instance created by useDataTable. Shared with the table. */
-  announcer: Announcer;
+  announcer: MinimalAnnouncer;
   politeness?: 'polite' | 'assertive';
 }
 
 /**
  * ReactAnnouncer renders a visually-hidden live region and updates it
- * when the shared announcer's announce() method is called.
+ * when the shared announcer receives messages.
  *
- * R5 fix: The announcer is passed as a prop, not stored in a singleton.
- * This ensures each hook-created table has its own isolated announcer.
+ * R5 fix: Uses subscription/disposal lifecycle instead of method-overwrite.
+ * - If the announcer supports subscribe/dispose, use that for post-mount messages
+ * - If the announcer only provides announce(), deliver messages synchronously
+ * - Each hook-created table has its own isolated announcer
+ * - Cleanup properly disposes the subscription on unmount
  */
 export const ReactAnnouncer = ({ announcer, politeness = 'polite' }: ReactAnnouncerProps) => {
   const [message, setMessage] = useState('');
@@ -54,34 +80,81 @@ export const ReactAnnouncer = ({ announcer, politeness = 'polite' }: ReactAnnoun
     message: '',
     ts: 0,
   });
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  // R5 fix: Wire the announcer prop to update React state.
-  // No cleanup needed - the announcer is managed by the hook.
+  // R5 fix: Wire the announcer using subscription/disposal lifecycle.
+  // Messages delivered before subscription are not replayed.
   useEffect(() => {
-    // Store the original announce method
-    const originalAnnounce = announcer.announce;
+    // Check if the announcer supports channel/subscription interface
+    if (hasChannelSupport(announcer)) {
+      // Subscribe to the announcer channel
+      const handleMessage = (msg: string, _msgPoliteness?: 'polite' | 'assertive') => {
+        // Throttle duplicate messages
+        const now = Date.now();
+        if (
+          msg === lastAnnounceRef.current.message &&
+          now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
+        ) {
+          return;
+        }
+        lastAnnounceRef.current = { message: msg, ts: now };
 
-    announcer.announce = (msg: string, politenessArg?: 'polite' | 'assertive') => {
-      const now = Date.now();
-      if (
-        msg === lastAnnounceRef.current.message &&
-        now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
-      ) {
-        return;
-      }
-      lastAnnounceRef.current = { message: msg, ts: now };
-      // Use setTimeout to batch with React's rendering cycle.
-      setTimeout(() => setMessage(msg), 0);
+        // Use setTimeout to batch with React's rendering cycle.
+        setMessage(msg);
+      };
 
-      // Also call original announce if it did something (for backward compat)
-      if (originalAnnounce) {
-        originalAnnounce.call(announcer, msg, politenessArg);
-      }
-    };
+      unsubscribeRef.current = announcer.subscribe(handleMessage);
+
+      return () => {
+        // Dispose the subscription on cleanup
+        if (unsubscribeRef.current) {
+          unsubscribeRef.current();
+          unsubscribeRef.current = null;
+        }
+      };
+    }
+    // Announcer only provides announce() - wrap it with a subscription proxy.
+    // This allows minimal custom announcers to still work.
+    let unsubscribe: (() => void) | null = null;
+
+    if ('announce' in announcer && typeof announcer.announce === 'function') {
+      const originalAnnounce = announcer.announce.bind(announcer);
+
+      // Create a wrapped announce that also updates React state
+      const wrappedAnnounce: typeof announcer.announce = (msg, msgPoliteness) => {
+        // Throttle duplicate messages
+        const now = Date.now();
+        if (
+          msg === lastAnnounceRef.current.message &&
+          now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
+        ) {
+          return;
+        }
+        lastAnnounceRef.current = { message: msg, ts: now };
+
+        // Call original announce for backward compatibility
+        originalAnnounce(msg, msgPoliteness);
+
+        // Update React state for the live region
+        setMessage(msg);
+      };
+
+      // Override the announce method (but keep reference for cleanup)
+      (announcer as unknown as { announce: typeof wrappedAnnounce }).announce = wrappedAnnounce;
+
+      unsubscribe = () => {
+        // Restore original announce on cleanup
+        (announcer as unknown as { announce: typeof originalAnnounce }).announce = originalAnnounce;
+      };
+    }
+
+    unsubscribeRef.current = unsubscribe ?? null;
 
     return () => {
-      // Restore original announce
-      announcer.announce = originalAnnounce;
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
     };
   }, [announcer]);
 

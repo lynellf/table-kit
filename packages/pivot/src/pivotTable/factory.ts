@@ -493,74 +493,89 @@ export const createPivotTable = <TRow>(
   // These slices were declared in PivotTableState but lacked complete setters.
 
   const setColumnPinning = (updater: Updater<ColumnPinningState>): void => {
-    // R4 fix: Prefer dedicated callback if provided.
-    if (currentOptions.onColumnPinningChange) {
-      dispatchCallback(currentOptions.onColumnPinningChange, updater);
+    // R4-CALLBACK-006 fix: Determine controlledness by own-property presence in options.state.
+    // - controlled+dedicated: dispatch raw updater only through dedicated callback
+    // - controlled+missing: do NOT mutate local state or synthesize whole-state updater
+    // - uncontrolled+dedicated: update local state AND notify dedicated callback as observer
+    // - uncontrolled+aggregate: update local state AND notify onStateChange
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'columnPinning');
+
+    if (isControlled) {
+      // Controlled slice: only dispatch to dedicated callback, do not mutate local state
+      if (currentOptions.onColumnPinningChange) {
+        dispatchCallback(currentOptions.onColumnPinningChange, updater);
+      }
+      // If no dedicated callback, silently do nothing (controlled consumer must provide callback)
       return;
     }
-    // Fall back to onStateChange if controlled.
-    if (currentOptions.state && 'columnPinning' in currentOptions.state) {
-      dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
-        ...prev,
-        columnPinning: typeof updater === 'function' ? updater(prev.columnPinning) : updater,
-      }));
-      return;
-    }
-    // Uncontrolled: apply directly.
+
+    // Uncontrolled: apply locally
     const previous = state.columnPinning;
     const next =
       typeof updater === 'function'
         ? (updater as (old: ColumnPinningState) => ColumnPinningState)(previous)
         : updater;
     if (Object.is(previous, next)) return;
+
+    // Notify dedicated callback as an additive observer
+    if (currentOptions.onColumnPinningChange) {
+      dispatchCallback(currentOptions.onColumnPinningChange, next);
+    }
+    // Always notify aggregate onStateChange for uncontrolled slices
     commitLocalState({ ...state, columnPinning: next });
   };
 
   const setColumnSizing = (updater: Updater<ColumnSizingState>): void => {
-    // R4 fix: Prefer dedicated callback if provided.
-    if (currentOptions.onColumnSizingChange) {
-      dispatchCallback(currentOptions.onColumnSizingChange, updater);
+    // R4-CALLBACK-006 fix: Same controlledness logic as setColumnPinning.
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'columnSizing');
+
+    if (isControlled) {
+      if (currentOptions.onColumnSizingChange) {
+        dispatchCallback(currentOptions.onColumnSizingChange, updater);
+      }
       return;
     }
-    // Fall back to onStateChange if controlled.
-    if (currentOptions.state && 'columnSizing' in currentOptions.state) {
-      dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
-        ...prev,
-        columnSizing: typeof updater === 'function' ? updater(prev.columnSizing) : updater,
-      }));
-      return;
-    }
-    // Uncontrolled: apply directly.
+
     const previous = state.columnSizing;
     const next =
       typeof updater === 'function'
         ? (updater as (old: ColumnSizingState) => ColumnSizingState)(previous)
         : updater;
     if (Object.is(previous, next)) return;
+
+    if (currentOptions.onColumnSizingChange) {
+      dispatchCallback(currentOptions.onColumnSizingChange, next);
+    }
     commitLocalState({ ...state, columnSizing: next });
   };
 
   const setColumnSizingInfo = (updater: Updater<ColumnResizeSession | null>): void => {
-    // R4 fix: Prefer dedicated callback if provided.
-    if (currentOptions.onColumnSizingInfoChange) {
-      dispatchCallback(currentOptions.onColumnSizingInfoChange, updater);
+    // R4-CALLBACK-006 fix: Same controlledness logic as setColumnPinning.
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'columnSizingInfo');
+
+    if (isControlled) {
+      if (currentOptions.onColumnSizingInfoChange) {
+        dispatchCallback(currentOptions.onColumnSizingInfoChange, updater);
+      }
       return;
     }
-    // Fall back to onStateChange if controlled.
-    if (currentOptions.state && 'columnSizingInfo' in currentOptions.state) {
-      dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
-        ...prev,
-        columnSizingInfo: typeof updater === 'function' ? updater(prev.columnSizingInfo) : updater,
-      }));
-      return;
-    }
-    // Uncontrolled: apply directly.
+
     const previous = state.columnSizingInfo;
     const next =
       typeof updater === 'function'
         ? (updater as (old: ColumnResizeSession | null) => ColumnResizeSession | null)(previous)
         : updater;
     if (Object.is(previous, next)) return;
+
+    if (currentOptions.onColumnSizingInfoChange) {
+      dispatchCallback(currentOptions.onColumnSizingInfoChange, next);
+    }
     commitLocalState({ ...state, columnSizingInfo: next });
   };
 
@@ -602,25 +617,28 @@ export const createPivotTable = <TRow>(
   };
 
   const setFocusedCell = (updater: Updater<CellPosition | null>): void => {
-    // R4 fix: Prefer dedicated callback if provided.
-    if (currentOptions.onFocusedCellChange) {
-      dispatchCallback(currentOptions.onFocusedCellChange, updater);
+    // R4-CALLBACK-006 fix: Same controlledness logic as setColumnPinning.
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'focusedCell');
+
+    if (isControlled) {
+      if (currentOptions.onFocusedCellChange) {
+        dispatchCallback(currentOptions.onFocusedCellChange, updater);
+      }
       return;
     }
-    // Fall back to onStateChange if controlled.
-    if (currentOptions.state && 'focusedCell' in currentOptions.state) {
-      dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
-        ...prev,
-        focusedCell: typeof updater === 'function' ? updater(prev.focusedCell) : updater,
-      }));
-      return;
-    }
+
     const previous = state.focusedCell;
     const next =
       typeof updater === 'function'
         ? (updater as (old: CellPosition | null) => CellPosition | null)(previous)
         : updater;
     if (Object.is(previous, next)) return;
+
+    if (currentOptions.onFocusedCellChange) {
+      dispatchCallback(currentOptions.onFocusedCellChange, next);
+    }
     commitLocalState({ ...state, focusedCell: next });
   };
 
@@ -711,15 +729,61 @@ export const createPivotTable = <TRow>(
     getVisibleRows: () => getVisibleRows(result.rowRoot, state.expanded),
     getHeaderRows: () => getHeaderRows(result.columnRoot),
     getLeafColumns: () => {
-      // F0.3: Apply columnSizing widths and derive effective pinning.
-      // The engine result provides base sizes; we layer on consumer-controlled sizes.
-      return result.leafColumns.map((leaf) => {
-        const width = state.columnSizing[leaf.id] ?? leaf.size;
-        // Grand-total column defaults to 'right' pinning unless explicitly set.
-        const pinned = leaf.pinned ?? (leaf.isTotal ? 'right' : undefined);
-        // Use exact-optional-property semantics: only include pinned if defined.
-        return pinned !== undefined ? { ...leaf, size: width, pinned } : { ...leaf, size: width };
+      // R4-LEAF-007: Apply columnSizing widths and derive effective pinning.
+      // 1. Consult state.columnPinning for explicit left/right membership
+      // 2. Total columns default to 'right' unless explicitly overridden
+      // 3. Add cumulative pinned offsets (0 for first pinned, sum of preceding widths)
+      // 4. No engine result mutation
+
+      const leftPinned = new Set(state.columnPinning.left);
+      const rightPinned = new Set(state.columnPinning.right);
+
+      // First pass: determine effective pinned side for each leaf
+      const leafPinnedSides = result.leafColumns.map((leaf) => {
+        // Explicit state pinning takes precedence for ordinary leaves
+        if (leftPinned.has(leaf.id)) return 'left' as const;
+        if (rightPinned.has(leaf.id)) return 'right' as const;
+        // Total columns default to 'right' unless explicitly set
+        if (leaf.isTotal) return leaf.pinned ?? 'right';
+        // Ordinary leaves with no explicit pinning remain unpinned
+        return leaf.pinned;
       });
+
+      // Second pass: compute cumulative pinned offsets
+      const result2: Array<PivotLeafColumn<TRow>> = [];
+      let leftOffset = 0;
+      let rightOffset = 0;
+
+      for (let i = 0; i < result.leafColumns.length; i++) {
+        const leaf = result.leafColumns[i]!;
+        const pinned = leafPinnedSides[i];
+        const width = state.columnSizing[leaf.id] ?? leaf.size;
+
+        // Use exact-optional-property semantics: only include pinned/pinnedOffset if defined
+        const result3: PivotLeafColumn<TRow> = {
+          id: leaf.id,
+          path: leaf.path,
+          measureId: leaf.measureId,
+          isTotal: leaf.isTotal,
+          size: width,
+          header: leaf.header,
+        };
+        if (pinned !== undefined) {
+          let pinnedOffset: number;
+          if (pinned === 'left') {
+            pinnedOffset = leftOffset;
+            leftOffset += width;
+          } else {
+            pinnedOffset = rightOffset;
+            rightOffset += width;
+          }
+          result3.pinned = pinned;
+          result3.pinnedOffset = pinnedOffset;
+        }
+        result2.push(result3);
+      }
+
+      return result2;
     },
     setPivot,
     setExpanded,

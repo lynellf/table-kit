@@ -27,18 +27,6 @@ import type { MessagesMap } from './messages';
 import { useDataSource } from './useDataSource';
 import { useTabBehavior } from './useTabBehavior';
 
-/**
- * Compare two Set<string> for equality (same elements).
- * Used to detect column changes for pruning.
- */
-const setsAreEqual = (a: Set<string>, b: Set<string>): boolean => {
-  if (a.size !== b.size) return false;
-  for (const item of a) {
-    if (!b.has(item)) return false;
-  }
-  return true;
-};
-
 export interface UseDataTableOptions<TRow> extends DataTableOptions<TRow> {
   /** M3 phase 3: wire a data source for server modes. */
   dataSource?: DataSource<TRow>;
@@ -96,10 +84,6 @@ export const useDataTable = <TRow>(
   }
   const table = ref.current;
 
-  // R1 fix: Track the previous columns to detect changes and trigger pruning.
-  // We store the column IDs as a ref so we can compare on the next render.
-  const prevColumnIdsRef = useRef<Set<string> | null>(null);
-
   // ── Side-effect: push the latest options into the instance.
   //
   // setOptions is a side effect: it can call notify(), which schedules a
@@ -118,23 +102,12 @@ export const useDataTable = <TRow>(
   //     post-commit options derive the same state, so the per-render effect
   //     does not storm notifications.
   //
-  // R1 fix: After setOptions, if columns changed, prune invalid column IDs
-  // from state slices (sorting, filters, visibility, etc.).
+  // R1 fix: Column pruning is handled by core `setOptions` in `createDataTable`.
+  // The core calls `__pruneColumnIds` when columns change, so the React adapter
+  // does NOT need to call it separately. This prevents duplicate callback delivery
+  // for controlled column replacement.
   useEffect(() => {
     table.setOptions(options);
-
-    // R1 fix: Extract column IDs from the new columns and compare with previous.
-    // If different, call __pruneColumnIds to remove invalid IDs from state.
-    const newColumnIds = new Set(options.columns.map((col) => col.id));
-    const prevColumnIds = prevColumnIdsRef.current;
-
-    // Prune if columns have changed (and this isn't the first render)
-    if (prevColumnIds !== null && !setsAreEqual(prevColumnIds, newColumnIds)) {
-      table.__pruneColumnIds(newColumnIds);
-    }
-
-    // Update the ref for next comparison
-    prevColumnIdsRef.current = newColumnIds;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, table]);
 

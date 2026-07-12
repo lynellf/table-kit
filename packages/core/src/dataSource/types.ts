@@ -159,6 +159,11 @@ export interface RowsResult<TRow> {
   nextCursor?: string | null;
   /** Cursor for the previous page. Present only when paginating backwards. */
   previousCursor?: string | null;
+  /**
+   * R2-VERSION-002: Accepted data version token from the remote result.
+   * This is publication metadata; it does NOT become the next outgoing query token automatically.
+   */
+  dataVersion?: string | number;
 }
 
 /**

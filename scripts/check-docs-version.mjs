@@ -146,7 +146,8 @@ if (existsSync(readmePath)) {
 // ─── Summary ─────────────────────────────────────────────────────────────────
 
 if (issuesFound > 0) {
-  console.warn(`\n⚠ ${issuesFound} documentation issue(s) found - review for accuracy`);
+  console.error(`\n✗ ${issuesFound} documentation issue(s) found - failing gate`);
+  process.exit(1);
 } else {
   console.log('\n✓ Docs version drift check passed');
 }

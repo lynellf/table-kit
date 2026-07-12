@@ -10,6 +10,10 @@
  * - Source can now be null/undefined (returns idle state, no subscriptions)
  * - Added request token for race condition protection
  * - Added stable query key for deduplication
+ *
+ * R3 fix: Request orchestration is separate from status notifications.
+ * Status/data/cursor/version publication must not recursively start requests.
+ * Controlled state changes trigger fetch via a re-render + ref comparison.
  */
 
 import type { DataTableInstance, DataTableOptions } from '@lynellf/tablekit-core';
@@ -24,7 +28,7 @@ import type {
   RowsResult,
 } from '@lynellf/tablekit-core/dataSource';
 import { validateModeConfiguration } from '@lynellf/tablekit-core/dataSource';
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { defaultMessages } from './messages';
 import type { AnnouncerKey } from './messages';
 
@@ -99,6 +103,25 @@ const buildQueryKey = <TRow>(
 };
 
 /**
+ * R3 fix: In-flight request entry.
+ * Used for one-request-per-key guarantee including React Strict Mode effect replay.
+ * A replay reattaches to the same entry rather than calling getRows again or aborting it.
+ */
+interface InFlightEntry<_TRow> {
+  key: string;
+  controller: AbortController;
+  requestToken: number;
+  status: 'pending' | 'resolved' | 'rejected' | 'aborted';
+}
+
+/**
+ * Sentinel value for no published data version.
+ * Used to distinguish "no version configured" from "version is undefined".
+ */
+const UNSET_DATA_VERSION = Symbol('UNSET_DATA_VERSION');
+type DataVersionSentinel = typeof UNSET_DATA_VERSION;
+
+/**
  * Wire a `DataSource<TRow>` to a `DataTableInstance<TRow>`.
  *
  * Uses useSyncExternalStore to subscribe to the table's data source state changes.
@@ -126,40 +149,48 @@ export const useDataSource = <TRow>(
     });
 
   // Refs for mutable values.
-  const abortRef = useRef<AbortController | null>(null);
   const sourceRef = useRef(source);
-  const requestTokenRef = useRef(0);
   const refetchNonceRef = useRef(0);
-  const lastQueryKeyRef = useRef<string | null>(null);
   // R2 fix: Cursor selection owned by the hook.
   // Initial selection is { cursor: null, direction: 'next' }.
   const cursorSelectionRef = useRef<CursorSelection>({ cursor: null, direction: 'next' });
   sourceRef.current = source;
 
+  // R3 fix: Track in-flight request entry for one-request-per-key guarantee.
+  // Includes Strict Mode effect replay handling.
+  const inFlightRef = useRef<InFlightEntry<TRow> | null>(null);
+  // R3 fix: Guard flag to prevent recursive requests from status publication.
+  const processingRef = useRef(false);
+  // Track the previous query context to detect cursor resets.
+  const prevQueryContextRef = useRef<{
+    sourceRef: DataSource<TRow> | null | undefined;
+    paginationStrategy: string | undefined;
+    pageSize: number;
+    sort: unknown;
+    filter: unknown;
+    paginationRef: unknown; // Track pagination object reference for controlled state
+  } | null>(null);
+  // R3-SWR-004 fix: Track the previously published token for SWR retention.
+  const publishedDataVersionRef = useRef<string | number | DataVersionSentinel>(UNSET_DATA_VERSION);
+  // R3 fix: Track previous pagination for controlled state change detection.
+  // This is updated after each render and compared in the effect.
+  const prevControlledPaginationRef = useRef<{ pageIndex: number; pageSize: number } | null>(null);
+
+  // R3 fix: State variable to force re-render/effect when controlled pagination changes.
+  // The subscription increments this, which triggers a new effect run.
+  const [controlledStateVersion, setControlledStateVersion] = useState(0);
+
   // Stable refetch function.
   const refetch = useCallback(() => {
     // Increment nonce to force a new query
     refetchNonceRef.current += 1;
-    const currentState = table.__getDataSourceState();
-    table.__setDataSourceState({
-      ...currentState,
-      status: 'loading',
-    });
-  }, [table]);
+  }, []);
 
   // R2 fix: Stable selectCursor function for cursor-capable sources.
-  const selectCursor = useCallback(
-    (cursor: string | null, direction: CursorDirection) => {
-      cursorSelectionRef.current = { cursor, direction };
-      refetchNonceRef.current += 1;
-      const currentState = table.__getDataSourceState();
-      table.__setDataSourceState({
-        ...currentState,
-        status: 'loading',
-      });
-    },
-    [table, refetch],
-  );
+  const selectCursor = useCallback((cursor: string | null, direction: CursorDirection) => {
+    cursorSelectionRef.current = { cursor, direction };
+    refetchNonceRef.current += 1;
+  }, []);
 
   // Subscribe to the table's data source state.
   const subscribe = useCallback((onChange: () => void) => table.subscribe(onChange), [table]);
@@ -167,16 +198,51 @@ export const useDataSource = <TRow>(
 
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  // ─── Single combined effect ──────────────────────────────────────────────
-  // R3 fix: Effect is unconditional. When source is null, it sets idle state
-  // and cleans up. When source is present, it runs the fetch logic.
+  // ─── Effect for controlled state change detection ─────────────────────────
+  // R3 fix: Subscribe to table state changes to detect controlled pagination changes.
+  // When detected, increment controlledStateVersion to trigger the main effect.
+  useEffect(() => {
+    if (!source) return;
+
+    const unsubscribe = table.subscribe(() => {
+      // Check if controlled pagination changed by object reference
+      const currentPagination = table.getState().pagination;
+      const prevControlled = prevControlledPaginationRef.current;
+
+      if (prevControlled) {
+        // Detect controlled pagination changes
+        if (
+          prevControlled.pageIndex !== currentPagination.pageIndex ||
+          prevControlled.pageSize !== currentPagination.pageSize
+        ) {
+          // Controlled pagination changed - trigger effect re-run
+          setControlledStateVersion((v) => v + 1);
+        }
+      }
+
+      // Update the ref for next comparison
+      prevControlledPaginationRef.current = {
+        pageIndex: currentPagination.pageIndex,
+        pageSize: currentPagination.pageSize,
+      };
+    });
+
+    return unsubscribe;
+  }, [table, source]);
+
+  // ─── Main effect ──────────────────────────────────────────────────────────
+  // R3 fix: Effect is keyed by source reference + controlledStateVersion.
+  // Status/data/cursor/version publication must not recursively start requests.
   useEffect(() => {
     // R3 fix: Handle null source by setting idle state and aborting in-flight requests
     if (!sourceRef.current) {
-      abortRef.current?.abort();
-      abortRef.current = null;
+      // Abort any in-flight request
+      inFlightRef.current?.controller.abort();
+      inFlightRef.current = null;
+      // Clear cursor and reset query context
+      prevQueryContextRef.current = null;
+      publishedDataVersionRef.current = UNSET_DATA_VERSION;
       // Set idle state with null data (no prior data retained for null source)
-      // R2 fix: Clear cursor and dataVersion for null source by omitting them.
       table.__setDataSourceState({
         status: 'idle',
         data: null,
@@ -202,143 +268,257 @@ export const useDataSource = <TRow>(
       caps.paginate === 'server',
     );
 
-    // v2.0.0: Fetch function with request token for race condition protection
-    const runFetch = () => {
-      // v2.0.0: Increment request token to track this specific request
-      const currentToken = ++requestTokenRef.current;
+    // ─── Request orchestration ─────────────────────────────────────────────
+    //
+    // Build the request descriptor. This is derived from the current committed
+    // snapshot and source reference. It contains only request inputs, not status.
+    //
+    // R2 fix: Resolve dataVersion from table configuration.
+    const resolvedDataVersion = table.getDataVersion();
 
-      // R2 fix: Resolve dataVersion from source first, then table fallback.
-      const resolvedDataVersion = table.getDataVersion();
+    // Get current query context from the table state
+    const currentTableState = table.getState();
+    const currentPagination = currentTableState.pagination;
+    const currentContext = {
+      sourceRef: sourceRef.current,
+      paginationStrategy: caps.pagination ?? 'offset',
+      pageSize: currentTableState.pagination.pageSize,
+      sort: currentTableState.sorting,
+      filter: currentTableState.columnFilters,
+      paginationRef: currentPagination, // Track pagination object for controlled state
+    };
+    const prevContext = prevQueryContextRef.current;
 
-      // R2 fix: Pass cursor selection through to __buildRowsQuery.
-      const query = table.__buildRowsQuery(
-        sourceRef.current!.capabilities,
-        cursorSelectionRef.current,
-        resolvedDataVersion,
-      );
-      const priorState = table.__getDataSourceState();
+    // R3 fix: Check if this is a fresh mount or a re-run.
+    // On fresh mount, we always want to fetch.
+    const isFreshMount = prevContext === null;
 
-      // Build query key and check if we should skip
-      const queryKey = buildQueryKey(
-        sourceRef.current!,
-        query,
-        resolvedDataVersion,
-        refetchNonceRef.current,
-      );
+    // Check if any non-cursor context changed (requires cursor reset and new request)
+    const contextChanged =
+      prevContext === null ||
+      prevContext.sourceRef !== currentContext.sourceRef ||
+      prevContext.paginationStrategy !== currentContext.paginationStrategy ||
+      prevContext.pageSize !== currentContext.pageSize ||
+      prevContext.sort !== currentContext.sort ||
+      prevContext.filter !== currentContext.filter ||
+      // R3 fix: Also detect controlled pagination changes by object reference
+      prevContext.paginationRef !== currentContext.paginationRef;
 
-      // Skip if query key hasn't changed (same source, same params, no refetch)
-      // This prevents unnecessary requests when state hasn't meaningfully changed
-      if (queryKey === lastQueryKeyRef.current && priorState.status === 'success') {
-        return false;
+    // R3-B1 fix: Reset cursor selection on non-cursor context changes
+    if (contextChanged) {
+      cursorSelectionRef.current = { cursor: null, direction: 'next' };
+      prevQueryContextRef.current = currentContext;
+    }
+
+    // Skip fetch if this is a re-run without context change
+    // (e.g., status publication from a different request that doesn't affect our query)
+    if (!isFreshMount && !contextChanged) {
+      // No new request needed
+      return;
+    }
+
+    // Build the query with current cursor selection
+    const query = table.__buildRowsQuery(
+      sourceRef.current!.capabilities,
+      cursorSelectionRef.current,
+      resolvedDataVersion,
+    );
+
+    // Build the canonical descriptor key
+    const queryKey = buildQueryKey(
+      sourceRef.current!,
+      query,
+      resolvedDataVersion,
+      refetchNonceRef.current,
+    );
+
+    // Get prior state for SWR
+    const priorState = table.__getDataSourceState();
+
+    // R3 fix: Check for replay scenario (Strict Mode effect cleanup/replay).
+    // If the same key is already in-flight and not resolved/rejected, reattach.
+    const existing = inFlightRef.current;
+    if (existing && existing.key === queryKey && existing.status === 'pending') {
+      // Reattachment: don't abort, don't start new request, just keep the entry
+      return;
+    }
+
+    // R3 fix: Abort and retire any previous in-flight entry for a different key
+    if (existing && existing.key !== queryKey) {
+      existing.controller.abort();
+      existing.status = 'aborted';
+    }
+
+    // Abort the old controller if any
+    const oldController = inFlightRef.current?.controller;
+    if (oldController) {
+      oldController.abort();
+    }
+
+    // Create new in-flight entry
+    const controller = new AbortController();
+    const requestToken = Date.now(); // Simple unique token for this implementation
+    inFlightRef.current = {
+      key: queryKey,
+      controller,
+      requestToken,
+      status: 'pending',
+    };
+
+    // Set processing guard to prevent recursive requests from status publication
+    processingRef.current = true;
+
+    // ─── Publication helpers ────────────────────────────────────────────────
+    //
+    // R3-SWR-004 fix: Carry prior metadata through loading/error states.
+    // This implements stale-while-revalidate unconditionally.
+    const getStaleMetadata = (): Pick<
+      DataSourceState<TRow>,
+      'totalRowCount' | 'cursor' | 'dataVersion'
+    > => {
+      const metadata: Pick<DataSourceState<TRow>, 'totalRowCount' | 'cursor' | 'dataVersion'> = {};
+      // R3-SWR-004: Retain prior totalRowCount during SWR
+      if (priorState.totalRowCount !== undefined) {
+        metadata.totalRowCount = priorState.totalRowCount;
       }
-      lastQueryKeyRef.current = queryKey;
-
-      // Abort the in-flight request, if any, before starting a new one.
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      const loadingState: DataSourceState<TRow> = {
-        status: 'loading',
-        data: priorState.data,
-        refetch,
-      };
-      if (priorState.error !== undefined) {
-        loadingState.error = priorState.error;
-      }
+      // Retain prior cursor metadata during SWR
       if (priorState.cursor !== undefined) {
-        loadingState.cursor = priorState.cursor;
+        metadata.cursor = priorState.cursor;
       }
-      if (priorState.dataVersion !== undefined) {
-        loadingState.dataVersion = priorState.dataVersion;
+      // Retain previously published data version during SWR
+      if (publishedDataVersionRef.current !== UNSET_DATA_VERSION) {
+        metadata.dataVersion = publishedDataVersionRef.current as string | number;
       }
-      table.__setDataSourceState(loadingState);
-
-      // Hoist handlers so the catch (synchronous getRows throw) can reach them.
-      // v2.0.0: Check requestToken to prevent stale responses
-      // R2 fix: Handle RowsResult with cursor information.
-      const handleResult = (result: RowsResult<TRow>) => {
-        // v2.0.0: Only process if this is still the latest request
-        if (controller.signal.aborted || requestTokenRef.current !== currentToken) return;
-
-        // R2 fix: Copy cursor state from RowsResult.
-        // Only include cursor if we have at least one defined cursor value.
-        const hasNextCursor = result.nextCursor !== undefined;
-        const hasPreviousCursor = result.previousCursor !== undefined;
-        const cursor: CursorState | undefined =
-          hasNextCursor || hasPreviousCursor
-            ? {
-                nextCursor: result.nextCursor ?? null,
-                previousCursor: result.previousCursor ?? null,
-              }
-            : undefined;
-
-        const successState: DataSourceState<TRow> = {
-          status: 'success',
-          data: result.rows,
-          refetch,
-        };
-        if (result.totalRowCount !== undefined) {
-          successState.totalRowCount = result.totalRowCount;
-        }
-        if (cursor !== undefined) {
-          successState.cursor = cursor;
-        }
-        if (resolvedDataVersion !== undefined) {
-          successState.dataVersion = resolvedDataVersion;
-        }
-        table.__setDataSourceState(successState);
-        table.announce(t('loadingFinished', result.rows.length));
-      };
-
-      const handleError = (err: unknown) => {
-        // v2.0.0: Only process if this is still the latest request
-        if (controller.signal.aborted || requestTokenRef.current !== currentToken) return;
-        const errorState: DataSourceState<TRow> = {
-          status: 'error',
-          data: priorState.data,
-          error: err instanceof Error ? err : new Error(String(err)),
-          refetch,
-        };
-        if (priorState.cursor !== undefined) {
-          errorState.cursor = priorState.cursor;
-        }
-        if (priorState.dataVersion !== undefined) {
-          errorState.dataVersion = priorState.dataVersion;
-        }
-        table.__setDataSourceState(errorState);
-      };
-
-      try {
-        const result = sourceRef.current!.getRows(query, { signal: controller.signal });
-
-        if (result instanceof Promise) {
-          result.then(handleResult).catch(handleError);
-        } else {
-          handleResult(result);
-        }
-        return true;
-      } catch (err) {
-        handleError(err);
-        return false;
-      }
+      return metadata;
     };
 
-    // 4. Run initial fetch.
-    runFetch();
+    // Publish loading state with SWR metadata
+    const loadingState: DataSourceState<TRow> = {
+      status: 'loading',
+      data: priorState.data,
+      refetch,
+      ...getStaleMetadata(),
+    };
+    if (priorState.error !== undefined) {
+      loadingState.error = priorState.error;
+    }
+    table.__setDataSourceState(loadingState);
 
-    // 5. Subscribe to table state changes (for controlled state).
-    const unsubscribe = table.subscribe(() => {
-      runFetch();
-    });
+    // Hoist handlers so the catch (synchronous getRows throw) can reach them.
+    const handleResult = (result: RowsResult<TRow>) => {
+      // R3 fix: Only process if this is still the latest request (token match)
+      if (controller.signal.aborted || inFlightRef.current?.requestToken !== requestToken) {
+        if (inFlightRef.current && inFlightRef.current.requestToken === requestToken) {
+          inFlightRef.current.status = 'aborted';
+        }
+        return;
+      }
 
+      inFlightRef.current!.status = 'resolved';
+
+      // R2 fix: Copy cursor state from RowsResult.
+      // Only include cursor if we have at least one defined cursor value.
+      const hasNextCursor = result.nextCursor !== undefined;
+      const hasPreviousCursor = result.previousCursor !== undefined;
+      const cursor: CursorState | undefined =
+        hasNextCursor || hasPreviousCursor
+          ? {
+              nextCursor: result.nextCursor ?? null,
+              previousCursor: result.previousCursor ?? null,
+            }
+          : undefined;
+
+      // R2-VERSION-002: Accept result token and update published version.
+      // The result token becomes the new published version.
+      const acceptedToken = result.dataVersion ?? resolvedDataVersion;
+      if (acceptedToken !== undefined) {
+        publishedDataVersionRef.current = acceptedToken;
+      } else if (resolvedDataVersion === undefined) {
+        // Tokenless result: transition to unset (invalidates same-ref cache)
+        publishedDataVersionRef.current = UNSET_DATA_VERSION;
+      }
+
+      const successState: DataSourceState<TRow> = {
+        status: 'success',
+        data: result.rows,
+        refetch,
+        ...getStaleMetadata(), // R3-SWR-004: Retain metadata from last accepted result
+      };
+      if (result.totalRowCount !== undefined) {
+        successState.totalRowCount = result.totalRowCount;
+      }
+      if (cursor !== undefined) {
+        successState.cursor = cursor;
+      }
+      if (acceptedToken !== undefined) {
+        successState.dataVersion = acceptedToken;
+      }
+      // Clear processing guard before publication
+      processingRef.current = false;
+      table.__setDataSourceState(successState);
+      table.announce(t('loadingFinished', result.rows.length));
+    };
+
+    const handleError = (err: unknown) => {
+      // R3 fix: Only process if this is still the latest request
+      if (controller.signal.aborted || inFlightRef.current?.requestToken !== requestToken) {
+        if (inFlightRef.current && inFlightRef.current.requestToken === requestToken) {
+          inFlightRef.current.status = 'aborted';
+        }
+        return;
+      }
+
+      inFlightRef.current!.status = 'rejected';
+      const errorState: DataSourceState<TRow> = {
+        status: 'error',
+        data: priorState.data,
+        error: err instanceof Error ? err : new Error(String(err)),
+        refetch,
+        ...getStaleMetadata(), // R3-SWR-004: Retain metadata during error
+      };
+      // Clear processing guard before publication
+      processingRef.current = false;
+      table.__setDataSourceState(errorState);
+    };
+
+    // Execute the request
+    try {
+      const result = sourceRef.current!.getRows(query, { signal: controller.signal });
+
+      if (result instanceof Promise) {
+        result.then(handleResult).catch(handleError);
+      } else {
+        handleResult(result);
+      }
+    } catch (err) {
+      handleError(err);
+    }
+
+    // Cleanup: abort on unmount, schedule microtask release for Strict Mode replay
     return () => {
-      abortRef.current?.abort();
-      unsubscribe();
+      // Clear processing guard on cleanup
+      processingRef.current = false;
+      // R3 fix: Don't abort immediately - schedule for microtask so Strict Mode
+      // effect replay can reattach to the same entry before it's released
+      const entry = inFlightRef.current;
+      if (entry && entry.key === queryKey) {
+        // Mark as pending cleanup - if replay happens, the check above will reattach
+        queueMicrotask(() => {
+          // If still the same entry and not resolved, abort it
+          if (inFlightRef.current === entry && entry.status === 'pending') {
+            controller.abort();
+            entry.status = 'aborted';
+          }
+        });
+      } else {
+        // Different key, abort immediately
+        controller.abort();
+      }
     };
-    // R3 fix: Include source in dependencies so the effect re-runs when source changes.
-    // This ensures proper transitions between null and non-null sources.
-  }, [refetch, table, t, source]);
+    // R3 fix: Include source AND controlledStateVersion so the effect re-runs when:
+    // 1. Source changes (null ↔ non-null transitions)
+    // 2. Controlled pagination changes (via the subscription incrementing controlledStateVersion)
+  }, [refetch, table, t, source, controlledStateVersion]);
 
   // Build return with only defined optional fields.
   const result: UseDataSourceResult<TRow> = {

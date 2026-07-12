@@ -325,6 +325,13 @@ export interface PivotLeafColumn<_TRow = unknown> {
   header: unknown;
   /** Optional pinned side (grand-total column defaults to 'right'). */
   pinned?: 'left' | 'right';
+  /**
+   * R4-LEAF-007: Cumulative offset from the pinned edge.
+   * - undefined: not pinned
+   * - 0: first leaf at the pinned edge
+   * - positive number: sum of widths of preceding pinned leaves at the same edge
+   */
+  pinnedOffset?: number;
 }
 
 /**
