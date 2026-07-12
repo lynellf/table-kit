@@ -330,10 +330,8 @@ const subpathChecks = [
     fixture: 'react',
     checks: [
       { name: '@lynellf/tablekit-react', importPath: '@lynellf/tablekit-react' },
-      {
-        name: '@lynellf/tablekit-react/dataSource',
-        importPath: '@lynellf/tablekit-react/dataSource',
-      },
+      // @lynellf/tablekit-react only exports '.' and './validate'; no './dataSource' subpath exists
+      // The React fixture tests @lynellf/tablekit-core/dataSource imports separately
     ],
   },
   {
@@ -502,8 +500,9 @@ try {
 }
 
 // Record the check results in the summary
-const docsFailures = (docsResult.output.match(/FAIL|error|missing|drift/gi) || []).length;
-const surfaceFailures = (surfaceResult.output.match(/FAIL|error|missing|drift/gi) || []).length;
+// Only count explicit failure indicators (✗ or FAIL), not the word 'drift' in a success message
+const docsFailures = (docsResult.output.match(/✗|FAIL/g) || []).length;
+const surfaceFailures = (surfaceResult.output.match(/✗|FAIL/g) || []).length;
 
 // ─── Cleanup and summary ───────────────────────────────────────────────────────
 

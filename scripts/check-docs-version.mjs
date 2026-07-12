@@ -23,9 +23,18 @@ const historicalMarkers = ['docs/archive/'];
 const v2ClaimFiles = [
   'docs/migration-v1-to-v2.md',
   'docs/table-kit-2.0-parity-assessment-and-spec-v2.md',
-  'docs/table-kit-2.0-parity-plan/phase-1-foundation.md',
+  'docs/table-kit-2.0-parity-plan/phase-1-foundation.md', // original acceptance criteria; kept as reference
   'docs/table-kit-2.0-parity-plan/phase-1-foundation-remediation.md',
+  // phase-1-foundation/ plan documents are active v2 deliverables
+  'docs/table-kit-2.0-parity-plan/phase-1-foundation/review-decision.md',
+  'docs/table-kit-2.0-parity-plan/phase-1-foundation/review-evidence-round-7.md',
+  'docs/table-kit-2.0-parity-plan/phase-1-foundation/docs/changes.md',
 ];
+
+// ─── Plan subdirectories that contain active v2 documents ───────────────────────
+// Files under these paths are active plan deliverables, not misplaced legacy files.
+// Skip them when checking for misplaced plan files.
+const activePlanSubdirs = ['phase-1-foundation'];
 
 // ─── Patterns that indicate stale v1 claims ─────────────────────────────────
 
@@ -64,8 +73,20 @@ if (existsSync(tableKitPlanDir)) {
 
     const fullPath = resolve(tableKitPlanDir, file);
 
-    // Check if any phase-1-foundation* files outside the remediation doc exist
-    if (file.startsWith('phase-1-foundation') && !file.includes('remediation')) {
+    // Skip active plan subdirectories — their files are legitimate v2 deliverables
+    const isActivePlanSubdir = activePlanSubdirs.some((subdir) => file.startsWith(subdir + '/'));
+    // Skip files that are in v2ClaimFiles (recognized active plan documents)
+    const fileFullPath = resolve(tableKitPlanDir, file);
+    const isRecognizedClaimFile = v2ClaimFiles.some((claimFile) => {
+      const claimFullPath = resolve(root, claimFile);
+      return claimFullPath === fileFullPath;
+    });
+    if (
+      !isActivePlanSubdir &&
+      !isRecognizedClaimFile &&
+      file.startsWith('phase-1-foundation') &&
+      !file.includes('remediation')
+    ) {
       console.warn(`⚠ Found ${file} - should be in phase-1-foundation-remediation.md`);
     }
   }
