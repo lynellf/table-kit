@@ -39,6 +39,16 @@ export {
   __resetInlineFilterFnWarningForTests,
 } from './query';
 
+// ─── Query key ───────────────────────────────────────────────────────────
+export {
+  buildQueryKey,
+  validateSerializable,
+  QueryKeySerializationError,
+  type QueryKeySerializationErrorCode,
+  type SerializationErrorKind,
+  type QueryKeyResult,
+} from './queryKey';
+
 // ─── Client data source ─────────────────────────────────────────────────
 export { createClientDataSource } from './client';
 

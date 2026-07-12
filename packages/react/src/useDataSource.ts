@@ -27,7 +27,10 @@ import type {
   DataSourceStatus,
   RowsResult,
 } from '@lynellf/tablekit-core/dataSource';
-import { validateModeConfiguration } from '@lynellf/tablekit-core/dataSource';
+import {
+  buildQueryKey as buildCanonicalQueryKey,
+  validateModeConfiguration,
+} from '@lynellf/tablekit-core/dataSource';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { defaultMessages } from './messages';
 import type { AnnouncerKey } from './messages';
@@ -88,18 +91,19 @@ const getSourceToken = <TRow>(source: DataSource<TRow> | null | undefined): stri
  * The key is used to detect when a new request should be issued vs reusing cached data.
  *
  * R3 fix: Include actual source identity (object reference) in the key, not a constant string.
- * R2 fix: Use resolved DataVersionToken instead of dataLen for mutable data detection.
+ * R2 fix: Use resolved DataVersionToken instead of dataLen for mutable data patterns.
+ * B7-SERIALIZER-ERRORS: Use canonical serializer with proper error handling.
  */
 const buildQueryKey = <TRow>(
   source: DataSource<TRow> | null | undefined,
   query: ReturnType<DataTableInstanceWithSeams<TRow>['__buildRowsQuery']>,
   dataVersion: string | number | undefined,
   refetchNonce: number,
-): string => {
+): ReturnType<typeof buildCanonicalQueryKey> => {
   // R3 fix: Use source object reference identity via unique token, not a constant string.
   const sourceToken = getSourceToken(source);
-  // R2 fix: Use dataVersion token instead of dataLen for mutable data patterns.
-  return JSON.stringify({ sourceToken, query, dataVersion, refetchNonce });
+  // B7-SERIALIZER-ERRORS: Use canonical serializer that handles cycles, functions, etc.
+  return buildCanonicalQueryKey(query, sourceToken, dataVersion, refetchNonce);
 };
 
 /**
@@ -179,11 +183,16 @@ export const useDataSource = <TRow>(
   // R3 fix: State variable to force re-render/effect when controlled pagination changes.
   // The subscription increments this, which triggers a new effect run.
   const [controlledStateVersion, setControlledStateVersion] = useState(0);
+  // R3 fix: State variable to force effect when refetch is called.
+  // This ensures the nonce change is visible to the effect.
+  const [refetchVersion, setRefetchVersion] = useState(0);
 
   // Stable refetch function.
   const refetch = useCallback(() => {
     // Increment nonce to force a new query
     refetchNonceRef.current += 1;
+    // Increment version to trigger effect re-run
+    setRefetchVersion((v) => v + 1);
   }, []);
 
   // R2 fix: Stable selectCursor function for cursor-capable sources.
@@ -325,7 +334,8 @@ export const useDataSource = <TRow>(
     );
 
     // Build the canonical descriptor key
-    const queryKey = buildQueryKey(
+    // B7-SERIALIZER-ERRORS: Handle invalid descriptors gracefully
+    const queryKeyResult = buildQueryKey(
       sourceRef.current!,
       query,
       resolvedDataVersion,
@@ -334,6 +344,46 @@ export const useDataSource = <TRow>(
 
     // Get prior state for SWR
     const priorState = table.__getDataSourceState();
+
+    // ─── SWR Metadata Helper ───────────────────────────────────────────────
+    //
+    // R3-SWR-004 fix: Carry prior metadata through loading/error states.
+    // This implements stale-while-revalidate unconditionally.
+    const getStaleMetadata = (): Pick<
+      DataSourceState<TRow>,
+      'totalRowCount' | 'cursor' | 'dataVersion'
+    > => {
+      const metadata: Pick<DataSourceState<TRow>, 'totalRowCount' | 'cursor' | 'dataVersion'> = {};
+      // R3-SWR-004: Retain prior totalRowCount during SWR
+      if (priorState.totalRowCount !== undefined) {
+        metadata.totalRowCount = priorState.totalRowCount;
+      }
+      // Retain prior cursor metadata during SWR
+      if (priorState.cursor !== undefined) {
+        metadata.cursor = priorState.cursor;
+      }
+      // Retain previously published data version during SWR
+      if (publishedDataVersionRef.current !== UNSET_DATA_VERSION) {
+        metadata.dataVersion = publishedDataVersionRef.current as string | number;
+      }
+      return metadata;
+    };
+
+    // B7-SERIALIZER-ERRORS: Handle serializer errors
+    if (!queryKeyResult.valid) {
+      // Publish error state with retained SWR metadata, don't call getRows
+      const errorState: DataSourceState<TRow> = {
+        status: 'error',
+        data: priorState.data,
+        error: queryKeyResult.error,
+        refetch,
+        ...getStaleMetadata(),
+      };
+      table.__setDataSourceState(errorState);
+      return;
+    }
+
+    const queryKey = queryKeyResult.key;
 
     // R3 fix: Check for replay scenario (Strict Mode effect cleanup/replay).
     // If the same key is already in-flight and not resolved/rejected, reattach.
@@ -367,30 +417,6 @@ export const useDataSource = <TRow>(
 
     // Set processing guard to prevent recursive requests from status publication
     processingRef.current = true;
-
-    // ─── Publication helpers ────────────────────────────────────────────────
-    //
-    // R3-SWR-004 fix: Carry prior metadata through loading/error states.
-    // This implements stale-while-revalidate unconditionally.
-    const getStaleMetadata = (): Pick<
-      DataSourceState<TRow>,
-      'totalRowCount' | 'cursor' | 'dataVersion'
-    > => {
-      const metadata: Pick<DataSourceState<TRow>, 'totalRowCount' | 'cursor' | 'dataVersion'> = {};
-      // R3-SWR-004: Retain prior totalRowCount during SWR
-      if (priorState.totalRowCount !== undefined) {
-        metadata.totalRowCount = priorState.totalRowCount;
-      }
-      // Retain prior cursor metadata during SWR
-      if (priorState.cursor !== undefined) {
-        metadata.cursor = priorState.cursor;
-      }
-      // Retain previously published data version during SWR
-      if (publishedDataVersionRef.current !== UNSET_DATA_VERSION) {
-        metadata.dataVersion = publishedDataVersionRef.current as string | number;
-      }
-      return metadata;
-    };
 
     // Publish loading state with SWR metadata
     const loadingState: DataSourceState<TRow> = {
@@ -518,7 +544,8 @@ export const useDataSource = <TRow>(
     // R3 fix: Include source AND controlledStateVersion so the effect re-runs when:
     // 1. Source changes (null ↔ non-null transitions)
     // 2. Controlled pagination changes (via the subscription incrementing controlledStateVersion)
-  }, [refetch, table, t, source, controlledStateVersion]);
+    // R3 fix: Include refetchVersion so refetch() triggers a new request
+  }, [refetch, table, t, source, controlledStateVersion, refetchVersion]);
 
   // Build return with only defined optional fields.
   const result: UseDataSourceResult<TRow> = {
