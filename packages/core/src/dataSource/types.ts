@@ -102,6 +102,22 @@ export interface CursorPagination {
 export type PaginationWire = OffsetPagination | CursorPagination;
 
 /**
+ * Direction for cursor navigation.
+ */
+export type CursorDirection = 'next' | 'previous';
+
+/**
+ * Cursor selection input. Used by consumers to select which cursor to navigate to.
+ * The cursor value comes from RowsResult.nextCursor/previousCursor.
+ */
+export interface CursorSelection {
+  /** The cursor value (from RowsResult.nextCursor or previousCursor). */
+  cursor: string | null;
+  /** Navigation direction relative to the cursor. */
+  direction: CursorDirection;
+}
+
+/**
  * Cursor state exposed by the data source.
  * Consumers use this to store the current cursor for subsequent requests.
  */
@@ -179,6 +195,11 @@ export interface RowsQuery {
    * v2.0.0: Changed from `PaginationState` to `PaginationWire` discriminated union.
    */
   pagination?: PaginationWire;
+  /**
+   * v2.0.0: Data version token for mutable data identity.
+   * Used in query identity; the accepted result token is published separately.
+   */
+  dataVersion?: string | number;
 }
 
 /**
@@ -201,6 +222,10 @@ export interface DataSourceState<TRow> {
   totalRowCount?: number;
   error?: Error;
   refetch: () => void;
+  /** v2.0.0: Cursor state for navigating cursor-based pagination. */
+  cursor?: CursorState;
+  /** v2.0.0: Data version token for mutable data patterns. */
+  dataVersion?: string | number;
 }
 
 /**
@@ -219,6 +244,9 @@ export interface DataSource<TRow> {
  * Options passed to `buildRowsQuery`. `capabilities` is the source of truth for
  * which concerns are in scope; `defaultFilterFn` is the registry name stripped
  * from outbound filters when the column's `filterFn` resolves to it (saves bytes).
+ *
+ * v2.0.0: Added `cursor` for cursor-based pagination and `dataVersion` for
+ * mutable data identity.
  */
 export interface BuildRowsQueryOptions {
   capabilities: DataSourceCapabilities;
@@ -229,6 +257,16 @@ export interface BuildRowsQueryOptions {
    * (`paginate: 'server'` with client-side sort/filter applies within the page).
    */
   allowWithinPageOperations?: boolean;
+  /**
+   * v2.0.0: Cursor selection for cursor-based pagination.
+   * Threaded from useDataSource through __buildRowsQuery to buildPaginationWire.
+   */
+  cursor?: import('./types').CursorSelection;
+  /**
+   * v2.0.0: Data version token for mutable data identity.
+   * Resolved from source or table configuration; used in query identity.
+   */
+  dataVersion?: string | number;
 }
 
 /** Options for `createClientDataSource`. */

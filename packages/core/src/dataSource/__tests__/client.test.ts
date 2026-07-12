@@ -46,17 +46,32 @@ describe('createClientDataSource', () => {
   describe('capabilities', () => {
     it('defaults to all client capabilities', () => {
       const ds = createClientDataSource(rows, columns);
-      expect(ds.capabilities).toEqual({ sort: 'client', filter: 'client', paginate: 'client' });
+      expect(ds.capabilities).toEqual({
+        sort: 'client',
+        filter: 'client',
+        paginate: 'client',
+        pagination: 'offset',
+      });
     });
 
     it('accepts partial capabilities override', () => {
       const ds = createClientDataSource(rows, columns, { capabilities: { paginate: 'server' } });
-      expect(ds.capabilities).toEqual({ sort: 'client', filter: 'client', paginate: 'server' });
+      expect(ds.capabilities).toEqual({
+        sort: 'client',
+        filter: 'client',
+        paginate: 'server',
+        pagination: 'offset',
+      });
     });
 
     it('defaults unspecified capabilities to client', () => {
       const ds = createClientDataSource(rows, columns, { capabilities: { sort: 'server' } });
-      expect(ds.capabilities).toEqual({ sort: 'server', filter: 'client', paginate: 'client' });
+      expect(ds.capabilities).toEqual({
+        sort: 'server',
+        filter: 'client',
+        paginate: 'client',
+        pagination: 'offset',
+      });
     });
   });
 

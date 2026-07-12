@@ -466,6 +466,14 @@ export interface PivotTableOptions<TRow = unknown> {
   onExpandedChange?: OnChangeFn<PivotExpansionState>;
   /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
   onPivotSortingChange?: OnChangeFn<PivotSortingState>;
+  /** R4 fix: Dedicated callback for column pinning changes. */
+  onColumnPinningChange?: OnChangeFn<ColumnPinningState>;
+  /** R4 fix: Dedicated callback for column sizing changes. */
+  onColumnSizingChange?: OnChangeFn<ColumnSizingState>;
+  /** R4 fix: Dedicated callback for column resize session changes. */
+  onColumnSizingInfoChange?: OnChangeFn<ColumnResizeSession | null>;
+  /** R4 fix: Dedicated callback for focused cell changes. */
+  onFocusedCellChange?: OnChangeFn<CellPosition | null>;
   /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
   onStateChange?: OnChangeFn<PivotTableState>;
   /** Aggregation engine. Default: `createMainThreadEngine()`. */

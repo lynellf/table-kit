@@ -493,6 +493,12 @@ export const createPivotTable = <TRow>(
   // These slices were declared in PivotTableState but lacked complete setters.
 
   const setColumnPinning = (updater: Updater<ColumnPinningState>): void => {
+    // R4 fix: Prefer dedicated callback if provided.
+    if (currentOptions.onColumnPinningChange) {
+      dispatchCallback(currentOptions.onColumnPinningChange, updater);
+      return;
+    }
+    // Fall back to onStateChange if controlled.
     if (currentOptions.state && 'columnPinning' in currentOptions.state) {
       dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
         ...prev,
@@ -500,6 +506,7 @@ export const createPivotTable = <TRow>(
       }));
       return;
     }
+    // Uncontrolled: apply directly.
     const previous = state.columnPinning;
     const next =
       typeof updater === 'function'
@@ -510,6 +517,12 @@ export const createPivotTable = <TRow>(
   };
 
   const setColumnSizing = (updater: Updater<ColumnSizingState>): void => {
+    // R4 fix: Prefer dedicated callback if provided.
+    if (currentOptions.onColumnSizingChange) {
+      dispatchCallback(currentOptions.onColumnSizingChange, updater);
+      return;
+    }
+    // Fall back to onStateChange if controlled.
     if (currentOptions.state && 'columnSizing' in currentOptions.state) {
       dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
         ...prev,
@@ -517,6 +530,7 @@ export const createPivotTable = <TRow>(
       }));
       return;
     }
+    // Uncontrolled: apply directly.
     const previous = state.columnSizing;
     const next =
       typeof updater === 'function'
@@ -527,6 +541,12 @@ export const createPivotTable = <TRow>(
   };
 
   const setColumnSizingInfo = (updater: Updater<ColumnResizeSession | null>): void => {
+    // R4 fix: Prefer dedicated callback if provided.
+    if (currentOptions.onColumnSizingInfoChange) {
+      dispatchCallback(currentOptions.onColumnSizingInfoChange, updater);
+      return;
+    }
+    // Fall back to onStateChange if controlled.
     if (currentOptions.state && 'columnSizingInfo' in currentOptions.state) {
       dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
         ...prev,
@@ -534,6 +554,7 @@ export const createPivotTable = <TRow>(
       }));
       return;
     }
+    // Uncontrolled: apply directly.
     const previous = state.columnSizingInfo;
     const next =
       typeof updater === 'function'
@@ -581,6 +602,12 @@ export const createPivotTable = <TRow>(
   };
 
   const setFocusedCell = (updater: Updater<CellPosition | null>): void => {
+    // R4 fix: Prefer dedicated callback if provided.
+    if (currentOptions.onFocusedCellChange) {
+      dispatchCallback(currentOptions.onFocusedCellChange, updater);
+      return;
+    }
+    // Fall back to onStateChange if controlled.
     if (currentOptions.state && 'focusedCell' in currentOptions.state) {
       dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
         ...prev,

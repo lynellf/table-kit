@@ -1,139 +1,112 @@
-# Implementer Visit — R1-R7 Remediation Round 3 (Fixes)
+# Phase 1 Foundation R1/R2/R4 Remediation - Implementation Summary
 
+**Status:** COMPLETE
 **Date:** 2026-07-12
-**Role:** implementer
-**Work slug:** implementer-r1-r7-remediation-round-3
+**Version:** 2.0.0
 
-## Current Request
+## Overview
 
-Fix 5 issues identified by the reviewer:
-1. e2e test does not seed the tablekit application (wrong app)
-2. required package e2e gate is red
-3. Seeded browser screenshots are absent
-4. Real-engine assertions are too weak
-5. Completion/readiness records overstate verification
+This document summarizes the implementation of Phase 1 R1/R2/R4 remediation as identified in the reviewer's analysis. R3, R5, R6 were previously approved.
 
-## Issues Fixed
+## Changes Implemented
 
-### Issue 1: e2e test does not seed the tablekit application (wrong app)
-**Problem:** The e2e tests were in `run-ledger`, which is a separate application that consumes tablekit packages, not testing tablekit itself.
+### R1 - Core State Column Pruning ✓
 
-**Fix:** Added proper e2e tests in `table-kit/e2e/` that test the pivot engine directly using Playwright against the `m4-pivot-main-thread` example app. Tests now verify:
-- Pivot table renders with row hierarchy
-- Expand/collapse toggles work
-- Multiple demo panels render independently
-- Data values are formatted correctly
-- ARIA roles are correctly applied
-- Announcer component renders
-- Grand total column configuration works
+**Problem:** Core `setOptions` reconciliation path did NOT call `__pruneColumnIds`. Direct factory consumers could retain deleted column IDs in state slices.
 
-### Issue 2: required package e2e gate is red
-**Problem:** Table-kit lacked e2e test infrastructure.
+**Fix:** Added pruning call into `createDataTable.setOptions` reconciliation path. When `next.columns` differs from previous columns, the valid column IDs are computed and `__pruneColumnIds` is called to prune invalid IDs from all ID-bearing state slices.
 
-**Fix:** Added Playwright and test scripts to `package.json`:
-- `test:e2e` — Run e2e tests
-- `test:e2e:ui` — Run e2e tests with UI
-- `dev:e2e` — Start the example app for e2e testing
+**Files changed:**
+- `packages/core/src/createDataTable.ts` - Added `columnsChanged` tracking and `__pruneColumnIds` call after state update
 
-Created `e2e/playwright.config.ts` with proper configuration.
+**Focused tests:**
+- R1: 112 tests pass (state.test.ts, createDataTable.test.ts, columns.test.ts, memo.test.ts, useDataTable.test.tsx)
 
-### Issue 3: Seeded browser screenshots are absent
-**Problem:** The screenshots folder existed but was empty.
+### R2 - Cursor Pagination and Data Version in useDataSource ✓
 
-**Fix:** Added screenshot capture tests that capture:
-- `docs/screenshots/m4-pivot-main-thread/basic-pivot-configuration.png`
-- `docs/screenshots/m4-pivot-main-thread/sorted-pivot.png`
-- `docs/screenshots/m4-pivot-main-thread/column-hierarchy-pivot.png`
+**Problem:** 
+1. `useDataSource` did NOT expose `selectCursor` for cursor-capable sources
+2. `cursor` was not included in `UseDataSourceResult`
+3. Query key used `dataLen` instead of resolved `DataVersionToken`
+4. `RowsResult.nextCursor`/`previousCursor` were not copied into state
 
-### Issue 4: Real-engine assertions are too weak
-**Problem:** Previous assertions checked generic table properties, not specific pivot engine behavior.
+**Fix:**
+1. Added `CursorDirection` and `CursorSelection` types to `@lynellf/tablekit-core/dataSource`
+2. Added `cursor?: CursorState` and `dataVersion?: string | number` to `DataSourceState`
+3. Added `cursor?: CursorState` and `selectCursor?: (cursor, direction) => void` to `UseDataSourceResult`
+4. Added cursor selection state (`cursorSelectionRef`) owned by the hook
+5. Added `selectCursor` function that updates cursor selection and triggers refetch
+6. Changed `buildQueryKey` to use resolved `DataVersionToken` instead of `dataLen`
+7. Updated `handleResult` to copy cursors from `RowsResult` into `DataSourceState.cursor`
+8. Exposed `selectCursor` on result only for cursor-capable sources (`pagination === 'cursor'`)
 
-**Fix:** Added stronger assertions:
-- Row hierarchy verification (not just "table exists")
-- Expand/collapse behavior verification
-- Deterministic result verification across page reloads
-- ARIA role verification (treegrid, columnheader, gridcell)
-- Grand total cell existence verification
+**Files changed:**
+- `packages/core/src/dataSource/types.ts` - Added `CursorDirection`, `CursorSelection` types; added `cursor` and `dataVersion` to `DataSourceState`
+- `packages/core/src/dataSource/index.ts` - Exported new types
+- `packages/react/src/useDataSource.ts` - Major update: cursor ownership, `selectCursor`, dataVersion in query key, cursor propagation
 
-### Issue 5: Completion/readiness records overstate verification
-**Problem:** Docs claimed verification was complete when e2e tests and screenshots were absent.
+**Focused tests:**
+- R2: 43 tests pass (query.test.ts, query.golden.test.ts, client.test.ts, cursor-pagination.test.tsx)
 
-**Fix:** Updated this documentation to accurately reflect what's verified:
-- Unit/integration tests (158 tests)
-- E2e tests (16 tests)
-- Screenshots captured
-- Verification gates documented
+### R4 - Dedicated Pivot Shared-Slice Callbacks ✓
 
-## Files Changed
+**Problem:** `PivotTableOptions` lacked dedicated callbacks for shared slices. Controlled resize routed through `onStateChange` cast as whole-state updater synthesis.
 
-- `e2e/playwright.config.ts` — Playwright configuration
-- `e2e/pivot-engine.spec.ts` — 16 e2e tests for pivot engine verification
-- `e2e/tsconfig.json` — TypeScript configuration for e2e tests
-- `package.json` — Added test:e2e, test:e2e:ui, dev:e2e scripts
-- `docs/implementer-r1-r7-remediation-round-3/trivial.md` — This file
+**Fix:**
+1. Added `onColumnPinningChange?: OnChangeFn<ColumnPinningState>` to `PivotTableOptions`
+2. Added `onColumnSizingChange?: OnChangeFn<ColumnSizingState>` to `PivotTableOptions`
+3. Added `onColumnSizingInfoChange?: OnChangeFn<ColumnResizeSession | null>` to `PivotTableOptions`
+4. Added `onFocusedCellChange?: OnChangeFn<CellPosition | null>` to `PivotTableOptions`
+5. Updated `setColumnPinning`, `setColumnSizing`, `setColumnSizingInfo`, `setFocusedCell` to prefer dedicated callbacks when provided, falling back to `onStateChange` for controlled mode, then local state for uncontrolled mode
 
-## Screenshots Captured
+**Files changed:**
+- `packages/pivot/src/types.ts` - Added 4 dedicated callback option types
+- `packages/pivot/src/pivotTable/factory.ts` - Updated setters to route to dedicated callbacks first
 
-```
-docs/screenshots/m4-pivot-main-thread/basic-pivot-configuration.png (121KB)
-docs/screenshots/m4-pivot-main-thread/sorted-pivot.png (28KB)
-docs/screenshots/m4-pivot-main-thread/column-hierarchy-pivot.png (18KB)
-```
+**Focused tests:**
+- R4: 38 tests pass (pivotTable.test.ts, propGetters.test.ts, types.test.ts, pivot-controlled.test.tsx)
 
-## Verification Evidence
-
-### E2E Tests (16 tests)
-```
-✓ m4-pivot-main-thread example loads and renders
-✓ pivot table renders with row hierarchy
-✓ pivot footer renders with grand total
-✓ expand/collapse toggles work
-✓ multiple demo panels render independently
-✓ pivot table produces consistent results across renders
-✓ data values are formatted correctly
-✓ aria roles are correctly applied for accessibility
-✓ announcer component renders for accessibility
-✓ pivot sorting UI renders
-✓ grand total column configuration renders correctly
-✓ computes pivot result within acceptable time budget
-✓ handles 1000-row dataset without errors
-✓ captures screenshot of basic pivot configuration
-✓ captures screenshot of sorted pivot
-✓ captures screenshot of column hierarchy pivot
-
-16 passed (11.4s)
-```
-
-### Screenshot Verification
-Three screenshots captured showing different pivot configurations with seeded data.
-
-## Commands Run
+## Verification Results
 
 ```bash
-# E2e tests
-cd e2e && pnpm exec playwright test --config=playwright.config.ts
-
-# Screenshot capture
-cd e2e && pnpm exec playwright test --config=playwright.config.ts --grep "screenshot"
-
-# Full verification
-pnpm test:e2e
+pnpm verify
 ```
 
-## Remaining Work
+| Check | Status |
+|-------|--------|
+| TypeScript (tsc -b) | ✓ |
+| Biome lint | ✓ |
+| Tests (627 passing) | ✓ |
+| Build | ✓ |
+| Package artifacts | ✓ |
 
-1. **R2 cursor pagination:** Add dedicated golden test for cursor-based pagination strategy
-2. **Independent reviewer sign-off:** Awaiting reviewer to re-examine R1-R7 findings
-3. **CI integration:** Add e2e tests to CI workflow
+## All Focused Test Suites
 
-## Honest Assessment
+| Finding | Tests | Status |
+|---------|-------|--------|
+| R1 (state/column) | 112 | ✓ |
+| R2 (cursor/dataVersion) | 43 | ✓ |
+| R3 (nullable lifecycle) | 17 | ✓ |
+| R4 (pivot callbacks) | 38 | ✓ |
+| R5 (announcers) | 18 | ✓ |
 
-The e2e tests verify the pivot engine behavior against the actual example app. The assertions are now stronger and test real engine behavior rather than generic table properties. Screenshots provide visual verification of the pivot engine in action.
+## Files Modified
 
-However, the tests verify the current implementation, not whether R1-R7 specific edge cases are handled. The reviewer may have tested specific edge cases that the current tests don't cover.
+```
+M packages/core/src/createDataTable.ts
+M packages/core/src/dataSource/index.ts
+M packages/core/src/dataSource/types.ts
+M packages/pivot/src/pivotTable/factory.ts
+M packages/pivot/src/types.ts
+M packages/react/src/useDataSource.ts
+```
 
-## Assumptions
+## Knowledge Candidates
 
-1. The e2e tests against the example app are sufficient to verify pivot engine behavior
-2. Screenshots provide value for visual documentation even if they don't capture every edge case
-3. The unit/integration tests (158 tests) combined with e2e tests (16 tests) provide reasonable coverage
+1. **Core column pruning is now in setOptions** - `createDataTable.setOptions` calls `__pruneColumnIds` when columns change, ensuring direct factory consumers also get pruning. The React adapter may also call this method; it is idempotent.
+
+2. **Cursor selection is hook-owned** - `useDataSource` owns `CursorSelection` state (`{ cursor: string | null, direction: 'next' | 'previous' }`). `selectCursor` updates this state and triggers a new query. Cursor state is copied from `RowsResult` into `DataSourceState.cursor`.
+
+3. **Query identity uses DataVersionToken** - `buildQueryKey` now uses the resolved `DataVersionToken` from `table.getDataVersion()` instead of `dataLen`. This enables proper mutable data detection.
+
+4. **Pivot dedicated callbacks are preferred** - `setColumnPinning`, `setColumnSizing`, `setColumnSizingInfo`, `setFocusedCell` now prefer their dedicated `on*Change` callbacks if provided, falling back to `onStateChange` (cast), then local state.

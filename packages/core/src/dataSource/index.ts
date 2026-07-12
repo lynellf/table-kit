@@ -16,6 +16,8 @@ export type {
   DataVersion,
   OffsetPagination,
   CursorPagination,
+  CursorDirection,
+  CursorSelection,
   PaginationWire,
   CursorState,
   CursorResult,

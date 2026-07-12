@@ -14,9 +14,14 @@
 
 import type { DataTableInstance, DataTableOptions } from '@lynellf/tablekit-core';
 import type {
+  CursorDirection,
+  CursorSelection,
+  CursorState,
   DataSource,
+  DataSourceCapabilities,
   DataSourceState,
   DataSourceStatus,
+  RowsResult,
 } from '@lynellf/tablekit-core/dataSource';
 import { validateModeConfiguration } from '@lynellf/tablekit-core/dataSource';
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
@@ -30,6 +35,14 @@ export interface UseDataSourceResult<TRow> {
   totalRowCount?: number;
   error?: Error;
   refetch: () => void;
+  /** v2.0.0: Cursor state for navigating cursor-based pagination. */
+  cursor?: CursorState;
+  /**
+   * v2.0.0: Navigate to a specific cursor position.
+   * Only available for cursor-capable data sources.
+   * Calling this starts a new query for the selected cursor.
+   */
+  selectCursor?: (cursor: string | null, direction: CursorDirection) => void;
 }
 
 type DataTableInstanceWithSeams<TRow> = DataTableInstance<TRow> & {
@@ -40,11 +53,12 @@ type DataTableInstanceWithSeams<TRow> = DataTableInstance<TRow> & {
     manualFiltering: boolean,
     manualPagination: boolean,
   ): void;
-  __buildRowsQuery(capabilities: {
-    sort: 'client' | 'server';
-    filter: 'client' | 'server';
-    paginate: 'client' | 'server';
-  }): import('@lynellf/tablekit-core/dataSource').RowsQuery;
+  // R2 fix: Accept cursor selection and dataVersion for cursor pagination.
+  __buildRowsQuery(
+    capabilities: DataSourceCapabilities,
+    cursor?: CursorSelection,
+    dataVersion?: string | number,
+  ): import('@lynellf/tablekit-core/dataSource').RowsQuery;
 };
 
 /**
@@ -70,17 +84,18 @@ const getSourceToken = <TRow>(source: DataSource<TRow> | null | undefined): stri
  * The key is used to detect when a new request should be issued vs reusing cached data.
  *
  * R3 fix: Include actual source identity (object reference) in the key, not a constant string.
- * This ensures different source instances produce different query keys.
+ * R2 fix: Use resolved DataVersionToken instead of dataLen for mutable data detection.
  */
 const buildQueryKey = <TRow>(
   source: DataSource<TRow> | null | undefined,
   query: ReturnType<DataTableInstanceWithSeams<TRow>['__buildRowsQuery']>,
-  data: TRow[] | null,
+  dataVersion: string | number | undefined,
   refetchNonce: number,
 ): string => {
   // R3 fix: Use source object reference identity via unique token, not a constant string.
   const sourceToken = getSourceToken(source);
-  return JSON.stringify({ sourceToken, query, dataLen: data?.length ?? null, refetchNonce });
+  // R2 fix: Use dataVersion token instead of dataLen for mutable data patterns.
+  return JSON.stringify({ sourceToken, query, dataVersion, refetchNonce });
 };
 
 /**
@@ -116,6 +131,9 @@ export const useDataSource = <TRow>(
   const requestTokenRef = useRef(0);
   const refetchNonceRef = useRef(0);
   const lastQueryKeyRef = useRef<string | null>(null);
+  // R2 fix: Cursor selection owned by the hook.
+  // Initial selection is { cursor: null, direction: 'next' }.
+  const cursorSelectionRef = useRef<CursorSelection>({ cursor: null, direction: 'next' });
   sourceRef.current = source;
 
   // Stable refetch function.
@@ -128,6 +146,20 @@ export const useDataSource = <TRow>(
       status: 'loading',
     });
   }, [table]);
+
+  // R2 fix: Stable selectCursor function for cursor-capable sources.
+  const selectCursor = useCallback(
+    (cursor: string | null, direction: CursorDirection) => {
+      cursorSelectionRef.current = { cursor, direction };
+      refetchNonceRef.current += 1;
+      const currentState = table.__getDataSourceState();
+      table.__setDataSourceState({
+        ...currentState,
+        status: 'loading',
+      });
+    },
+    [table, refetch],
+  );
 
   // Subscribe to the table's data source state.
   const subscribe = useCallback((onChange: () => void) => table.subscribe(onChange), [table]);
@@ -144,6 +176,7 @@ export const useDataSource = <TRow>(
       abortRef.current?.abort();
       abortRef.current = null;
       // Set idle state with null data (no prior data retained for null source)
+      // R2 fix: Clear cursor and dataVersion for null source by omitting them.
       table.__setDataSourceState({
         status: 'idle',
         data: null,
@@ -174,14 +207,22 @@ export const useDataSource = <TRow>(
       // v2.0.0: Increment request token to track this specific request
       const currentToken = ++requestTokenRef.current;
 
-      const query = table.__buildRowsQuery(sourceRef.current!.capabilities);
+      // R2 fix: Resolve dataVersion from source first, then table fallback.
+      const resolvedDataVersion = table.getDataVersion();
+
+      // R2 fix: Pass cursor selection through to __buildRowsQuery.
+      const query = table.__buildRowsQuery(
+        sourceRef.current!.capabilities,
+        cursorSelectionRef.current,
+        resolvedDataVersion,
+      );
       const priorState = table.__getDataSourceState();
 
       // Build query key and check if we should skip
       const queryKey = buildQueryKey(
         sourceRef.current!,
         query,
-        priorState.data,
+        resolvedDataVersion,
         refetchNonceRef.current,
       );
 
@@ -205,24 +246,49 @@ export const useDataSource = <TRow>(
       if (priorState.error !== undefined) {
         loadingState.error = priorState.error;
       }
+      if (priorState.cursor !== undefined) {
+        loadingState.cursor = priorState.cursor;
+      }
+      if (priorState.dataVersion !== undefined) {
+        loadingState.dataVersion = priorState.dataVersion;
+      }
       table.__setDataSourceState(loadingState);
 
       // Hoist handlers so the catch (synchronous getRows throw) can reach them.
       // v2.0.0: Check requestToken to prevent stale responses
-      const handleResult = (awaited: { rows: TRow[]; totalRowCount?: number }) => {
+      // R2 fix: Handle RowsResult with cursor information.
+      const handleResult = (result: RowsResult<TRow>) => {
         // v2.0.0: Only process if this is still the latest request
         if (controller.signal.aborted || requestTokenRef.current !== currentToken) return;
 
+        // R2 fix: Copy cursor state from RowsResult.
+        // Only include cursor if we have at least one defined cursor value.
+        const hasNextCursor = result.nextCursor !== undefined;
+        const hasPreviousCursor = result.previousCursor !== undefined;
+        const cursor: CursorState | undefined =
+          hasNextCursor || hasPreviousCursor
+            ? {
+                nextCursor: result.nextCursor ?? null,
+                previousCursor: result.previousCursor ?? null,
+              }
+            : undefined;
+
         const successState: DataSourceState<TRow> = {
           status: 'success',
-          data: awaited.rows,
+          data: result.rows,
           refetch,
         };
-        if (awaited.totalRowCount !== undefined) {
-          successState.totalRowCount = awaited.totalRowCount;
+        if (result.totalRowCount !== undefined) {
+          successState.totalRowCount = result.totalRowCount;
+        }
+        if (cursor !== undefined) {
+          successState.cursor = cursor;
+        }
+        if (resolvedDataVersion !== undefined) {
+          successState.dataVersion = resolvedDataVersion;
         }
         table.__setDataSourceState(successState);
-        table.announce(t('loadingFinished', awaited.rows.length));
+        table.announce(t('loadingFinished', result.rows.length));
       };
 
       const handleError = (err: unknown) => {
@@ -234,6 +300,12 @@ export const useDataSource = <TRow>(
           error: err instanceof Error ? err : new Error(String(err)),
           refetch,
         };
+        if (priorState.cursor !== undefined) {
+          errorState.cursor = priorState.cursor;
+        }
+        if (priorState.dataVersion !== undefined) {
+          errorState.dataVersion = priorState.dataVersion;
+        }
         table.__setDataSourceState(errorState);
       };
 
@@ -279,6 +351,14 @@ export const useDataSource = <TRow>(
   }
   if (snapshot.error !== undefined) {
     result.error = snapshot.error;
+  }
+  // R2 fix: Expose cursor state and selectCursor for cursor-capable sources.
+  if (snapshot.cursor !== undefined) {
+    result.cursor = snapshot.cursor;
+  }
+  // R2 fix: Expose selectCursor only for cursor-capable sources.
+  if (source?.capabilities.pagination === 'cursor') {
+    result.selectCursor = selectCursor;
   }
 
   return result;

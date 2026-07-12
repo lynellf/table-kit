@@ -12,7 +12,7 @@ import type { Column } from './columns';
 import { createColumns } from './columns';
 import { synthesizePlaceholderRows } from './dataSource/placeholderRows';
 import { buildRowsQuery } from './dataSource/query';
-import type { DataSourceCapabilities, DataSourceState } from './dataSource/types';
+import type { CursorSelection, DataSourceCapabilities, DataSourceState } from './dataSource/types';
 import { validateModeConfiguration } from './dataSource/warnings';
 import { buildHeaderGroups } from './headers';
 import type { HeaderContext } from './headers';
@@ -142,6 +142,12 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     const prevState = this.state;
     this.options = next;
 
+    // R1 fix: Track if columns changed for pruning.
+    const columnsChanged =
+      prevOptions !== undefined &&
+      next.columns !== prevOptions.columns &&
+      next.columns !== undefined;
+
     // Phase 1 F0.1 / R1: Preserve ALL state slices on subsequent setOptions calls.
     // - When next.state is provided, preserve current values for omitted slices
     //   (partial controlled state must not reset omitted slices).
@@ -191,6 +197,14 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
     if (slicesChanged) {
       this.state = nextState;
+    }
+
+    // R1 fix: Prune invalid column IDs from state slices when columns change.
+    // This runs in the core setOptions path so direct factory consumers also get pruning.
+    // The React adapter may also call this; the method is idempotent (checks if columns actually changed).
+    if (columnsChanged && next.columns) {
+      const validColumnIds = new Set(next.columns.map((c) => c.id));
+      this.__pruneColumnIds(validColumnIds);
     }
 
     // M3 phase 1: re-validate when the option set changes (manual* flags flipped).
@@ -302,8 +316,15 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
    *
    * For controlled slices, uses the consumer-provided state from options.state
    * instead of the internal state.
+   *
+   * v2.0.0: R2 fix - now accepts optional cursor and dataVersion for
+   * cursor-based pagination and mutable data identity.
    */
-  __buildRowsQuery(capabilities: DataSourceCapabilities) {
+  __buildRowsQuery(
+    capabilities: DataSourceCapabilities,
+    cursor?: CursorSelection,
+    dataVersion?: string | number,
+  ) {
     // For controlled slices, use the options state instead of internal state
     const sorting = isSliceControlled(this.options.state, 'sorting')
       ? this.options.state!.sorting!
@@ -321,7 +342,16 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       pagination,
     };
     const columns = this.getResolvedColumns();
-    return buildRowsQuery(state, columns, { capabilities });
+    // R2 fix: Thread cursor and dataVersion through to buildRowsQuery.
+    // Use spread to avoid exactOptionalPropertyTypes issues with undefined values.
+    const queryOpts: Parameters<typeof buildRowsQuery>[2] = { capabilities };
+    if (cursor !== undefined) {
+      queryOpts.cursor = cursor;
+    }
+    if (dataVersion !== undefined) {
+      queryOpts.dataVersion = dataVersion;
+    }
+    return buildRowsQuery(state, columns, queryOpts);
   }
 
   // ─── Row model (M1: filter → sort → paginate pipeline) ─────────────────────

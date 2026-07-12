@@ -18,6 +18,7 @@ import type { DataTableState } from '../types';
 import type {
   BuildRowsQueryOptions,
   CursorPagination,
+  CursorSelection,
   DataSourceCapabilities,
   OffsetPagination,
   PaginationStrategy,
@@ -68,7 +69,7 @@ export const buildRowsQuery = <TRow>(
   columns: Array<Column<TRow, unknown>>,
   opts: BuildRowsQueryOptions,
 ): RowsQuery => {
-  const { capabilities } = opts;
+  const { capabilities, cursor, dataVersion } = opts;
   const defaultFilterFn = opts.defaultFilterFn ?? 'equals';
 
   // Sorting: emit as-is. Spec §7.4: function names only; `SortItem = { id, desc }` is already name-only.
@@ -94,12 +95,19 @@ export const buildRowsQuery = <TRow>(
 
   // Pagination: include only when paginate is 'server'.
   // v2.0.0: Use the discriminated PaginationWire union instead of raw PaginationState.
+  // R2 fix: Thread cursor selection through to buildPaginationWire.
   const pagination: PaginationWire | undefined =
     capabilities.paginate === 'server'
-      ? buildPaginationWire(state.pagination, capabilities)
+      ? buildPaginationWire(state.pagination, capabilities, cursor)
       : undefined;
 
-  return { sorting, filters, ...(pagination !== undefined ? { pagination } : {}) };
+  // R2 fix: Include dataVersion in the query for mutable data identity.
+  return {
+    sorting,
+    filters,
+    ...(pagination !== undefined ? { pagination } : {}),
+    ...(dataVersion !== undefined ? { dataVersion } : {}),
+  };
 };
 
 /**
@@ -121,11 +129,12 @@ const warnInlineFilterFn = (columnId: string): void => {
  * For 'cursor' strategy: returns the cursor parameters from cursor state.
  *
  * v2.0.0: Added for cursor-based pagination support.
+ * R2 fix: Thread CursorSelection through to build cursor pagination.
  */
 export const buildPaginationWire = (
   pagination: { pageIndex: number; pageSize: number },
   capabilities: DataSourceCapabilities,
-  cursor?: { cursor: string | null | undefined; direction?: 'next' | 'previous' },
+  cursor?: CursorSelection | { cursor: string | null | undefined; direction?: 'next' | 'previous' },
 ): PaginationWire | undefined => {
   if (capabilities.paginate !== 'server') return undefined;
 

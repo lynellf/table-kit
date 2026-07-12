@@ -46,10 +46,12 @@ export const createClientDataSource = <TRow>(
   columns: Array<ColumnDef<TRow, unknown>>,
   opts: CreateClientDataSourceOptions<TRow> = {},
 ): DataSource<TRow> => {
+  // R2 fix: Preserve pagination strategy from capabilities.
   const capabilities: DataSourceCapabilities = {
     sort: opts.capabilities?.sort ?? 'client',
     filter: opts.capabilities?.filter ?? 'client',
     paginate: opts.capabilities?.paginate ?? 'client',
+    pagination: opts.capabilities?.pagination ?? 'offset',
   };
 
   // One-shot dev warning on the mixed-mode trap (when paginate='server').

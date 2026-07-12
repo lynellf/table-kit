@@ -1,12 +1,12 @@
 <!-- Historical: true -->
 # Phase 1 Foundation — consolidated repair plan (round 4)
 
-**Request class:** remediation
-**Status:** `REQUEST-CHANGES`; implementation remains blocked from Phase 2
+**Request class:** remediation (superseded)
+**Status:** historical `REQUEST-CHANGES` context; implementation must follow [`phase-1-foundation-remediation-round-5.md`](./phase-1-foundation-remediation-round-5.md) and remains blocked from Phase 2
 **Prior accepted scope:** [`spec.md`](./spec.md), [`phase-1-foundation.md`](./phase-1-foundation.md)
 **Prior remediation:** [`phase-1-foundation-remediation-round-3.md`](./phase-1-foundation-remediation-round-3.md)
 **Status record:** [`phase-1-foundation/review-decision.md`](./phase-1-foundation/review-decision.md)
-**Revision delta:** resolves the plan-reviewer findings by naming the cursor/version owners and shapes, making stale-while-revalidate unconditional, specifying the packed-artifact command boundary, and marking round 3 historical.
+**Revision delta:** historical round-4 correction delta; round 5 addresses the subsequent implementation and evidence findings.
 
 ## Goal and current delta
 
