@@ -110,10 +110,13 @@ describe('abort-stale integration', () => {
       console.log(`  Call ${i}:`, JSON.stringify(call.pagination));
     });
 
-    // Check if any call has the new pagination (offset pagination)
-    const hasNewPagination = getRowsCalls
-      .slice(initialCount)
-      .some((call) => call.pagination?.type === 'offset' && call.pagination?.offset === 10);
-    expect(hasNewPagination).toBe(true);
+    // R3-B7: Assert exactly one replacement call for the new pagination key
+    const replacementCalls = getRowsCalls.slice(initialCount);
+    expect(replacementCalls.length).toBe(1);
+
+    // The replacement call should have the new pagination
+    const replacementPagination = replacementCalls[0]?.pagination;
+    expect(replacementPagination?.type).toBe('offset');
+    expect((replacementPagination as { type: 'offset'; offset: number }).offset).toBe(10);
   });
 });
