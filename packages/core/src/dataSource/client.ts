@@ -72,10 +72,25 @@ export const createClientDataSource = <TRow>(
       _ctx: { signal: AbortSignal },
     ): { rows: TRow[]; totalRowCount: number } => {
       // Build column instances from defs.
+      // v2.0.0: pagination is now PaginationWire discriminated union.
+      // For offset strategy: convert offset/limit to pageIndex/pageSize.
+      // For cursor strategy: client-side pagination doesn't apply; use default.
+      const paginationState = (() => {
+        if (!q.pagination) return { pageIndex: 0, pageSize: 25 };
+        if (q.pagination.type === 'offset') {
+          return {
+            pageIndex: Math.floor(q.pagination.offset / q.pagination.limit),
+            pageSize: q.pagination.limit,
+          };
+        }
+        // Cursor strategy: client-side pagination doesn't apply
+        return { pageIndex: 0, pageSize: 25 };
+      })();
+
       const state = {
         sorting: q.sorting,
         columnFilters: q.filters.map((f) => ({ id: f.id, value: f.value })),
-        pagination: q.pagination ?? { pageIndex: 0, pageSize: 25 },
+        pagination: paginationState,
         columnOrder: [],
         columnVisibility: {},
         columnPinning: { left: [], right: [] },
@@ -106,8 +121,9 @@ export const createClientDataSource = <TRow>(
       }
 
       // Paginate (when 'client') — otherwise return full slice + totalRowCount.
-      if (capabilities.paginate === 'client' && q.pagination) {
-        result = paginateRows({ rows: result, pagination: q.pagination });
+      // v2.0.0: Only paginate for offset strategy. Cursor pagination doesn't apply client-side.
+      if (capabilities.paginate === 'client' && q.pagination?.type === 'offset') {
+        result = paginateRows({ rows: result, pagination: paginationState });
       }
 
       return { rows: result, totalRowCount: opts.totalRowCount ?? rows.length };

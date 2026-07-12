@@ -8,12 +8,23 @@
  * (registry name) or an inline function. The serializer emits the **name**
  * only; inline functions emit a one-shot dev warning AND fall back to the
  * column's `filterFn` as the default registry name (e.g., 'equals').
+ *
+ * v2.0.0: Added `buildPaginationWire` for cursor-based pagination support.
  */
 
 import type { Column } from '../columns';
 import { nameOfFilterFn } from '../registries/filtering';
 import type { DataTableState } from '../types';
-import type { BuildRowsQueryOptions, RowsQuery, SerializedFilter } from './types';
+import type {
+  BuildRowsQueryOptions,
+  CursorPagination,
+  DataSourceCapabilities,
+  OffsetPagination,
+  PaginationStrategy,
+  PaginationWire,
+  RowsQuery,
+  SerializedFilter,
+} from './types';
 
 /**
  * Resolve a column's filterFn to its registry name, or undefined if unknown.
@@ -48,6 +59,9 @@ const _warnedInlineFilterColumns = new Set<string>();
  * Concerns marked 'client' are still included in the outbound query but the
  * server is expected to ignore them; concerns marked 'server' must be honored.
  * `pagination` is included only when `capabilities.paginate === 'server'`.
+ *
+ * v2.0.0: Pagination wire type is now a discriminated union (`PaginationWire`)
+ * instead of the raw `PaginationState` shape.
  */
 export const buildRowsQuery = <TRow>(
   state: DataTableState,
@@ -79,8 +93,11 @@ export const buildRowsQuery = <TRow>(
   });
 
   // Pagination: include only when paginate is 'server'.
-  const pagination: import('../types').PaginationState | undefined =
-    capabilities.paginate === 'server' ? state.pagination : undefined;
+  // v2.0.0: Use the discriminated PaginationWire union instead of raw PaginationState.
+  const pagination: PaginationWire | undefined =
+    capabilities.paginate === 'server'
+      ? buildPaginationWire(state.pagination, capabilities)
+      : undefined;
 
   return { sorting, filters, ...(pagination !== undefined ? { pagination } : {}) };
 };
@@ -95,6 +112,40 @@ const warnInlineFilterFn = (columnId: string): void => {
   console.warn(
     `[tablekit] Column "${columnId}" has an inline filterFn paired with capabilities.filter === 'server'. Register the filter with registerFilterFn(name, fn) and pass filterFn: name on the column def.`,
   );
+};
+
+/**
+ * Build the pagination wire type based on the data source capabilities and current pagination state.
+ *
+ * For 'offset' strategy: converts pageIndex/pageSize to offset/limit.
+ * For 'cursor' strategy: returns the cursor parameters from cursor state.
+ *
+ * v2.0.0: Added for cursor-based pagination support.
+ */
+export const buildPaginationWire = (
+  pagination: { pageIndex: number; pageSize: number },
+  capabilities: DataSourceCapabilities,
+  cursor?: { cursor: string | null | undefined; direction?: 'next' | 'previous' },
+): PaginationWire | undefined => {
+  if (capabilities.paginate !== 'server') return undefined;
+
+  const strategy: PaginationStrategy = capabilities.pagination ?? 'offset';
+
+  if (strategy === 'cursor') {
+    return {
+      type: 'cursor',
+      cursor: cursor?.cursor ?? null,
+      direction: cursor?.direction ?? 'next',
+      limit: pagination.pageSize,
+    } satisfies CursorPagination;
+  }
+
+  // Default: offset-based pagination
+  return {
+    type: 'offset',
+    offset: pagination.pageIndex * pagination.pageSize,
+    limit: pagination.pageSize,
+  } satisfies OffsetPagination;
 };
 
 /** Test-only: reset the one-shot inline filterFn warning set. */

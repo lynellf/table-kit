@@ -13,6 +13,7 @@
       "**/dist/**",
       "**/coverage/**",
       "**/.vitest-cache/**",
+      "**/test-results/**",
       "pnpm-lock.yaml",
       "**/*.tsbuildinfo",
       "**/__tests__/fixtures/**"

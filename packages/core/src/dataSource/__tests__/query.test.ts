@@ -8,7 +8,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createColumns } from '../../columns';
 import type { DataTableState } from '../../types';
 import type { ColumnDef } from '../../types';
-import { __resetInlineFilterFnWarningForTests, buildRowsQuery } from '../query';
+import {
+  __resetInlineFilterFnWarningForTests,
+  buildPaginationWire,
+  buildRowsQuery,
+} from '../query';
 
 describe('buildRowsQuery', () => {
   const baseState: DataTableState = {
@@ -80,7 +84,8 @@ describe('buildRowsQuery', () => {
     const q = buildRowsQuery(baseState, [], {
       capabilities: { sort: 'client', filter: 'client', paginate: 'server' },
     });
-    expect(q.pagination).toEqual({ pageIndex: 0, pageSize: 25 });
+    // v2.0.0: Pagination is now PaginationWire discriminated union
+    expect(q.pagination).toEqual({ type: 'offset', offset: 0, limit: 25 });
   });
 
   it('omits pagination when paginate is client', () => {
@@ -204,6 +209,72 @@ describe('buildRowsQuery', () => {
     });
     expect(q.sorting).toEqual([{ id: 'name', desc: false }]);
     expect(q.filters).toEqual([{ id: 'region', value: 'West', filterFn: 'equalsString' }]);
-    expect(q.pagination).toEqual({ pageIndex: 2, pageSize: 25 });
+    // v2.0.0: Pagination is now PaginationWire discriminated union
+    expect(q.pagination).toEqual({ type: 'offset', offset: 50, limit: 25 });
+  });
+
+  // ─── Cursor pagination (R2) ─────────────────────────────────────────────────
+
+  describe('R2: cursor pagination', () => {
+    it('returns cursor pagination wire with default cursor when strategy is cursor', () => {
+      const result = buildPaginationWire(
+        { pageIndex: 0, pageSize: 25 },
+        { sort: 'server', filter: 'server', paginate: 'server', pagination: 'cursor' },
+      );
+      expect(result).toEqual({
+        type: 'cursor',
+        cursor: null,
+        direction: 'next',
+        limit: 25,
+      });
+    });
+
+    it('returns cursor pagination wire with provided cursor and direction', () => {
+      const result = buildPaginationWire(
+        { pageIndex: 0, pageSize: 25 },
+        { sort: 'server', filter: 'server', paginate: 'server', pagination: 'cursor' },
+        { cursor: 'abc123', direction: 'next' as const },
+      );
+      expect(result).toEqual({
+        type: 'cursor',
+        cursor: 'abc123',
+        direction: 'next',
+        limit: 25,
+      });
+    });
+
+    it('returns cursor pagination wire with previous direction', () => {
+      const result = buildPaginationWire(
+        { pageIndex: 0, pageSize: 10 },
+        { sort: 'server', filter: 'server', paginate: 'server', pagination: 'cursor' },
+        { cursor: 'xyz789', direction: 'previous' as const },
+      );
+      expect(result).toEqual({
+        type: 'cursor',
+        cursor: 'xyz789',
+        direction: 'previous',
+        limit: 10,
+      });
+    });
+
+    it('returns offset pagination wire when strategy is offset (default)', () => {
+      const result = buildPaginationWire(
+        { pageIndex: 3, pageSize: 25 },
+        { sort: 'server', filter: 'server', paginate: 'server' },
+      );
+      expect(result).toEqual({
+        type: 'offset',
+        offset: 75,
+        limit: 25,
+      });
+    });
+
+    it('returns undefined when paginate is client', () => {
+      const result = buildPaginationWire(
+        { pageIndex: 0, pageSize: 25 },
+        { sort: 'server', filter: 'server', paginate: 'client' },
+      );
+      expect(result).toBeUndefined();
+    });
   });
 });

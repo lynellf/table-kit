@@ -11,7 +11,16 @@
 export type {
   MaybePromise,
   Capability,
+  PaginationStrategy,
   DataSourceCapabilities,
+  DataVersion,
+  OffsetPagination,
+  CursorPagination,
+  PaginationWire,
+  CursorState,
+  CursorResult,
+  DataSourceStateWithCursor,
+  RowsResult,
   SerializedFilter,
   RowsQuery,
   DataSourceStatus,
@@ -22,7 +31,11 @@ export type {
 } from './types';
 
 // ─── Serializer ─────────────────────────────────────────────────────────
-export { buildRowsQuery, __resetInlineFilterFnWarningForTests } from './query';
+export {
+  buildRowsQuery,
+  buildPaginationWire,
+  __resetInlineFilterFnWarningForTests,
+} from './query';
 
 // ─── Client data source ─────────────────────────────────────────────────
 export { createClientDataSource } from './client';

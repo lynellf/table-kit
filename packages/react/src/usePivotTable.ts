@@ -11,7 +11,6 @@
  *  - Returns { pivot, state, Announcer }
  */
 
-import { setGlobalAnnouncer } from '@lynellf/tablekit-core';
 import type { Announcer, TabBehavior } from '@lynellf/tablekit-core';
 import { createPivotTable } from '@lynellf/tablekit-pivot';
 import type {
@@ -27,9 +26,9 @@ import { useTabBehavior } from './useTabBehavior';
 
 export interface UsePivotTableOptions<TRow> extends PivotTableOptions<TRow> {
   /**
-   * Optional announcer. Defaults to a no-op; consumers render `<Announcer />`
-   * (from useDataTable or usePivotTable) to mount the ReactAnnouncer which
-   * sets the global announcer.
+   * Optional announcer. Defaults to the global announcer set by ReactAnnouncer.
+   * Consumers render `<Announcer />` (from useDataTable or usePivotTable) to
+   * mount the ReactAnnouncer which manages the live-region.
    */
   announcer?: Announcer;
   /** M6 phase 1: per-key announcer-string overrides for i18n. Defaults to English. */
@@ -55,9 +54,17 @@ export interface UsePivotTableResult<TRow> {
 export const usePivotTable = <TRow>(
   options: UsePivotTableOptions<TRow>,
 ): UsePivotTableResult<TRow> => {
+  // R5 fix: Create announcer instance before pivot, so it can be shared.
+  // The announcer is shared between the pivot (via options) and ReactAnnouncer (via props).
+  const announcerRef = useRef<Announcer | null>(null);
+  if (announcerRef.current === null) {
+    announcerRef.current = { announce: () => {} };
+  }
+
   const ref = useRef<PivotTableInstance<TRow> | null>(null);
   if (ref.current === null) {
-    ref.current = createPivotTable<TRow>(options);
+    // R5 fix: Pass the announcer to the pivot factory so it uses our instance
+    ref.current = createPivotTable<TRow>({ ...options, announcer: announcerRef.current });
   }
   const pivot = ref.current;
 
@@ -68,21 +75,11 @@ export const usePivotTable = <TRow>(
     pivot.setOptions(options);
   }, [pivot, options]);
 
-  // Side-effect: register the ReactAnnouncer globally if no announcer was provided.
-  useEffect(() => {
-    if (!options.announcer) {
-      const reactAnnouncer: Announcer = {
-        announce: (_msg: string, _politeness?: 'polite' | 'assertive') => {
-          // The Announcer component sets the global announcer on mount.
-          // Here we just no-op; the consumer's rendered <Announcer /> handles it.
-        },
-      };
-      setGlobalAnnouncer(reactAnnouncer);
-    }
-    return () => {
-      if (!options.announcer) setGlobalAnnouncer({ announce: () => {} });
-    };
-  }, [options.announcer]);
+  // Phase 1 F0.5: The global announcer is managed by the ReactAnnouncer component,
+  // not by this hook. Consumers must render <Announcer /> to enable announcements.
+  // We no longer set or reset the global announcer here, as that caused issues
+  // when multiple instances were mounted - unmounting one would disable announcements
+  // for the other.
 
   const subscribe = useCallback((onChange: () => void) => pivot.subscribe(onChange), [pivot]);
   const getSnapshot = useCallback(() => pivot.getState(), [pivot]);
@@ -97,7 +94,8 @@ export const usePivotTable = <TRow>(
   return {
     pivot,
     state,
-    Announcer: () => React.createElement(ReactAnnouncer),
+    // R5 fix: Pass the shared announcer instance to ReactAnnouncer.
+    Announcer: () => React.createElement(ReactAnnouncer, { announcer: announcerRef.current! }),
     gridRef,
   };
 };

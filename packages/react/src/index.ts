@@ -26,7 +26,7 @@ export { useKeyboardNav } from './useKeyboardNav';
 // ─── Tab behavior (M6 Phase 2) ─────────────────────────────────────────────
 export { useTabBehavior } from './useTabBehavior';
 
-export const VERSION = '0.2.0' as const;
+export const VERSION = '2.0.0' as const;
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
 export { useDataTable } from './useDataTable';
@@ -37,7 +37,9 @@ export { useDataSource } from './useDataSource';
 export type { UseDataSourceResult } from './useDataSource';
 
 // ─── Announcer (M1) ───────────────────────────────────────────────────────
-export { ReactAnnouncer, getReactAnnouncer } from './ReactAnnouncer';
+// R5 fix: ReactAnnouncerProps is exported for useDataTable to pass the announcer prop
+export { ReactAnnouncer } from './ReactAnnouncer';
+export type { ReactAnnouncerProps } from './ReactAnnouncer';
 
 // ─── Pivot (M4) ────────────────────────────────────────────────────────────
 export { usePivotTable } from './usePivotTable';

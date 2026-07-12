@@ -120,7 +120,7 @@ describe('createClientDataSource', () => {
     it('applies pagination when paginate capability is client', () => {
       const ds = createClientDataSource(rows, columns);
       const result = ds.getRows(
-        { sorting: [], filters: [], pagination: { pageIndex: 0, pageSize: 2 } },
+        { sorting: [], filters: [], pagination: { type: 'offset', offset: 0, limit: 2 } },
         { signal: new AbortController().signal },
       ) as SyncResult;
       expect(result.rows).toHaveLength(2);
@@ -131,7 +131,7 @@ describe('createClientDataSource', () => {
     it('ignores pagination when paginate capability is server', () => {
       const ds = createClientDataSource(rows, columns, { capabilities: { paginate: 'server' } });
       const result = ds.getRows(
-        { sorting: [], filters: [], pagination: { pageIndex: 0, pageSize: 2 } },
+        { sorting: [], filters: [], pagination: { type: 'offset', offset: 0, limit: 2 } },
         { signal: new AbortController().signal },
       ) as SyncResult;
       expect(result.rows).toHaveLength(4); // all rows returned
@@ -146,7 +146,7 @@ describe('createClientDataSource', () => {
         {
           sorting: [{ id: 'sales', desc: false }],
           filters: [{ id: 'region', value: 'West' }],
-          pagination: { pageIndex: 0, pageSize: 10 },
+          pagination: { type: 'offset', offset: 0, limit: 10 },
         },
         { signal: new AbortController().signal },
       ) as SyncResult;

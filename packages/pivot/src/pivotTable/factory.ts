@@ -12,8 +12,13 @@ import { buildPivotQuery } from '../serialize/query';
 import type {
   AggregationEngine,
   Announcer,
+  CellPosition,
+  ColumnPinningState,
+  ColumnResizeSession,
+  ColumnSizingState,
   FieldRef,
   MaybePromise,
+  OnChangeFn,
   PivotColumnNode,
   PivotConfig,
   PivotExpansionState,
@@ -215,8 +220,8 @@ const removeNodeError = <TRow>(node: PivotRowNode<TRow>): PivotRowNode<TRow> => 
   return withoutError;
 };
 
-const dispatchCallback = <T>(callback: Updater<T> | undefined, updater: Updater<T>): void => {
-  (callback as ((value: Updater<T>) => void) | undefined)?.(updater);
+const dispatchCallback = <T>(callback: OnChangeFn<T> | undefined, updater: Updater<T>): void => {
+  callback?.(updater);
 };
 
 const normalizePivotUpdater = <TRow>(
@@ -484,6 +489,114 @@ export const createPivotTable = <TRow>(
     requestCompute();
   };
 
+  // F0.3: Implement inert pivot state slices.
+  // These slices were declared in PivotTableState but lacked complete setters.
+
+  const setColumnPinning = (updater: Updater<ColumnPinningState>): void => {
+    if (currentOptions.state && 'columnPinning' in currentOptions.state) {
+      dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
+        ...prev,
+        columnPinning: typeof updater === 'function' ? updater(prev.columnPinning) : updater,
+      }));
+      return;
+    }
+    const previous = state.columnPinning;
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: ColumnPinningState) => ColumnPinningState)(previous)
+        : updater;
+    if (Object.is(previous, next)) return;
+    commitLocalState({ ...state, columnPinning: next });
+  };
+
+  const setColumnSizing = (updater: Updater<ColumnSizingState>): void => {
+    if (currentOptions.state && 'columnSizing' in currentOptions.state) {
+      dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
+        ...prev,
+        columnSizing: typeof updater === 'function' ? updater(prev.columnSizing) : updater,
+      }));
+      return;
+    }
+    const previous = state.columnSizing;
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: ColumnSizingState) => ColumnSizingState)(previous)
+        : updater;
+    if (Object.is(previous, next)) return;
+    commitLocalState({ ...state, columnSizing: next });
+  };
+
+  const setColumnSizingInfo = (updater: Updater<ColumnResizeSession | null>): void => {
+    if (currentOptions.state && 'columnSizingInfo' in currentOptions.state) {
+      dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
+        ...prev,
+        columnSizingInfo: typeof updater === 'function' ? updater(prev.columnSizingInfo) : updater,
+      }));
+      return;
+    }
+    const previous = state.columnSizingInfo;
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: ColumnResizeSession | null) => ColumnResizeSession | null)(previous)
+        : updater;
+    if (Object.is(previous, next)) return;
+    commitLocalState({ ...state, columnSizingInfo: next });
+  };
+
+  // F0.3: Resize session command methods.
+  // These provide a higher-level API for resize interactions.
+
+  const startResize = (columnId: string, startSize: number): void => {
+    const session: ColumnResizeSession = {
+      columnId,
+      startSize,
+      delta: 0,
+      mode: 'onChange',
+    };
+    setColumnSizingInfo(session);
+  };
+
+  const adjustResize = (delta: number): void => {
+    if (!state.columnSizingInfo) return;
+    setColumnSizingInfo({
+      ...state.columnSizingInfo,
+      delta,
+      mode: 'onChange',
+    });
+  };
+
+  const commitResize = (): void => {
+    if (!state.columnSizingInfo) return;
+    const { columnId, startSize, delta } = state.columnSizingInfo;
+    const newWidth = Math.max(0, startSize + delta);
+    // Update columnSizing with the new width
+    setColumnSizing((prev) => ({ ...prev, [columnId]: newWidth }));
+    // Clear the resize session
+    setColumnSizingInfo(null);
+  };
+
+  const cancelResize = (): void => {
+    if (!state.columnSizingInfo) return;
+    setColumnSizingInfo(null);
+  };
+
+  const setFocusedCell = (updater: Updater<CellPosition | null>): void => {
+    if (currentOptions.state && 'focusedCell' in currentOptions.state) {
+      dispatchCallback(currentOptions.onStateChange as OnChangeFn<PivotTableState>, (prev) => ({
+        ...prev,
+        focusedCell: typeof updater === 'function' ? updater(prev.focusedCell) : updater,
+      }));
+      return;
+    }
+    const previous = state.focusedCell;
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: CellPosition | null) => CellPosition | null)(previous)
+        : updater;
+    if (Object.is(previous, next)) return;
+    commitLocalState({ ...state, focusedCell: next });
+  };
+
   const setOptions = (next: PivotTableOptions<TRow>): void => {
     if (disposed) return;
     const previousOptions = currentOptions;
@@ -570,11 +683,31 @@ export const createPivotTable = <TRow>(
     getError: () => error,
     getVisibleRows: () => getVisibleRows(result.rowRoot, state.expanded),
     getHeaderRows: () => getHeaderRows(result.columnRoot),
-    getLeafColumns: () => result.leafColumns,
+    getLeafColumns: () => {
+      // F0.3: Apply columnSizing widths and derive effective pinning.
+      // The engine result provides base sizes; we layer on consumer-controlled sizes.
+      return result.leafColumns.map((leaf) => {
+        const width = state.columnSizing[leaf.id] ?? leaf.size;
+        // Grand-total column defaults to 'right' pinning unless explicitly set.
+        const pinned = leaf.pinned ?? (leaf.isTotal ? 'right' : undefined);
+        // Use exact-optional-property semantics: only include pinned if defined.
+        return pinned !== undefined ? { ...leaf, size: width, pinned } : { ...leaf, size: width };
+      });
+    },
     setPivot,
     setExpanded,
     toggleExpanded,
     setPivotSorting,
+    // F0.3: Implemented previously inert pivot state slices.
+    setColumnPinning,
+    setColumnSizing,
+    setColumnSizingInfo,
+    // F0.3: Resize session command methods.
+    startResize,
+    adjustResize,
+    commitResize,
+    cancelResize,
+    setFocusedCell,
     announce: (message: string, politeness?: 'polite' | 'assertive') =>
       announcer.announce(message, politeness),
     dispose,

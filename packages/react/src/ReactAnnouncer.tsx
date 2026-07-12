@@ -2,14 +2,19 @@
  * @lynellf/tablekit-react — React live-region announcer.
  *
  * Mounts a visually-hidden `aria-live="polite"` div. The `useDataTable`
- * hook exposes this via `getReactAnnouncer()`.
+ * hook creates the announcer instance and passes it to both this component
+ * (via props) and to the table factory (via options).
+ *
+ * R5 fix: No longer uses singleton/global announcer. Each instance is
+ * independent and isolated. The announcer is passed as a prop from the
+ * hook, ensuring the same instance is shared between the table and
+ * the live region.
  *
  * Spec §10 (M1 minimal): the live-region is the only M1 surface. The
  * `messages` map and i18n land in M6.
  */
 
 import type { Announcer } from '@lynellf/tablekit-core';
-import { setGlobalAnnouncer } from '@lynellf/tablekit-core';
 import { useEffect, useRef, useState } from 'react';
 
 const visuallyHiddenStyle: React.CSSProperties = {
@@ -27,52 +32,58 @@ const visuallyHiddenStyle: React.CSSProperties = {
 const POLITENESS_INTERVAL_MS = 1000;
 
 /**
- * Singleton announcer. Uses a module-level variable to avoid React context
- * for a single-purpose component.
+ * Props for ReactAnnouncer.
+ * R5 fix: announcer is passed as a prop from useDataTable, not obtained from a singleton.
  */
-let singletonAnnouncer: Announcer | null = null;
-
-export const getReactAnnouncer = (): Announcer => {
-  if (!singletonAnnouncer) {
-    singletonAnnouncer = { announce: () => {} };
-  }
-  return singletonAnnouncer;
-};
-
-export const ReactAnnouncer = ({
-  politeness = 'polite',
-}: {
+export interface ReactAnnouncerProps {
+  /** The announcer instance created by useDataTable. Shared with the table. */
+  announcer: Announcer;
   politeness?: 'polite' | 'assertive';
-}) => {
+}
+
+/**
+ * ReactAnnouncer renders a visually-hidden live region and updates it
+ * when the shared announcer's announce() method is called.
+ *
+ * R5 fix: The announcer is passed as a prop, not stored in a singleton.
+ * This ensures each hook-created table has its own isolated announcer.
+ */
+export const ReactAnnouncer = ({ announcer, politeness = 'polite' }: ReactAnnouncerProps) => {
   const [message, setMessage] = useState('');
   const lastAnnounceRef = useRef<{ message: string; ts: number }>({
     message: '',
     ts: 0,
   });
 
+  // R5 fix: Wire the announcer prop to update React state.
+  // No cleanup needed - the announcer is managed by the hook.
   useEffect(() => {
-    const announcer: Announcer = {
-      announce: (msg: string) => {
-        const now = Date.now();
-        if (
-          msg === lastAnnounceRef.current.message &&
-          now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
-        ) {
-          return;
-        }
-        lastAnnounceRef.current = { message: msg, ts: now };
-        // Use setTimeout to batch with React's rendering cycle.
-        // This ensures the state update happens after the current render cycle.
-        setTimeout(() => setMessage(msg), 0);
-      },
+    // Store the original announce method
+    const originalAnnounce = announcer.announce;
+
+    announcer.announce = (msg: string, politenessArg?: 'polite' | 'assertive') => {
+      const now = Date.now();
+      if (
+        msg === lastAnnounceRef.current.message &&
+        now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
+      ) {
+        return;
+      }
+      lastAnnounceRef.current = { message: msg, ts: now };
+      // Use setTimeout to batch with React's rendering cycle.
+      setTimeout(() => setMessage(msg), 0);
+
+      // Also call original announce if it did something (for backward compat)
+      if (originalAnnounce) {
+        originalAnnounce.call(announcer, msg, politenessArg);
+      }
     };
-    singletonAnnouncer = announcer;
-    // Also set the global announcer so the core table can use it
-    setGlobalAnnouncer(announcer);
+
     return () => {
-      singletonAnnouncer = { announce: () => {} };
+      // Restore original announce
+      announcer.announce = originalAnnounce;
     };
-  }, []);
+  }, [announcer]);
 
   return (
     <output

@@ -19,8 +19,24 @@ import type {
 } from '@lynellf/tablekit-core';
 
 // Re-export core types for pivot package consumers
-export type { Updater } from '@lynellf/tablekit-core';
-export type { Announcer } from '@lynellf/tablekit-core';
+export type { Updater, Announcer } from '@lynellf/tablekit-core';
+export type {
+  CellPosition,
+  ColumnPinningState,
+  ColumnResizeSession,
+  ColumnSizingState,
+} from '@lynellf/tablekit-core';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Callback types (Phase 1 F0.3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Callback function type for state change handlers.
+ * Accepts an Updater<T> (value or function) and returns void.
+ * This is the correct type for onChange handlers in React.
+ */
+export type OnChangeFn<T> = (updater: Updater<T>) => void;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Primitive aliases
@@ -386,6 +402,22 @@ export interface PivotTableInstance<TRow = unknown> {
   setExpanded(updater: Updater<PivotExpansionState>): void;
   toggleExpanded(path: Array<FieldValue>): void;
   setPivotSorting(updater: Updater<PivotSortingState>): void;
+  /** F0.3: Set column pinning state. */
+  setColumnPinning(updater: Updater<ColumnPinningState>): void;
+  /** F0.3: Set column sizing state. */
+  setColumnSizing(updater: Updater<ColumnSizingState>): void;
+  /** F0.3: Set column resize session state. */
+  setColumnSizingInfo(updater: Updater<ColumnResizeSession | null>): void;
+  /** F0.3: Start a resize session for the given column. */
+  startResize(columnId: string, startSize: number): void;
+  /** F0.3: Adjust the current resize session by the given delta. */
+  adjustResize(delta: number): void;
+  /** F0.3: Commit the current resize session and update columnSizing. */
+  commitResize(): void;
+  /** F0.3: Cancel the current resize session without updating columnSizing. */
+  cancelResize(): void;
+  /** F0.3: Set focused cell state. */
+  setFocusedCell(updater: Updater<CellPosition | null>): void;
   announce(message: string, politeness?: 'polite' | 'assertive'): void;
   /** Prop getter for the root treegrid element. */
   getGridProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
@@ -428,10 +460,14 @@ export interface PivotTableOptions<TRow = unknown> {
   pivot: PivotConfig<TRow> | ((opts: { data: TRow[] }) => PivotConfig<TRow>);
   initialState?: Partial<PivotTableState>;
   state?: Partial<PivotTableState>;
-  onPivotChange?: Updater<PivotConfig<TRow>>;
-  onExpandedChange?: Updater<PivotExpansionState>;
-  onPivotSortingChange?: Updater<PivotSortingState>;
-  onStateChange?: Updater<PivotTableState>;
+  /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
+  onPivotChange?: OnChangeFn<PivotConfig<TRow>>;
+  /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
+  onExpandedChange?: OnChangeFn<PivotExpansionState>;
+  /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
+  onPivotSortingChange?: OnChangeFn<PivotSortingState>;
+  /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
+  onStateChange?: OnChangeFn<PivotTableState>;
   /** Aggregation engine. Default: `createMainThreadEngine()`. */
   engine?: AggregationEngine<TRow>;
   /** Announcer. Default: `getGlobalAnnouncer()` (set by ReactAnnouncer in M1). */
