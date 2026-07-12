@@ -490,6 +490,14 @@ export interface PivotTableOptions<TRow = unknown> {
   /** getRowId for the source dataset. Default: index-based dev fallback (warning in M4). */
   getRowId?: (row: TRow, index: number) => string;
   /**
+   * R4 fix: Data version token for mutable data identity.
+   * When the data array is mutated in-place (same reference), consumers can
+   * increment/publish a new version token to signal that the data changed.
+   * This triggers recomputation even when the data reference is unchanged.
+   * Comparison is reference-based for the token itself (string/number).
+   */
+  dataVersion?: string | number;
+  /**
    * M6 phase 2: how Tab behaves inside the pivot grid.
    * - 'exit' (default, APG-conformant): Tab moves focus out of the grid.
    * - 'cells' (opt-in): Tab focuses the first cell; Arrow keys move within the row.

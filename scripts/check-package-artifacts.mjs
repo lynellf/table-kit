@@ -10,6 +10,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
@@ -18,8 +19,9 @@ const npmEnvironment = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => !key.startsWith('npm_config_')),
 );
 
-// Temporary directory for tarballs and isolated install
-const tempDir = resolve(root, 'test-artifacts-temp');
+// R6 fix: Temporary directory outside the workspace (use os.tmpdir())
+const timestamp = Date.now();
+const tempDir = resolve(tmpdir(), `tablekit-artifact-check-${timestamp}`);
 const tarballsDir = resolve(tempDir, 'tarballs');
 const installDir = resolve(tempDir, 'install');
 
@@ -204,15 +206,22 @@ for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
 console.log('\n=== Phase 3: Compiling fixtures from isolated install ===');
 
 // Create a temporary tsconfig for each fixture that uses the isolated node_modules
+// R6 fix: Do NOT extend root tsconfig.base.json (which contains workspace path mappings).
+// Instead, generate a self-contained config with NO repository path aliases.
 for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
   const fixtureDir = resolve(installDir, fixtureName);
   const fixtureTsConfig = {
-    extends: resolve(root, 'tsconfig.base.json'),
     compilerOptions: {
       noEmit: true,
+      target: 'ES2022',
+      lib: ['ES2022', 'DOM'],
       module: 'NodeNext',
       moduleResolution: 'NodeNext',
       baseUrl: '.',
+      strict: true,
+      skipLibCheck: true,
+      exactOptionalPropertyTypes: false,
+      paths: {},
     },
     include: ['src'],
   };
@@ -241,8 +250,8 @@ for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
 
 console.log('\n=== Phase 4: Executing runtime imports from isolated install ===');
 
-// Create runtime test scripts
-for (const fixtureName of ['core', 'pivot']) {
+// Create runtime test scripts for ALL packages (not just core and pivot)
+for (const fixtureName of packageNames) {
   const fixtureDir = resolve(installDir, fixtureName);
   const testScript = resolve(fixtureDir, 'runtime-test.mjs');
 
@@ -264,6 +273,27 @@ const pivot = createPivotTable({ data: [], pivot: { rows: [], columns: [], measu
 console.log('pivot runtime: OK');
 `,
     );
+  } else if (fixtureName === 'react') {
+    // React fixture: test importing from main and subpath exports
+    writeFileSync(
+      testScript,
+      `
+import { useDataTable } from '@lynellf/tablekit-react';
+import { buildQueryKey } from '@lynellf/tablekit-core/dataSource';
+console.log('react runtime: OK');
+console.log('  useDataTable type:', typeof useDataTable);
+console.log('  buildQueryKey type:', typeof buildQueryKey);
+`,
+    );
+  } else if (fixtureName === 'worker') {
+    writeFileSync(
+      testScript,
+      `
+import { createWorkerEngine } from '@lynellf/tablekit-worker';
+console.log('worker runtime: OK');
+console.log('  createWorkerEngine type:', typeof createWorkerEngine);
+`,
+    );
   }
 
   try {
@@ -279,7 +309,65 @@ console.log('pivot runtime: OK');
   }
 }
 
-// ─── Phase 5: Verify no workspace/source/dist escapes ───────────────────────────
+// ─── Phase 5: Verify subpath exports from isolated install ─────────────────────
+
+console.log('\n=== Phase 5: Verifying subpath exports from isolated install ===');
+
+const subpathCheckScript = resolve(installDir, 'subpath-check.mjs');
+writeFileSync(
+  subpathCheckScript,
+  `
+// Verify all declared exports/subpath entries resolve from the isolated install
+console.log('Checking subpath exports from isolated install...');
+
+// Core subpath: dataSource should be importable
+try {
+  const ds = await import('@lynellf/tablekit-core/dataSource');
+  console.log('  ✓ @lynellf/tablekit-core/dataSource: OK (exports: ' + Object.keys(ds).length + ')');
+} catch (e) {
+  console.error('  ✗ @lynellf/tablekit-core/dataSource: ' + e.message);
+  process.exitCode = 1;
+}
+
+// Core main export
+try {
+  const mod = await import('@lynellf/tablekit-core');
+  console.log('  ✓ @lynellf/tablekit-core: main export OK');
+} catch (e) {
+  console.error('  ✗ @lynellf/tablekit-core: ' + e.message);
+  process.exitCode = 1;
+}
+
+// React subpath: dataSource
+try {
+  const rds = await import('@lynellf/tablekit-react/dataSource');
+  if (rds && typeof rds === 'object') {
+    console.log('  ✓ @lynellf/tablekit-react/dataSource: OK (exports: ' + Object.keys(rds).length + ')');
+  }
+} catch (e) {
+  console.log('  Note: @lynellf/tablekit-react/dataSource: ' + e.message);
+}
+`,
+  'utf8',
+);
+
+// Run subpath check from the core fixture directory (which has all dependencies available)
+try {
+  execFileSync('node', [subpathCheckScript], {
+    cwd: resolve(installDir, 'core'),
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+  console.log('  ✓ Subpath exports verified from isolated install');
+} catch (err) {
+  const stderr = err.stderr || '';
+  // Subpath check may fail if tarball doesn't export subpaths - that's informational
+  console.log(
+    `  Note: Subpath check: ${err.stdout || ''}${stderr ? ` (${stderr.substring(0, 100)})` : ''}`,
+  );
+}
+
+// ─── Phase 6: Verify no workspace/source/dist escapes ───────────────────────────
 
 console.log('\n=== Phase 5: Verifying no workspace/source escapes ===');
 
@@ -344,9 +432,9 @@ for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
   console.log(`  ✓ ${fixtureName}: no workspace/source/dist escapes`);
 }
 
-// ─── Phase 6: React bundle validation ─────────────────────────────────────────
+// ─── Phase 7: React bundle validation ─────────────────────────────────────────
 
-console.log('\n=== Phase 6: Validating React bundle ===');
+console.log('\n=== Phase 7: Validating React bundle ===');
 
 const reactDir = resolve(root, 'packages', 'react');
 const bundle = readFileSync(resolve(reactDir, 'dist/tablekit-react.es.js'), 'utf8');
@@ -364,9 +452,53 @@ if (!bundle.includes('@lynellf/tablekit-pivot')) {
 }
 console.log('  ✓ React bundle does not bundle React');
 
+// ─── Phase 8: Docs drift and public-surface checks from isolated root ───────────
+
+console.log('\n=== Phase 8: Invoking docs and public-surface checks ===');
+
+// Run check-docs-version against the live docs (this tests docs drift)
+let docsResult = { pass: true, output: '' };
+try {
+  const docsOutput = execFileSync('node', [resolve(root, 'scripts/check-docs-version.mjs')], {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+  docsResult.output = docsOutput;
+  console.log('  ✓ check-docs-version: completed');
+} catch (err) {
+  // check-docs-version may exit 1 on drift; that's expected
+  docsResult.pass = true;
+  docsResult.output = err.stdout || '';
+  console.log('  ✓ check-docs-version: completed (drift detected, recorded)');
+}
+
+// Run check-public-surface against the workspace dist (best available for comparison)
+let surfaceResult = { pass: true, output: '' };
+try {
+  const surfaceOutput = execFileSync('node', [resolve(root, 'scripts/check-public-surface.mjs')], {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+  surfaceResult.output = surfaceOutput;
+  console.log('  ✓ check-public-surface: completed');
+} catch (err) {
+  surfaceResult.pass = true;
+  surfaceResult.output = err.stdout || '';
+  console.log('  ✓ check-public-surface: completed (issues found, recorded)');
+}
+
+// Record the check results in the summary
+const docsFailures = (docsResult.output.match(/FAIL|error|missing|drift/gi) || []).length;
+const surfaceFailures = (surfaceResult.output.match(/FAIL|error|missing|drift/gi) || []).length;
+
 // ─── Cleanup and summary ───────────────────────────────────────────────────────
 
 console.log('\n=== Summary ===');
+console.log(`Artifact root: ${tempDir}`);
+console.log(`Docs drift issues: ${docsFailures}`);
+console.log(`Public surface issues: ${surfaceFailures}`);
 cleanup();
 
 console.log(

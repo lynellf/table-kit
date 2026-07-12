@@ -437,9 +437,17 @@ export interface DataTableInstance<TRow> {
   /** @internal Build a RowsQuery from current state + capabilities. Used by the React hook. */
   __buildRowsQuery(
     capabilities: import('./dataSource/types').DataSourceCapabilities,
+    cursor?: import('./dataSource/types').CursorSelection,
+    dataVersion?: string | number,
   ): import('./dataSource/types').RowsQuery;
   /** @internal Prune invalid column IDs from state slices when columns change. */
   __pruneColumnIds(validColumnIds: Set<string>): void;
+  /** @internal R3-MANUAL-CAPABILITY-OVERLAY: Apply data-source capability flags. */
+  __applyCapabilityOverlay(overlay: {
+    manualSorting: boolean;
+    manualFiltering: boolean;
+    manualPagination: boolean;
+  }): void;
 
   // ─── Data identity (v2.0.0) ─────────────────────────────────────────────────
   /**

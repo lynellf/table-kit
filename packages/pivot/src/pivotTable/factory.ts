@@ -467,7 +467,7 @@ export const createPivotTable = <TRow>(
     // R4-CALLBACK-006 fix: Determine controlledness by own-property presence in options.state.
     // - controlled+dedicated: dispatch raw updater only through dedicated callback
     // - controlled+missing: do NOT mutate local state or synthesize whole-state updater
-    // - uncontrolled+dedicated: update local state AND notify dedicated callback as observer
+    // - uncontrolled+dedicated: update local state AND notify dedicated callback with raw updater
     // - uncontrolled+aggregate: update local state AND notify onStateChange
     const isControlled =
       currentOptions.state &&
@@ -490,9 +490,10 @@ export const createPivotTable = <TRow>(
         : updater;
     if (Object.is(previous, next)) return;
 
-    // Notify dedicated callback as an additive observer
+    // R4 fix: Notify dedicated callback with the RAW updater (not the resolved value)
+    // so the observer receives functional-updater identity preservation.
     if (currentOptions.onColumnPinningChange) {
-      dispatchCallback(currentOptions.onColumnPinningChange, next);
+      dispatchCallback(currentOptions.onColumnPinningChange, updater);
     }
     // Always notify aggregate onStateChange for uncontrolled slices
     commitLocalState({ ...state, columnPinning: next });
@@ -519,7 +520,7 @@ export const createPivotTable = <TRow>(
     if (Object.is(previous, next)) return;
 
     if (currentOptions.onColumnSizingChange) {
-      dispatchCallback(currentOptions.onColumnSizingChange, next);
+      dispatchCallback(currentOptions.onColumnSizingChange, updater);
     }
     commitLocalState({ ...state, columnSizing: next });
   };
@@ -544,8 +545,9 @@ export const createPivotTable = <TRow>(
         : updater;
     if (Object.is(previous, next)) return;
 
+    // R4 fix: Notify dedicated callback with the RAW updater (not the resolved value)
     if (currentOptions.onColumnSizingInfoChange) {
-      dispatchCallback(currentOptions.onColumnSizingInfoChange, next);
+      dispatchCallback(currentOptions.onColumnSizingInfoChange, updater);
     }
     commitLocalState({ ...state, columnSizingInfo: next });
   };
@@ -608,7 +610,7 @@ export const createPivotTable = <TRow>(
     if (Object.is(previous, next)) return;
 
     if (currentOptions.onFocusedCellChange) {
-      dispatchCallback(currentOptions.onFocusedCellChange, next);
+      dispatchCallback(currentOptions.onFocusedCellChange, updater);
     }
     commitLocalState({ ...state, focusedCell: next });
   };
@@ -669,10 +671,23 @@ export const createPivotTable = <TRow>(
     // R4-IDENTITY-008 fix: Use reference comparison instead of deep equality.
     // Same reference = no change; different reference = changed (triggers recompute).
     const dataChanged = previousOptions.data !== next.data;
+    // R4 fix: Track dataVersion for mutable data patterns.
+    // When data reference is unchanged but dataVersion differs, trigger recompute.
+    const dataVersionChanged =
+      !dataChanged &&
+      previousOptions.data === next.data &&
+      previousOptions.dataVersion !== next.dataVersion;
     const pivotChanged = !Object.is(previousState.pivot, nextState.pivot);
     const expandedChanged = !Object.is(previousState.expanded, nextState.expanded);
     const sortingChanged = !Object.is(previousState.pivotSorting, nextState.pivotSorting);
-    if (engineChanged || dataChanged || pivotChanged || expandedChanged || sortingChanged) {
+    if (
+      engineChanged ||
+      dataChanged ||
+      dataVersionChanged ||
+      pivotChanged ||
+      expandedChanged ||
+      sortingChanged
+    ) {
       requestCompute();
     } else if (stateChanged) {
       emit();
@@ -722,10 +737,30 @@ export const createPivotTable = <TRow>(
         return leaf.pinned;
       });
 
-      // Second pass: compute cumulative pinned offsets
+      // Second pass: compute cumulative pinned offsets.
+      // For LEFT-pinned columns: offset is the sum of widths of all preceding
+      // left-pinned columns in leaf order (first left-pinned = 0, next = width of first, etc.)
+      //
+      // For RIGHT-pinned columns (R4 fix): offset is accumulated from the RIGHT EDGE
+      // in pin-array order. The rightmost column in the pin array gets offset 0,
+      // the next rightmost gets the width of the rightmost, etc.
+      // We process pin-array order from right to left.
       const result2: Array<PivotLeafColumn<TRow>> = [];
       let leftOffset = 0;
-      let rightOffset = 0;
+
+      // Compute right offsets: iterate pin array in REVERSE order (right edge first)
+      const rightPinOrder = state.columnPinning.right;
+      const rightOffsets = new Map<string, number>();
+      let rightAccumulator = 0;
+      // Process from LAST (rightmost) to FIRST
+      for (let i = rightPinOrder.length - 1; i >= 0; i--) {
+        const colId = rightPinOrder[i]!;
+        // Find the leaf width
+        const leaf = result.leafColumns.find((l) => l.id === colId);
+        const width = leaf ? (state.columnSizing[leaf.id] ?? leaf.size) : 0;
+        rightOffsets.set(colId, rightAccumulator);
+        rightAccumulator += width;
+      }
 
       for (let i = 0; i < result.leafColumns.length; i++) {
         const leaf = result.leafColumns[i]!;
@@ -747,8 +782,8 @@ export const createPivotTable = <TRow>(
             pinnedOffset = leftOffset;
             leftOffset += width;
           } else {
-            pinnedOffset = rightOffset;
-            rightOffset += width;
+            // R4 fix: Use the precomputed right-edge offset from pin-array order
+            pinnedOffset = rightOffsets.get(leaf.id) ?? 0;
           }
           result3.pinned = pinned;
           result3.pinnedOffset = pinnedOffset;

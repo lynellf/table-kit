@@ -36,6 +36,7 @@ export type {
 export {
   buildRowsQuery,
   buildPaginationWire,
+  validateNoUnregisteredFilterFns,
   __resetInlineFilterFnWarningForTests,
 } from './query';
 

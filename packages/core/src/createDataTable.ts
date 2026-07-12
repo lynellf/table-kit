@@ -12,6 +12,8 @@ import type { Column } from './columns';
 import { createColumns } from './columns';
 import { synthesizePlaceholderRows } from './dataSource/placeholderRows';
 import { buildRowsQuery } from './dataSource/query';
+import { validateNoUnregisteredFilterFns } from './dataSource/query';
+import { QueryKeySerializationError, QueryKeySerializationErrorCode } from './dataSource/queryKey';
 import type { CursorSelection, DataSourceCapabilities, DataSourceState } from './dataSource/types';
 import { validateModeConfiguration } from './dataSource/warnings';
 import { buildHeaderGroups } from './headers';
@@ -199,6 +201,12 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       this.state = nextState;
     }
 
+    // R3-MANUAL-CAPABILITY-OVERLAY fix: Reapply the capability overlay after
+    // every setOptions call so it survives option updates.
+    if (this._capabilityOverlay) {
+      this._applyOverlayToOptions();
+    }
+
     // R1 fix: Prune invalid column IDs from state slices when columns change.
     // This runs in the core setOptions path so direct factory consumers also get pruning.
     // The React adapter may also call this; the method is idempotent (checks if columns actually changed).
@@ -291,21 +299,39 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   }
 
   /**
-   * @internal F0.2: Set manual* capability flags without calling setOptions.
-   * This allows useDataSource to control server/client mode without overwriting
-   * data and columns via sparse setOptions calls.
+   * @internal F0.2 / R3-MANUAL-CAPABILITY-OVERLAY: Apply data-source capability
+   * flags as a stable overlay that survives setOptions calls.
+   *
+   * Unlike __setManualFlags (which directly mutated options), this:
+   * 1. Stores the overlay internally
+   * 2. Reapplies it after every setOptions call
+   * 3. Replaces it on source/capability changes
+   * 4. Clears it when source is removed
    */
-  __setManualFlags(
-    manualSorting: boolean,
-    manualFiltering: boolean,
-    manualPagination: boolean,
-  ): void {
-    this.options = {
-      ...this.options,
-      manualSorting,
-      manualFiltering,
-      manualPagination,
-    };
+  private _capabilityOverlay: {
+    manualSorting: boolean;
+    manualFiltering: boolean;
+    manualPagination: boolean;
+  } | null = null;
+
+  __applyCapabilityOverlay(overlay: {
+    manualSorting: boolean;
+    manualFiltering: boolean;
+    manualPagination: boolean;
+  }): void {
+    this._capabilityOverlay = overlay;
+    this._applyOverlayToOptions();
+  }
+
+  private _applyOverlayToOptions(): void {
+    if (this._capabilityOverlay) {
+      this.options = {
+        ...this.options,
+        manualSorting: this._capabilityOverlay.manualSorting,
+        manualFiltering: this._capabilityOverlay.manualFiltering,
+        manualPagination: this._capabilityOverlay.manualPagination,
+      };
+    }
   }
 
   /**
@@ -342,6 +368,22 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       pagination,
     };
     const columns = this.getResolvedColumns();
+
+    // B7-SERIALIZER-FILTER-FUNCTION fix: Validate for unregistered filter functions
+    // before building the query. If found, throw a FUNCTION_VALUE error so the
+    // caller (useDataSource) can publish error state WITHOUT calling getRows.
+    const unregisteredColumnId = validateNoUnregisteredFilterFns(
+      { sorting, columnFilters, pagination } as DataTableState,
+      columns,
+    );
+    if (unregisteredColumnId !== null) {
+      throw new QueryKeySerializationError(
+        QueryKeySerializationErrorCode.FUNCTION_VALUE,
+        'function',
+        `filters.${unregisteredColumnId}`,
+      );
+    }
+
     // R2 fix: Thread cursor and dataVersion through to buildRowsQuery.
     // Use spread to avoid exactOptionalPropertyTypes issues with undefined values.
     const queryOpts: Parameters<typeof buildRowsQuery>[2] = { capabilities };
@@ -351,6 +393,9 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     if (dataVersion !== undefined) {
       queryOpts.dataVersion = dataVersion;
     }
+    // B7-SERIALIZER-FILTER-FUNCTION fix: Validate for unregistered filter functions
+    // before building the query. If found, useDataSource will publish error state.
+    // buildRowsQuery returns the raw RowsQuery (backward compatible).
     return buildRowsQuery(state, columns, queryOpts);
   }
 

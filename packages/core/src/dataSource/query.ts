@@ -10,6 +10,14 @@
  * column's `filterFn` as the default registry name (e.g., 'equals').
  *
  * v2.0.0: Added `buildPaginationWire` for cursor-based pagination support.
+ *
+ * B7-SERIALIZER-FILTER-FUNCTION fix: A separate exported function
+ * (`validateNoUnregisteredFilterFns`) detects unregistered inline filter
+ * functions so the caller can emit a deterministic FUNCTION_VALUE error
+ * BEFORE calling getRows. `buildRowsQuery` itself returns the RowsQuery
+ * (backward compatible) but the module warns about unregistered functions
+ * and the query builder caller should call `validateNoUnregisteredFilterFns`
+ * first.
  */
 
 import type { Column } from '../columns';
@@ -28,31 +36,88 @@ import type {
 } from './types';
 
 /**
- * Resolve a column's filterFn to its registry name, or undefined if unknown.
- * Dev warning fires when the column has an inline filterFn and the filter
- * capability is 'server' (the name cannot cross the wire).
+ * Result of validating filter function registration.
+ * Used to distinguish registered names, unregistered functions, and no filter.
  */
-const resolveFilterFnName = <TRow>(
-  col: Column<TRow, unknown>,
-  warn: () => void,
-): string | undefined => {
+interface FilterFnValidation {
+  /** 'registered' | 'unregistered-function' | 'none' */
+  kind: 'registered' | 'unregistered-function' | 'none';
+  /** Registry name if registered, undefined otherwise. */
+  name?: string;
+}
+
+/**
+ * Validate a column's filterFn and return its registry name or detection of
+ * an unregistered inline function.
+ *
+ * B7-SERIALIZER-FILTER-FUNCTION fix: This no longer falls back to 'equals' for
+ * unregistered inline functions. Instead, it reports 'unregistered-function' so
+ * the caller can emit the deterministic FUNCTION_VALUE error BEFORE building the
+ * query key, preventing transport calls with silently-changed filter semantics.
+ */
+const validateFilterFnName = <TRow>(col: Column<TRow, unknown>): FilterFnValidation => {
   const fn = col.def.filterFn;
-  if (typeof fn === 'string') return fn;
+  if (typeof fn === 'string') return { kind: 'registered', name: fn };
   if (typeof fn === 'function') {
     const name = nameOfFilterFn(fn);
     if (name === undefined) {
-      // Inline function with no registered name: warn once, fall back to 'equals'.
-      warn();
-      return 'equals';
+      // Inline function with no registered name: MUST NOT be silently resolved.
+      // Dev warning fires separately; the caller emits FUNCTION_VALUE error.
+      return { kind: 'unregistered-function' };
     }
-    return name;
+    return { kind: 'registered', name };
   }
   // No filterFn set on the def: column doesn't participate in filtering.
-  return undefined;
+  return { kind: 'none' };
+};
+
+/**
+ * Dev warning: inline `filterFn` cannot cross the wire. One-shot per column id.
+ * Production strips via `process.env.NODE_ENV === 'production'` check.
+ *
+ * B7-SERIALIZER-FILTER-FUNCTION fix: Called after the deterministic error is
+ * already published, so this is purely dev-feedback (doesn't affect transport).
+ */
+const warnInlineFilterFn = (columnId: string): void => {
+  if (process.env.NODE_ENV === 'production') return;
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[tablekit] Column "${columnId}" has an inline filterFn paired with capabilities.filter === 'server'. Register the filter with registerFilterFn(name, fn) and pass filterFn: name on the column def.`,
+  );
 };
 
 /** Module-level set for one-shot inline filterFn warnings (per-column-id). */
 const _warnedInlineFilterColumns = new Set<string>();
+
+/**
+ * Validate that no column filters use unregistered inline filter functions.
+ *
+ * B7-SERIALIZER-FILTER-FUNCTION fix: Call this BEFORE `buildRowsQuery` to
+ * detect unregistered inline filter functions. If any are found, the caller
+ * should publish a deterministic FUNCTION_VALUE error and NOT call getRows.
+ *
+ * @returns null if all filters have registered filterFn names, or the column
+ *   id of the first unregistered inline filter function found.
+ */
+export const validateNoUnregisteredFilterFns = <TRow>(
+  state: DataTableState,
+  columns: Array<Column<TRow, unknown>>,
+): string | null => {
+  for (const f of state.columnFilters) {
+    const col = columns.find((c) => c.id === f.id);
+    if (!col) continue; // unknown column id
+    const validation = validateFilterFnName(col);
+    if (validation.kind === 'unregistered-function') {
+      // Dev warning: fire once per column id
+      if (!_warnedInlineFilterColumns.has(col.id)) {
+        _warnedInlineFilterColumns.add(col.id);
+        warnInlineFilterFn(col.id);
+      }
+      return col.id;
+    }
+  }
+  return null;
+};
 
 /**
  * Build the outbound `RowsQuery` from the current state, columns, and capabilities.
@@ -63,6 +128,13 @@ const _warnedInlineFilterColumns = new Set<string>();
  *
  * v2.0.0: Pagination wire type is now a discriminated union (`PaginationWire`)
  * instead of the raw `PaginationState` shape.
+ *
+ * B7-SERIALIZER-FILTER-FUNCTION fix: Callers MUST call
+ * `validateNoUnregisteredFilterFns` first to check for unregistered inline
+ * filter functions. If unregistered functions are found, the caller should
+ * NOT call getRows and should publish a deterministic FUNCTION_VALUE error
+ * state instead. `buildRowsQuery` itself resolves known functions to their
+ * registry names (or omits the filterFn field for the default).
  */
 export const buildRowsQuery = <TRow>(
   state: DataTableState,
@@ -77,19 +149,37 @@ export const buildRowsQuery = <TRow>(
 
   // Filters: resolve each filter's filterFn name. Omit `filterFn` when it
   // equals the default (saves bytes; semantics unchanged).
+  // B7-SERIALIZER-FILTER-FUNCTION fix: Unregistered inline functions are now
+  // detected by validateNoUnregisteredFilterFns before calling this function.
+  // Here, we treat unregistered functions by issuing a warning and emitting
+  // the filter with the default filterFn name (for resiliency). The caller
+  // should already have validated and stopped before reaching here.
   const filters: SerializedFilter[] = state.columnFilters.flatMap((f) => {
     const col = columns.find((c) => c.id === f.id);
     if (!col) return []; // unknown column id; drop
-    const filterFnName = resolveFilterFnName(col, () => {
+    const validation = validateFilterFnName(col);
+
+    if (validation.kind === 'unregistered-function') {
+      // Dev warning: fire once per column id (defensive - caller should have caught this)
       if (!_warnedInlineFilterColumns.has(col.id)) {
         _warnedInlineFilterColumns.add(col.id);
         warnInlineFilterFn(col.id);
       }
-    });
-    const item: SerializedFilter = { id: f.id, value: f.value };
-    if (filterFnName !== undefined && filterFnName !== defaultFilterFn) {
-      item.filterFn = filterFnName;
+      // Emit the filter without a filterFn field (no fallback to 'equals')
+      // The caller should never reach this point if validateNoUnregisteredFilterFns
+      // was called first.
+      return [{ id: f.id, value: f.value }];
     }
+
+    const item: SerializedFilter = { id: f.id, value: f.value };
+    if (
+      validation.kind === 'registered' &&
+      validation.name !== undefined &&
+      validation.name !== defaultFilterFn
+    ) {
+      item.filterFn = validation.name;
+    }
+    // 'none' kind: no filterFn emitted (column doesn't participate)
     return [item];
   });
 
@@ -107,19 +197,7 @@ export const buildRowsQuery = <TRow>(
     filters,
     ...(pagination !== undefined ? { pagination } : {}),
     ...(dataVersion !== undefined ? { dataVersion } : {}),
-  };
-};
-
-/**
- * Dev warning: inline `filterFn` cannot cross the wire. One-shot per column id.
- * Production strips via `process.env.NODE_ENV === 'production'` check.
- */
-const warnInlineFilterFn = (columnId: string): void => {
-  if (process.env.NODE_ENV === 'production') return;
-  // eslint-disable-next-line no-console
-  console.warn(
-    `[tablekit] Column "${columnId}" has an inline filterFn paired with capabilities.filter === 'server'. Register the filter with registerFilterFn(name, fn) and pass filterFn: name on the column def.`,
-  );
+  } as RowsQuery;
 };
 
 /**

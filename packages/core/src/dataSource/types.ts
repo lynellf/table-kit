@@ -63,6 +63,26 @@ export interface DataVersion<TRow = unknown> {
   getVersion?: (data: TRow[]) => string | number;
 }
 
+/**
+ * Exported canonical token type for mutable data version identity.
+ * Used at source/table/query/result/state/cache boundaries.
+ *
+ * R2 fix: `DataVersionToken` is the canonical shared alias for the version
+ * token used throughout the system. `UNSET_VERSION_TOKEN` is the explicit
+ * sentinel for "no token configured".
+ */
+export type DataVersionToken = string | number;
+
+/**
+ * Sentinel value for "no data version configured".
+ * Used to distinguish "version is undefined" from "no version configured".
+ *
+ * R2 fix: Explicit UNSET state at all boundaries so same-reference A→B→unset
+ * transitions are detectable without ambiguity.
+ */
+export const UNSET_VERSION_TOKEN = Symbol('UNSET_VERSION_TOKEN');
+export type UnsetVersionToken = typeof UNSET_VERSION_TOKEN;
+
 // ─── Pagination wire types (v2.0.0) ───────────────────────────────────────────────
 
 /**

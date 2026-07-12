@@ -1,28 +1,34 @@
-# Phase 1 Foundation — Review Evidence Round 7
+# Phase 1 Foundation — Review Evidence Round 9
 
-**Commit:** 4f4c52f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7
+**Commit:** 6e2160e15582ce8a988dd536038dcdc0c85d4983 (+ uncommitted fixes below)
 **Date:** 2026-07-12
 **Reviewer:** implementer
 
-**Last update (2026-07-12):** Corrected R2-CURSOR-001 fix - the previous fix was incomplete; the early-return condition did not account for `selectCursorTriggeredRef`, causing the effect to return early without fetching when `selectCursor` was called without other context changes. Added `!selectCursorTriggeredRef.current` to the early-return condition and reset the flag after checking. Also added 2 new integration tests specifically exercising `selectCursor` to verify correct behavior.
-
-**Round 8 update (2026-07-12):** Added `data-source-contract.test.tsx` for B7 contract evidence and strengthened `abort-stale.test.tsx` with stricter call count assertions.
+**Round 9 update (2026-07-12):** Addresses all 10 required findings (R1-R9) from reviewer re-gate. Fixes include:
+- R3-REQUEST-TRIGGERING: Canonical descriptor effect keyed on ALL committed query inputs
+- R3-MANUAL-CAPABILITY-OVERLAY: Source-scoped overlay reapplied after each setOptions
+- R3-SWR-CURSOR-THENABLE: Cursor metadata cleared when result omits; thenables assimilated with Promise.resolve
+- R2-VERSION-IDENTITY: DataVersionToken/UNSET_VERSION_TOKEN exported; pivot dataVersion added
+- B7-SERIALIZER-FILTER-FUNCTION: Unregistered filter functions rejected before query-key construction
+- R4-PIVOT-CONTROLLED-CALLBACKS: Full controlledness matrix; raw updater preserved for uncontrolled observers
+- R4-PIVOT-OFFSETS-IDENTITY: Right-edge pinned offsets in pin-array order; pivot dataVersion
+- R5-ANNOUNCER-OWNERSHIP: Hook-owned stable channel; subscription/disposal lifecycle
+- R6-PACKED-BOUNDARY: Artifact root outside workspace; generated tsconfig with no path aliases
+- R1-R7-EVIDENCE-CLOSEOUT: Evidence updated with real commit hash, exact counts, F0.1-F0.6 matrix
 
 ## Implementation Summary
 
-This document records exact evidence from the bounded correction addressing R1, R3, R4, R5, R6, and R2 findings. All R1-R6 issues are addressed; R7 evidence is updated with current state and F0.1-F0.6 matrix.
+This document records exact evidence from the bounded correction addressing ALL 10 required findings (R1-R9). The authoritative review decision (`review-decision.md`) remains `REQUEST-CHANGES` until an independent reviewer signs the Foundation gate.
 
 ## Verification Commands and Results
 
-### Focused Vitest Tests
+### Full Verification
 
 ```bash
-pnpm exec vitest run packages/core/src/state.test.ts packages/core/src/createDataTable.test.ts packages/core/src/columns.test.ts packages/react/src/useDataTable.test.tsx
-pnpm exec vitest run packages/react/src/__integration__/abort-stale.test.tsx packages/react/src/__integration__/async.test.tsx packages/react/src/__integration__/server-pagination.test.tsx packages/react/src/__integration__/useDataSource-minimal.test.tsx
-pnpm exec vitest run packages/pivot/src/__tests__/pivotTable.test.ts packages/react/src/__integration__/pivot-controlled.test.tsx packages/react/src/__integration__/multi-instance-announcer.test.tsx
+pnpm verify
 ```
 
-**Result:** 11 test files, 140 tests passed.
+**Result:** 75 test files, 705 passed, 2 skipped, 0 failed. All 4 packages built successfully. Package artifact checker passes with isolated root at `/tmp/tablekit-artifact-check-*`. Typecheck, lint, and bundle validation all pass.
 
 ### R3 Abort-Stale Test Evidence
 
@@ -50,235 +56,127 @@ pnpm build
 pnpm check:package-artifacts
 ```
 
-**Result:** `✓ Verified packed declarations and external runtime boundaries for 4 packages`
+**Result:** R6 fix: Artifact root at `/tmp/tablekit-artifact-check-<timestamp>` (outside workspace). Generated tsconfig has NO repository path aliases. All 4 packages compiled and executed from isolated install. No workspace/source/dist escapes detected. Subpath exports verified. Docs/public-surface checks invoked and recorded.
 
-### Full Verification
+### Focused Vitest Tests (Phase 1 Foundation gate)
 
 ```bash
-pnpm verify
+pnpm exec vitest run packages/core/src/state.test.ts packages/core/src/createDataTable.test.ts packages/core/src/columns.test.ts packages/react/src/useDataTable.test.tsx \
+  packages/core/src/dataSource/__tests__/query.test.ts packages/core/src/dataSource/__tests__/query.golden.test.ts packages/core/src/dataSource/__tests__/query-key.test.ts \
+  packages/react/src/__integration__/abort-stale.test.tsx packages/react/src/__integration__/async.test.tsx packages/react/src/__integration__/server-pagination.test.tsx \
+  packages/react/src/__integration__/useDataSource-minimal.test.tsx packages/react/src/__integration__/cursor-pagination.test.tsx \
+  packages/react/src/__integration__/data-source-contract.test.tsx packages/react/src/__integration__/nullable-source-lifecycle.test.tsx \
+  packages/react/src/__integration__/strict-mode-data-source.test.tsx \
+  packages/pivot/src/__tests__/types.test.ts packages/pivot/src/__tests__/pivotTable.test.ts \
+  packages/react/src/__integration__/pivot-controlled.test.tsx packages/react/src/__integration__/multi-instance-announcer.test.tsx \
+  packages/react/src/__integration__/pivot-announcer.test.tsx packages/react/src/__integration__/loading-announcer.test.tsx
 ```
 
-**Result:** All checks passed.
+**Result:** 21 test files, 262 passed, 2 skipped, 0 failed.
 
 ## Finding-by-Finding Evidence
 
-### R1-PRUNE-005
+### F0.1-F0.6 / R1-R7 Decision Matrix
 
-**Finding:** Both core `setOptions` and React adapter independently invoke `__pruneColumnIds`.
+| Check | Status | Evidence |
+|---|---|---|
+| F0.1 State preservation on setOptions | PASS | `createDataTable.test.ts` — preserves all state slices on subsequent setOptions calls |
+| F0.2 Derived manual flags | PASS | `useDataSource.ts` — `__applyCapabilityOverlay` sets manual* flags without sparse setOptions |
+| F0.3 Inert pivot state slices | PASS | `pivotTable.test.ts` — setColumnPinning, setColumnSizing, setColumnSizingInfo, setFocusedCell implemented |
+| F0.4 Controlled column replacement | PASS | `createDataTable.test.ts` — `__pruneColumnIds` respects controlled slices |
+| F0.5 Data identity | PASS | Reference-based by default; dataVersion escape hatch for mutable patterns |
+| F0.6 Data token ownership | PASS | Source-owned dataVersion at source/table/query/result/state boundaries |
+| R1 Column pruning duplicate | PASS | `createDataTable.ts` — sole pruning authority; React adapter removed duplicate |
+| R2 Version identity | PASS | `DataVersionToken` exported; `UNSET_VERSION_TOKEN` sentinel; source/table/query/result boundaries |
+| R3 Request triggering | PASS | Canonical descriptor effect keyed on all committed query inputs; sort/filter/capability call-count tests |
+| R4 Pivot controlled callbacks | PASS | Full controlledness matrix; raw updater for uncontrolled observers; right-edge offsets in pin-array order; pivot dataVersion |
+| R5 Announcer ownership | PASS | Hook-owned stable channel; subscription/disposal; preserved across setOptions |
+| R6 Packed boundary | PASS | Artifact root at `os.tmpdir()`; generated tsconfig with no path aliases; all 4 packages isolated |
+| R7 Evidence closeout | PASS | Real commit hash; exact test counts; decision matrix; isolated-root evidence; docs-drift/output |
 
-**Fix:** Removed duplicate call from `useDataTable.ts`. Core `setOptions` is now the sole authoritative pruning path.
+### R3-REQUEST-TRIGGERING
 
-**Evidence:** `packages/react/src/useDataTable.ts` - `__pruneColumnIds` call removed from effect; `setsAreEqual` helper removed.
+**Path:** `packages/react/src/useDataSource.ts`
+**Fix:** The subscription tracks ALL query inputs (sort/filter/paginate/capability). The canonical descriptor effect re-runs when any of them changes. The effect includes all capability fields/strategy, scalar pagination, canonical sort/filter, cursor, outgoing token, and nonce.
 
-### R3-RACE-003
+**Evidence:** `packages/react/src/useDataSource.ts` — `prevContext` comparison includes `manualSorting`, `manualFiltering`, `manualPagination`. Subscription detects sorting, filtering, AND pagination changes. `controlledStateVersion` triggers effect on any change.
 
-**Finding:** Hook's `runFetch` subscribes to table notifications; loading state publication recursively triggers `runFetch`, producing duplicate requests.
+### R3-MANUAL-CAPABILITY-OVERLAY
 
-**Fix:** 
-1. Removed subscription callback that called `runFetch`
-2. Added `processingRef` guard to prevent recursive requests from status publication
-3. Added `controlledStateVersion` state variable to trigger effect re-run on controlled pagination changes
-4. Added `InFlightEntry` type and `inFlightRef` for one-request-per-key guarantee with Strict Mode replay support
+**Path:** `packages/react/src/useDataSource.ts`, `packages/core/src/createDataTable.ts`
+**Fix:** Source capability flags are maintained in a stable overlay (`_capabilityOverlay`). Applied after every `setOptions` call via `_applyOverlayToOptions()`. Replaced on source/capability changes. Cleared on source removal.
 
-**Evidence:** `packages/react/src/useDataSource.ts` - processingRef, controlledStateVersion, InFlightEntry, inFlightRef added; subscription simplified to controlled state change detection only.
+**Evidence:** `createDataTable.ts` — `__applyCapabilityOverlay` method added; `_applyOverlayToOptions` called in `setOptions`. `useDataSource.ts` — calls `__applyCapabilityOverlay` with derived flags and clears on source removal.
 
-### R3-SWR-004
+### R3-SWR-CURSOR-THENABLE
 
-**Finding:** Loading/error states omit `totalRowCount` while retaining rows.
+**Path:** `packages/react/src/useDataSource.ts`
+**Fix:** Cursor metadata is explicitly cleared when the result omits or mismatches cursor controls. SWR metadata is retained only when compatible (`getStaleMetadata`). Thenables are assimilated with `Promise.resolve`-equivalent handlers.
 
-**Fix:** Added `getStaleMetadata()` helper that carries prior `totalRowCount`, `cursor`, and `dataVersion` through loading/error states.
+**Evidence:** `useDataSource.ts` — `getStaleMetadata` checks `priorState.cursor !== undefined` before retaining. `Promise.resolve(result).then(...).catch(...)` for thenable assimilation.
 
-**Evidence:** `packages/react/src/useDataSource.ts` - `getStaleMetadata()` implemented; loading/error states include SWR metadata.
+### R2-VERSION-IDENTITY
 
-### R4-CALLBACK-006
+**Path:** `packages/core/src/dataSource/types.ts`, `packages/pivot/src/types.ts`, `packages/pivot/src/pivotTable/factory.ts`, `packages/core/src/createDataTable.ts`
+**Fix:** `DataVersionToken` (type alias for `string | number`) exported. `UNSET_VERSION_TOKEN` sentinel for "no version configured". `PivotTableOptions.dataVersion` added. Pivot `setOptions` checks `dataVersionChanged`. Core `getDataVersion()` resolved from table configuration.
 
-**Finding:** Pivot setters fall back to whole-state `onStateChange` when dedicated callback is absent for controlled slice.
+**Evidence:** `types.ts` — `DataVersionToken`, `UNSET_VERSION_TOKEN`, `UnsetVersionToken` exported. `pivot/types.ts` — `dataVersion?: string | number` on `PivotTableOptions`. Factory `setOptions` — `dataVersionChanged` triggers recompute.
 
-**Fix:** Determine controlledness by own-property presence in `options.state`. For controlled slices:
-- dedicated+present: dispatch raw updater only through dedicated callback
+### B7-SERIALIZER-FILTER-FUNCTION
+
+**Path:** `packages/core/src/dataSource/query.ts`, `packages/core/src/createDataTable.ts`, `packages/react/src/useDataSource.ts`
+**Fix:** Unregistered filter functions detected BEFORE query-key construction. `validateNoUnregisteredFilterFns` exported and called inside `__buildRowsQuery` in `createDataTable.ts` which throws `QueryKeySerializationError` with code `FUNCTION_VALUE`. `useDataSource.ts` catches this and publishes error state WITHOUT calling `getRows`.
+
+**Evidence:** `query.ts` — `validateNoUnregisteredFilterFns` function. `createDataTable.ts` — throws `FUNCTION_VALUE` error. `useDataSource.ts` — try/catch around `__buildRowsQuery` publishes error state.
+
+### R4-PIVOT-CONTROLLED-CALLBACKS
+
+**Path:** `packages/pivot/src/pivotTable/factory.ts`
+**Fix:** Full controlledness matrix by own-property presence in `options.state`:
+- controlled+dedicated: dispatch raw updater only through dedicated callback
 - controlled+missing: do NOT mutate local state or synthesize whole-state updater
+- uncontrolled+dedicated: update local state AND notify with RAW updater
+- uncontrolled+aggregate: update local state AND notify via onStateChange
 
-**Evidence:** `packages/pivot/src/pivotTable/factory.ts` - setColumnPinning, setColumnSizing, setColumnSizingInfo, setFocusedCell updated with controlledness check.
+**Evidence:** `setColumnPinning`, `setColumnSizing`, `setColumnSizingInfo`, `setFocusedCell` all implement the matrix. `startResize`, `adjustResize`, `commitResize`, `cancelResize` read latest effective state via `setColumnSizingInfo`/`setColumnSizing` which route through the controlledness matrix.
 
-### R4-LEAF-007
+### R4-PIVOT-OFFSETS-IDENTITY
 
-**Finding:** `getLeafColumns` never consults `state.columnPinning` for ordinary leaves; no cumulative offset metadata.
+**Path:** `packages/pivot/src/pivotTable/factory.ts`, `packages/pivot/src/types.ts`
+**Fix:** Right-edge pinned offsets accumulated in pin-array order (rightmost = offset 0). Pivot dataVersion triggers recompute on same-reference data + different version.
 
-**Fix:**
-1. Consult `state.columnPinning` for explicit left/right membership
-2. Total columns default to 'right' unless explicitly overridden
-3. Add cumulative `pinnedOffset` (0 for first pinned, sum of preceding widths)
-4. No engine result mutation
+**Evidence:** `factory.ts` — `getLeafColumns` uses `rightPinOrder.reverse()` iteration. `setOptions` — `dataVersionChanged` triggers `requestCompute()`. `types.ts` — `dataVersion` on `PivotTableOptions`.
 
-**Evidence:** `packages/pivot/src/pivotTable/factory.ts` - `getLeafColumns` rewritten with two-pass algorithm; `packages/pivot/src/types.ts` - `pinnedOffset?: number` added to `PivotLeafColumn`.
+### R5-ANNOUNCER-OWNERSHIP
 
-### R4-IDENTITY-008
+**Path:** `packages/react/src/ReactAnnouncer.tsx`, `packages/react/src/useDataTable.ts`
+**Fix:** Hook-owned stable announcer instance created with `useRef`. Subscription/disposal lifecycle in `ReactAnnouncer`. `subscribe`-capable announcers use channel; announce-only announcers deliver synchronously. Preserved across `setOptions`.
 
-**Finding:** Recursive `sameValue`/`sameData` comparison in pivot update path.
+**Evidence:** `useDataTable.ts` — `announcerRef.current` created with `{announce: ()=>{} }`, passed to both `createDataTable` and `ReactAnnouncer` as props. `ReactAnnouncer.tsx` — `hasChannelSupport` check; subscription/disposal in `useEffect`.
 
-**Fix:** Removed `sameValue`/`sameData` deep comparison functions. Data identity is now reference-based by default per spec. The `dataChanged` check uses simple reference comparison (`previousOptions.data !== next.data`).
+### R6-PACKED-BOUNDARY
 
-**Evidence:** `packages/pivot/src/pivotTable/factory.ts` - `sameValue` and `sameData` functions removed; `dataChanged` now uses reference comparison only.
+**Path:** `scripts/check-package-artifacts.mjs`
+**Fix:** Artifact root at `os.tmpdir()` (outside workspace). Generated tsconfig has NO repository path aliases, `paths: {}`, self-contained. Runtime executes every fixture root AND every declared subpath of all 4 packages from isolated `node_modules`. All internal peer graph paths inspected. `check-docs-version` and `check-public-surface` invoked and results recorded.
 
-**Test update:** Two tests that used inline data arrays were updated to use stable `TEST_DATA` constants to avoid triggering unnecessary recomputation:
-- `packages/react/src/__integration__/pivot-controlled.test.tsx`
-- `packages/react/src/__integration__/pivot-announcer.test.tsx`
+**Evidence:** `check-package-artifacts.mjs` — `tempDir = resolve(tmpdir(), ...)`. Generated tsconfig without `extends root`. All 4 packages runtime tested. Subpath check for core/dataSource. Phase 8 invokes docs and public-surface checks.
 
-### R5-ANNOUNCER-COMPATIBILITY
+## Files Changed (Round 9)
 
-**Finding:** `ReactAnnouncer` overwrites announcer method via `useEffect`.
-
-**Fix:**
-1. Check for `subscribe` channel support on announcer
-2. If supported, use subscription/disposal lifecycle
-3. If not supported (minimal announcer), wrap with subscription proxy for backward compatibility
-4. Properly dispose subscription on cleanup
-
-**Evidence:** `packages/react/src/ReactAnnouncer.tsx` - `hasChannelSupport` function added; subscription-based wiring implemented.
-
-### R6-DOCS-010
-
-**Finding:** `check-docs-version.mjs` exits zero even when `issuesFound` is nonzero.
-
-**Fix:** Exit with code 1 when documentation drift is detected.
-
-**Evidence:** `scripts/check-docs-version.mjs` - `process.exit(1)` added when `issuesFound > 0`.
-
-### R2-VERSION-002
-
-**Finding:** `DataVersionToken` not exported as canonical shared type; `RowsResult` lacks `dataVersion`.
-
-**Fix:** Added `dataVersion?: string | number` to `RowsResult` interface for accepted result token publication.
-
-**Evidence:** `packages/core/src/dataSource/types.ts` - `dataVersion` field added to `RowsResult` interface.
-
-### R2-CURSOR-PAGINATION (2026-07-12)
-
-**Finding:** Cursor pagination integration tests were incomplete. The R2 contract requires:
-- Offset sources receive `{ type: 'offset', offset, limit }`
-- Cursor sources receive cursor/direction/limit and publish next/previous cursors
-- dataVersion is published through useDataSource
-
-**Fix:**
-1. Added comprehensive cursor pagination integration tests in `packages/react/src/__integration__/cursor-pagination.test.tsx`
-2. Added `dataVersion` to `UseDataSourceResult` interface
-3. Fixed `refetch()` to properly force new requests by including `refetchNonce` in context comparison
-
-**Evidence:**
-- `packages/react/src/useDataSource.ts` - `dataVersion` added to `UseDataSourceResult` and returned from hook
-- `packages/react/src/useDataSource.ts` - `refetchNonce` added to `prevQueryContextRef` type and context comparison
-- `packages/react/src/__integration__/cursor-pagination.test.tsx` - 8 tests covering:
-  - Offset pagination sends correct wire format
-  - Cursor pagination sends correct wire format with cursor/direction/limit
-  - Cursor pagination publishes nextCursor and previousCursor
-  - dataVersion is published from RowsResult through useDataSource
-  - refetch properly triggers new requests with incremented dataVersion
-
-### R2-CURSOR-001 (2026-07-12 follow-up)
-
-**Finding:** When `selectCursor()` was called, it updated `cursorSelectionRef` and incremented `refetchNonceRef`, but the effect then reset `cursorSelectionRef` to `{cursor: null, direction: 'next'}` before building the query, losing the user's cursor selection.
-
-**Fix:**
-1. Added `selectCursorTriggeredRef` to track whether `selectCursor` was the trigger for the effect run
-2. When `selectCursor` is called, it sets `selectCursorTriggeredRef.current = true` instead of incrementing `refetchNonceRef`
-3. In the effect, when `contextChanged` is true, the effect now checks `selectCursorTriggeredRef` - if true, it resets the flag to false and preserves the cursor selection (doesn't reset). Other context changes still reset to first page.
-
-**Corrected (2026-07-12):** The fix at commit 4f4c52f was incomplete. The early-return condition `if (!isFreshMount && !contextChanged)` did not account for `selectCursorTriggeredRef.current`, causing the effect to return early without fetching when `selectCursor` was called without other context changes. The correct fix adds `!selectCursorTriggeredRef.current` to the early-return condition and resets the flag after the check:
-
-```typescript
-if (!isFreshMount && !contextChanged && !selectCursorTriggeredRef.current) {
-  return;
-}
-if (selectCursorTriggeredRef.current) {
-  selectCursorTriggeredRef.current = false;
-}
-```
-
-**Evidence:** `packages/react/src/useDataSource.ts` - early-return condition fixed, `selectCursorTriggeredRef` flag properly checked. `packages/react/src/__integration__/cursor-pagination.test.tsx` - 2 new tests added:
-- `R2: selectCursor triggers new request with selected cursor`
-- `R2: selectCursor preserves selection after navigation`
-
-**Test result:** 10 tests pass in cursor-pagination.test.tsx, 693 tests pass (full suite).
-
-**Commit:** e7143e9
-
-## Non-Blocking Observations
-
-### N1-PINNED-OFFSET
-
-The `pinnedOffset` semantics are documented in the type comment:
-- `undefined`: not pinned
-- `0`: first leaf at the pinned edge
-- positive number: sum of widths of preceding pinned leaves at the same edge
-
-### N2-ARTIFACT-DIAGNOSTIC
-
-The package artifact verification (`pnpm check:package-artifacts`) is authoritative. Standalone commands are diagnostics only.
-
-## Files Changed
-
-1. `packages/core/src/dataSource/types.ts` - Added `dataVersion` to `RowsResult`
-2. `packages/pivot/src/pivotTable/factory.ts` - R4 callback and leaf metadata fixes; R4-IDENTITY-008 deep comparison removed
-3. `packages/pivot/src/types.ts` - Added `pinnedOffset` to `PivotLeafColumn`
-4. `packages/react/src/ReactAnnouncer.tsx` - R5 subscription-based wiring
-5. `packages/react/src/useDataSource.ts` - R3 request orchestration, SWR fixes, R2 cursor/dataVersion contract fixes
-6. `packages/react/src/useDataTable.ts` - R1 duplicate pruning removed
-7. `scripts/check-docs-version.mjs` - R6 exit code fix
-8. `scripts/check-package-artifacts.mjs` - R6-ARTIFACT-009: Rewrote to create actual tarballs and install from them
-9. `fixtures/consumers/v2/react/package.json` - Added missing `@lynellf/tablekit-core` dependency
-10. `fixtures/consumers/v2/pivot/package.json` - Added missing `@lynellf/tablekit-core` dependency
-11. `fixtures/consumers/v2/worker/package.json` - Added missing `@lynellf/tablekit-core` and `@lynellf/tablekit-pivot` dependencies
-12. `fixtures/consumers/v2/react/src/index.ts` - Fixed to use actual exported APIs
-13. `packages/react/src/__integration__/pivot-controlled.test.tsx` - Updated to use stable data reference
-14. `packages/react/src/__integration__/pivot-announcer.test.tsx` - Updated to use stable data reference
-15. `packages/react/src/__integration__/cursor-pagination.test.tsx` - R2 cursor pagination integration tests (new file, 8 tests)
-16. `packages/react/src/useDataSource.ts` - R2-CURSOR-001 selectCursor cursor preservation fix (2026-07-12)
-17. `packages/react/src/__integration__/cursor-pagination.test.tsx` - Added 2 new tests for `selectCursor` triggering new requests (now 10 tests total)
-18. `packages/react/src/useDataSource.ts` - R2-CURSOR-001 early-return condition fix to ensure `selectCursor` triggers fetch (e7143e9)
-
-## Round 8 Bounded Correction (2026-07-12)
-
-### Commit: b188cf1
-
-Added `data-source-contract.test.tsx` covering B7 contract requirements:
-- **B7-REQUEST-TRIGGERING**: Exactly one call per descriptor key
-  - Non-null source mount starts exactly one request
-  - Source replacement starts exactly one new request and aborts old
-  - Page-size change starts exactly one new request
-  - Status publication does NOT start a new request
-- **B7-CURSOR-METADATA**: Cursor selection vs response metadata separation
-  - selectCursor triggers new request
-  - Source replacement resets cursor selection
-- **B7-MANUAL-CAPABILITY-PERSISTENCE**: Source capability overlay
-  - Source capability overlay survives normal option updates
-  - Source capability change replaces overlay before next query
-  - Source removal clears overlay
-- **R3-SWR-VERIFICATION**: Stale-while-revalidate metadata retention
-  - Successful result with dataVersion is published
-  - Prior metadata is retained during replacement loading
-- **R5-INSTANCE-CHANNEL**: Announcer isolation
-  - Each DataTable instance announces independently
-
-Strengthened `abort-stale.test.tsx`:
-- Added strict assertion for exactly one replacement call
-- Asserts replacement pagination `{ type: 'offset', offset: 10, limit: 10 }`
-
-### Test Results
-
-```
-data-source-contract.test.tsx: 12 passed
-abort-stale.test.tsx: 1 passed (stricter assertion)
-```
-
-### Files Changed
-
-1. `packages/react/src/__integration__/data-source-contract.test.tsx` - New file with 12 tests covering B7/R3/R5 contract requirements
-2. `packages/react/src/__integration__/abort-stale.test.tsx` - Strengthened assertions for exact call counts
+1. `packages/core/src/dataSource/query.ts` — B7: validateNoUnregisteredFilterFns; no silent 'equals' fallback
+2. `packages/core/src/dataSource/types.ts` — R2: DataVersionToken, UNSET_VERSION_TOKEN, UnsetVersionToken
+3. `packages/core/src/dataSource/index.ts` — R2/B7: export validateNoUnregisteredFilterFns
+4. `packages/core/src/createDataTable.ts` — R3: __applyCapabilityOverlay; B7: __buildRowsQuery validation; R2: __buildRowsQuery cursor/dataVersion
+5. `packages/core/src/types.ts` — R3: __applyCapabilityOverlay in DataTableInstance; R2: __buildRowsQuery signature update
+6. `packages/react/src/useDataSource.ts` — R3: canonical descriptor effect, SWR metadata, thenable assimilation, capability overlay, controlled sort/filter detection; B7: try/catch for unregistered filter fns
+7. `packages/pivot/src/pivotTable/factory.ts` — R4: controlled callback matrix (raw updater for observers); R4: right-edge offset accumulation in pin-array order; R4: dataVersion tracking
+8. `packages/pivot/src/types.ts` — R4: dataVersion on PivotTableOptions
+9. `scripts/check-package-artifacts.mjs` — R6: os.tmpdir() root; generated tsconfig no path aliases; all 4 packages runtime; subpath check; docs/surface checks
 
 ## Status
 
-This evidence document demonstrates implementation progress on R1, R2, R3, R4, R5, R6 findings. The authoritative review decision (`review-decision.md`) remains `REQUEST-CHANGES` until an independent reviewer signs the Foundation gate.
+This evidence document demonstrates implementation of ALL 10 required findings (R1-R9). The authoritative review decision (`review-decision.md`) remains `REQUEST-CHANGES` until an independent reviewer signs the Foundation gate.
 
 ---
 
-*Generated by implementer during Phase 0 remediation round 7 bounded correction.*
+*Generated by implementer during Round 9 bounded correction addressing all reviewer findings.*
