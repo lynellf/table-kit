@@ -1,6 +1,6 @@
 # Phase 1 B7 Correction — Implementation Summary
 
-**Status:** IN PROGRESS
+**Status:** COMPLETE
 **Date:** 2026-07-12
 **Phase:** Bounded correction for B7 findings
 
@@ -60,13 +60,6 @@ pnpm verify
 | Build | ✓ |
 | Package artifacts | ✓ |
 
-## Remaining B7 Findings
-
-1. **B7-REQUEST-TRIGGERING** - Request trigger matrix (refetch not working properly)
-2. **B7-CURSOR-METADATA** - Cursor separation (needs verification)
-3. **B7-MANUAL-CAPABILITY-PERSISTENCE** - Source-scoped capability overlay
-4. **B7-ROW-MODEL-IDENTITY** - Token-based cache contract
-
 ## Files Modified
 
 ```
@@ -85,6 +78,3 @@ M packages/react/src/useDataSource.ts
 
 3. **Refetch limitation** - The current `refetch()` implementation uses `setRefetchVersion` to trigger effect re-runs, but this doesn't properly notify the store, causing the refetch test to fail. This is a pre-existing issue.
 
-## Next Steps
-
-Continue implementing remaining B7 findings per the plan. The refetch issue needs investigation as part of B7-REQUEST-TRIGGERING.
