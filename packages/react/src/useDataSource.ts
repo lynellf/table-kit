@@ -170,6 +170,8 @@ export const useDataSource = <TRow>(
   // R2 fix: Cursor selection owned by the hook.
   // Initial selection is { cursor: null, direction: 'next' }.
   const cursorSelectionRef = useRef<CursorSelection>({ cursor: null, direction: 'next' });
+  // Track whether selectCursor was the trigger for the current effect run
+  const selectCursorTriggeredRef = useRef(false);
   sourceRef.current = source;
 
   // R3 fix: Track in-flight request entry for one-request-per-key guarantee.
@@ -212,7 +214,8 @@ export const useDataSource = <TRow>(
   // Increment refetchVersion to trigger the effect to rebuild the query with new cursor.
   const selectCursor = useCallback((cursor: string | null, direction: CursorDirection) => {
     cursorSelectionRef.current = { cursor, direction };
-    refetchNonceRef.current += 1;
+    // Mark that selectCursor triggered this run so the effect preserves the selection
+    selectCursorTriggeredRef.current = true;
     // R2-CURSOR-TRIGGER-RESET fix: Increment refetchVersion to ensure effect re-runs
     // and rebuilds the query with the new cursor selection.
     setRefetchVersion((v) => v + 1);
@@ -335,9 +338,16 @@ export const useDataSource = <TRow>(
       // R3 fix: Detect refetch() calls to force new requests
       prevRefetchNonce !== refetchNonceRef.current;
 
-    // R3-B1 fix: Reset cursor selection on non-cursor context changes
+    // R3-B1 fix: Reset cursor selection on non-cursor context changes.
+    // But preserve the selection if selectCursor was the trigger for this run.
     if (contextChanged) {
-      cursorSelectionRef.current = { cursor: null, direction: 'next' };
+      if (selectCursorTriggeredRef.current) {
+        // selectCursor was called - preserve the new selection
+        selectCursorTriggeredRef.current = false;
+      } else {
+        // Other context change - reset to first page
+        cursorSelectionRef.current = { cursor: null, direction: 'next' };
+      }
       prevQueryContextRef.current = currentContext;
     }
 
