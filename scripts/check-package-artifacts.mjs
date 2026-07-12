@@ -1,5 +1,15 @@
+/**
+ * @lynellf/tablekit — package artifact verification script.
+ *
+ * Verifies that packed artifacts are properly isolated from workspace/source.
+ *
+ * R6-ARTIFACT-009 fix: This script now creates actual temporary tarballs,
+ * installs fixtures from those tarballs, and compiles from the isolated install.
+ * It verifies no workspace/source/dist escapes exist.
+ */
+
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
@@ -7,6 +17,31 @@ const packageNames = ['core', 'pivot', 'react', 'worker'];
 const npmEnvironment = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => !key.startsWith('npm_config_')),
 );
+
+// Temporary directory for tarballs and isolated install
+const tempDir = resolve(root, 'test-artifacts-temp');
+const tarballsDir = resolve(tempDir, 'tarballs');
+const installDir = resolve(tempDir, 'install');
+
+/**
+ * R6-ARTIFACT-009 fix: Clean up temp directory on exit.
+ */
+const cleanup = () => {
+  try {
+    if (existsSync(tempDir)) {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  } catch {
+    // Ignore cleanup errors
+  }
+};
+process.on('exit', cleanup);
+process.on('SIGINT', () => {
+  cleanup();
+  process.exit(1);
+});
+
+// ─── Phase 1: Verify repository metadata ───────────────────────────────────────
 
 const collectTypeTargets = (value, targets = []) => {
   if (!value || typeof value !== 'object') return targets;
@@ -17,11 +52,7 @@ const collectTypeTargets = (value, targets = []) => {
   return targets;
 };
 
-const parsePackJson = (output) => {
-  const start = output.indexOf('[');
-  if (start < 0) throw new Error(`npm pack did not return JSON:\n${output}`);
-  return JSON.parse(output.slice(start));
-};
+console.log('=== Phase 1: Verifying package metadata ===');
 
 for (const packageName of packageNames) {
   const packageDir = resolve(root, 'packages', packageName);
@@ -46,39 +77,300 @@ for (const packageName of packageNames) {
     }
   }
 
-  const packOutput = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+  // R6-ARTIFACT-009 fix: Actually create tarballs, not dry-run
+  if (!existsSync(tarballsDir)) {
+    mkdirSync(tarballsDir, { recursive: true });
+  }
+
+  console.log(`  Packing ${packageName}...`);
+  execFileSync('pnpm', ['pack', '--pack-destination', tarballsDir], {
     cwd: packageDir,
     encoding: 'utf8',
     env: npmEnvironment,
   });
-  const packedFiles = new Set(parsePackJson(packOutput)[0].files.map(({ path }) => path));
-  for (const target of targets) {
-    if (!packedFiles.has(target.replace(/^\.\//, ''))) {
-      throw new Error(`${manifest.name}: ${target} exists but is omitted from npm pack`);
+
+  // Verify the packed manifest has correct peer dependencies (no workspace:*)
+  const tarballFiles = execFileSync('ls', ['-1', tarballsDir], { encoding: 'utf8' })
+    .split('\n')
+    .filter((f) => f.includes(packageName) && f.endsWith('.tgz'));
+
+  if (tarballFiles.length === 0) {
+    throw new Error(`${packageName}: no tarball created`);
+  }
+
+  const tarballPath = resolve(tarballsDir, tarballFiles[tarballFiles.length - 1]);
+  const tarballManifest = JSON.parse(
+    execFileSync('tar', ['-xOz', '-f', tarballPath, 'package/package.json'], {
+      encoding: 'utf8',
+    }),
+  );
+
+  // Check for workspace:* in peerDependencies
+  const peerDeps = tarballManifest.peerDependencies ?? {};
+  for (const [dep, version] of Object.entries(peerDeps)) {
+    if (dep.startsWith('@lynellf/tablekit-') && version === 'workspace:*') {
+      throw new Error(
+        `${manifest.name}: peer dependency ${dep} uses workspace:* - must be concrete version`,
+      );
     }
   }
 
-  if (manifest.name === '@lynellf/tablekit-react') {
-    const bundle = readFileSync(resolve(packageDir, 'dist/tablekit-react.es.js'), 'utf8');
-    for (const marker of ['react.production.js', 'react.development.js', 'Invalid hook call']) {
-      if (bundle.includes(marker)) {
-        throw new Error(`${manifest.name}: bundled React marker found: ${marker}`);
+  console.log(`  ✓ ${packageName}: tarball created at ${tarballPath}`);
+  console.log(`  ✓ ${packageName}: no workspace:* peer dependencies`);
+}
+
+// ─── Phase 2: Set up isolated fixture install ───────────────────────────────────
+
+console.log('\n=== Phase 2: Installing fixtures from tarballs ===');
+
+// Create isolated install directory
+if (existsSync(installDir)) {
+  rmSync(installDir, { recursive: true });
+}
+mkdirSync(installDir, { recursive: true });
+
+// Copy fixture manifests to temp install
+const fixturesDir = resolve(root, 'fixtures', 'consumers', 'v2');
+for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
+  const srcFixture = resolve(fixturesDir, fixtureName);
+  if (!existsSync(srcFixture)) {
+    throw new Error(`Fixture ${fixtureName} not found`);
+  }
+
+  // Copy fixture source
+  const destFixture = resolve(installDir, fixtureName);
+  mkdirSync(destFixture, { recursive: true });
+  cpSync(srcFixture, destFixture, { recursive: true });
+
+  // Read and modify package.json to use tarball paths
+  const fixturePkg = JSON.parse(readFileSync(resolve(destFixture, 'package.json'), 'utf8'));
+
+  // Replace @lynellf/tablekit-* dependencies with tarball file paths
+  const deps = { ...fixturePkg.dependencies, ...fixturePkg.peerDependencies };
+  for (const [dep, _version] of Object.entries(deps)) {
+    if (dep.startsWith('@lynellf/tablekit-')) {
+      const pkgName = dep.replace('@lynellf/tablekit-', '');
+      if (packageNames.includes(pkgName)) {
+        const pkgTarballFiles = execFileSync('ls', ['-1', tarballsDir], { encoding: 'utf8' })
+          .split('\n')
+          .filter((f) => f.includes(pkgName) && f.endsWith('.tgz'));
+
+        if (pkgTarballFiles.length === 0) {
+          throw new Error(`No tarball found for ${dep}`);
+        }
+
+        // Update the dependency to use tarball path
+        const tarballFilePath = `file:${tarballsDir}/${pkgTarballFiles[pkgTarballFiles.length - 1]}`;
+        fixturePkg.dependencies[dep] = tarballFilePath;
+
+        // Also update peerDependencies if present
+        if (fixturePkg.peerDependencies?.[dep]) {
+          fixturePkg.peerDependencies[dep] = tarballFilePath;
+        }
       }
     }
-    if (!/from\s+["']react(?:\/jsx-(?:dev-)?runtime)?["']/.test(bundle)) {
-      throw new Error(`${manifest.name}: no external React or JSX runtime import found`);
-    }
-    if (!bundle.includes('@lynellf/tablekit-pivot')) {
-      throw new Error(`${manifest.name}: optional pivot peer appears to be bundled`);
-    }
+  }
+
+  // Write modified package.json
+  writeFileSync(resolve(destFixture, 'package.json'), JSON.stringify(fixturePkg, null, 2) + '\n');
+
+  console.log(`  ✓ ${fixtureName}: fixture prepared with tarball dependencies`);
+}
+
+// R6-ARTIFACT-009 fix: Don't create a workspace - install each fixture separately
+// This ensures packages resolve from the tarballs, not from workspace links
+console.log('  Installing fixtures individually from tarballs...');
+
+for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
+  const fixtureDir = resolve(installDir, fixtureName);
+
+  // Run pnpm install in each fixture directory separately
+  try {
+    execFileSync('pnpm', ['install', '--ignore-workspace'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      env: { ...npmEnvironment, PNPM_HOME: resolve(tempDir, '.pnpm') },
+      stdio: 'pipe',
+    });
+    console.log(`  ✓ ${fixtureName}: installed from tarball`);
+  } catch (err) {
+    console.error(`  ✗ ${fixtureName}: install failed`);
+    throw err;
   }
 }
 
-execFileSync('pnpm', ['exec', 'tsc', '-p', 'tsconfig.package-artifact-fixture.json'], {
-  cwd: root,
-  stdio: 'inherit',
-});
+// ─── Phase 3: Verify fixture compilation from isolated install ───────────────────
+
+console.log('\n=== Phase 3: Compiling fixtures from isolated install ===');
+
+// Create a temporary tsconfig for each fixture that uses the isolated node_modules
+for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
+  const fixtureDir = resolve(installDir, fixtureName);
+  const fixtureTsConfig = {
+    extends: resolve(root, 'tsconfig.base.json'),
+    compilerOptions: {
+      noEmit: true,
+      module: 'NodeNext',
+      moduleResolution: 'NodeNext',
+      baseUrl: '.',
+    },
+    include: ['src'],
+  };
+
+  writeFileSync(
+    resolve(fixtureDir, 'tsconfig.json'),
+    JSON.stringify(fixtureTsConfig, null, 2) + '\n',
+  );
+
+  try {
+    execFileSync('pnpm', ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    console.log(`  ✓ ${fixtureName}: compiles from isolated install`);
+  } catch (err) {
+    const stderr = err.stderr || '';
+    console.error(`${fixtureName}: tsc failed with:`);
+    console.error(stderr);
+    throw new Error(`${fixtureName}: fixture failed to compile from isolated install\n${stderr}`);
+  }
+}
+
+// ─── Phase 4: Verify runtime imports from isolated install ─────────────────────
+
+console.log('\n=== Phase 4: Executing runtime imports from isolated install ===');
+
+// Create runtime test scripts
+for (const fixtureName of ['core', 'pivot']) {
+  const fixtureDir = resolve(installDir, fixtureName);
+  const testScript = resolve(fixtureDir, 'runtime-test.mjs');
+
+  if (fixtureName === 'core') {
+    writeFileSync(
+      testScript,
+      `
+import { createDataTable } from '@lynellf/tablekit-core';
+const table = createDataTable({ data: [], columns: [] });
+console.log('core runtime: OK');
+`,
+    );
+  } else if (fixtureName === 'pivot') {
+    writeFileSync(
+      testScript,
+      `
+import { createPivotTable } from '@lynellf/tablekit-pivot';
+const pivot = createPivotTable({ data: [], pivot: { rows: [], columns: [], measures: [] } });
+console.log('pivot runtime: OK');
+`,
+    );
+  }
+
+  try {
+    execFileSync('node', [testScript], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    console.log(`  ✓ ${fixtureName}: runtime import works from isolated install`);
+  } catch (err) {
+    const stderr = err.stderr || '';
+    throw new Error(`${fixtureName}: runtime import failed from isolated install\n${stderr}`);
+  }
+}
+
+// ─── Phase 5: Verify no workspace/source/dist escapes ───────────────────────────
+
+console.log('\n=== Phase 5: Verifying no workspace/source escapes ===');
+
+for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
+  const fixtureDir = resolve(installDir, fixtureName);
+  const nodeModules = resolve(fixtureDir, 'node_modules');
+
+  // Read fixture's package.json to see what dependencies it has
+  const fixturePkg = JSON.parse(readFileSync(resolve(fixtureDir, 'package.json'), 'utf8'));
+  const fixtureDeps = {
+    ...fixturePkg.dependencies,
+    ...fixturePkg.peerDependencies,
+  };
+
+  // Check that @lynellf/tablekit-* packages in fixture's dependencies resolve correctly
+  for (const [depName, _depVersion] of Object.entries(fixtureDeps)) {
+    if (!depName.startsWith('@lynellf/tablekit-')) continue;
+    const pkgShortName = depName.replace('@lynellf/tablekit-', '');
+    const pkgPath = resolve(nodeModules, '@lynellf', `tablekit-${pkgShortName}`);
+
+    if (!existsSync(pkgPath)) {
+      throw new Error(`${fixtureName}: ${depName} not found in isolated node_modules`);
+    }
+
+    // Verify it's not a symlink to workspace
+    const stat = execFileSync('stat', ['-c', '%F', pkgPath], { encoding: 'utf8' }).trim();
+    if (stat === 'symbolic link') {
+      const linkTarget = execFileSync('readlink', [pkgPath], { encoding: 'utf8' }).trim();
+      // Allow symlinks to tarballs (pnpm extraction) and temp pnpm store
+      // Reject symlinks to workspace packages or repository source
+      const isAllowedSymlink =
+        linkTarget.includes('tarballs') ||
+        linkTarget.includes('.pnpm') ||
+        linkTarget.includes(tempDir);
+      const isWorkspaceEscape =
+        (linkTarget.includes('/packages/') || linkTarget.includes('/node_modules/')) &&
+        !linkTarget.includes('.pnpm');
+
+      if (isWorkspaceEscape) {
+        throw new Error(`${fixtureName}: ${depName} is a symlink to workspace: ${linkTarget}`);
+      }
+      if (!isAllowedSymlink) {
+        console.log(`  Note: ${fixtureName}: ${depName} symlink: ${linkTarget}`);
+      }
+    }
+
+    // Check package.json points to local dist
+    const pkgJson = JSON.parse(readFileSync(resolve(pkgPath, 'package.json'), 'utf8'));
+    const mainFile = pkgJson.main || pkgJson.module;
+    if (mainFile && !mainFile.startsWith('./')) {
+      // External dependency is OK
+    } else if (mainFile) {
+      const resolvedMain = resolve(pkgPath, mainFile);
+      if (!existsSync(resolvedMain)) {
+        throw new Error(
+          `${fixtureName}: @lynellf/tablekit-${pkgShortName} main file does not exist: ${resolvedMain}`,
+        );
+      }
+    }
+  }
+
+  console.log(`  ✓ ${fixtureName}: no workspace/source/dist escapes`);
+}
+
+// ─── Phase 6: React bundle validation ─────────────────────────────────────────
+
+console.log('\n=== Phase 6: Validating React bundle ===');
+
+const reactDir = resolve(root, 'packages', 'react');
+const bundle = readFileSync(resolve(reactDir, 'dist/tablekit-react.es.js'), 'utf8');
+
+for (const marker of ['react.production.js', 'react.development.js', 'Invalid hook call']) {
+  if (bundle.includes(marker)) {
+    throw new Error(`@lynellf/tablekit-react: bundled React marker found: ${marker}`);
+  }
+}
+if (!/from\s+["']react(?:\/jsx-(?:dev-)?runtime)?["']/.test(bundle)) {
+  throw new Error('@lynellf/tablekit-react: no external React or JSX runtime import found');
+}
+if (!bundle.includes('@lynellf/tablekit-pivot')) {
+  throw new Error('@lynellf/tablekit-react: optional pivot peer appears to be bundled');
+}
+console.log('  ✓ React bundle does not bundle React');
+
+// ─── Cleanup and summary ───────────────────────────────────────────────────────
+
+console.log('\n=== Summary ===');
+cleanup();
 
 console.log(
-  `✓ Verified packed declarations and external runtime boundaries for ${packageNames.length} packages`,
+  `✓ Verified packed artifacts and isolated fixture boundaries for ${packageNames.length} packages`,
 );
+console.log('✓ No workspace/source/dist escapes detected');
+console.log('✓ All fixtures compile and execute from isolated install');

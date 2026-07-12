@@ -140,38 +140,9 @@ const samePivotConfig = (left: PivotConfig<unknown>, right: PivotConfig<unknown>
   );
 };
 
-const sameValue = (
-  left: unknown,
-  right: unknown,
-  seen: Map<object, object> = new Map(),
-): boolean => {
-  if (Object.is(left, right)) return true;
-  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
-  const leftPrototype = Object.getPrototypeOf(left);
-  const rightPrototype = Object.getPrototypeOf(right);
-  if (leftPrototype !== rightPrototype) return false;
-  const mapped = seen.get(left);
-  if (mapped) return mapped === right;
-  seen.set(left, right);
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-    return left.every((value, index) => sameValue(value, right[index], seen));
-  }
-  if (leftPrototype !== Object.prototype && leftPrototype !== null) {
-    return false;
-  }
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length !== rightKeys.length) return false;
-  return leftKeys.every((key) => {
-    const equal =
-      Object.hasOwn(right, key) &&
-      sameValue(left[key as keyof typeof left], right[key as keyof typeof right], seen);
-    return equal;
-  });
-};
-
-const sameData = <TRow>(left: TRow[], right: TRow[]): boolean => sameValue(left, right);
+// R4-IDENTITY-008 fix: Removed recursive sameValue/sameData deep comparison.
+// Data identity is reference-based by default per spec. For mutable data with version
+// tokens, version token comparison will be added separately. No deep row equality.
 
 const emptyResult = <TRow>(): PivotResult<TRow> => ({
   columnRoot: { id: '[]', path: [], label: undefined, colSpan: 0, leaves: [] },
@@ -695,7 +666,9 @@ export const createPivotTable = <TRow>(
     );
     if (stateChanged) state = nextState;
 
-    const dataChanged = !sameData(previousOptions.data, next.data);
+    // R4-IDENTITY-008 fix: Use reference comparison instead of deep equality.
+    // Same reference = no change; different reference = changed (triggers recompute).
+    const dataChanged = previousOptions.data !== next.data;
     const pivotChanged = !Object.is(previousState.pivot, nextState.pivot);
     const expandedChanged = !Object.is(previousState.expanded, nextState.expanded);
     const sortingChanged = !Object.is(previousState.pivotSorting, nextState.pivotSorting);

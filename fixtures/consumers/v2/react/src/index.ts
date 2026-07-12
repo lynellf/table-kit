@@ -1,5 +1,13 @@
-import { ReactAnnouncer, getReactAnnouncer } from '@lynellf/tablekit-react';
+/**
+ * @fixture/tablekit-react-consumer
+ *
+ * Minimal consumer fixture that verifies the react public surface
+ * is importable from packed artifacts.
+ */
+
+import { ReactAnnouncer } from '@lynellf/tablekit-react';
 import type { UseDataTableOptions } from '@lynellf/tablekit-react';
+import React from 'react';
 
 interface Row {
   id: string;
@@ -20,13 +28,7 @@ const _options: UseDataTableOptions<Row> = {
 };
 
 // Verify announcer component can be rendered
-const _Announcer = () => {
-  return React.createElement(ReactAnnouncer);
-};
-
-// Verify getReactAnnouncer returns an announcer interface
-const announcer = getReactAnnouncer();
-announcer.announce('test message');
+const _Announcer = React.createElement(ReactAnnouncer, { announcer: { announce: () => {} } });
 
 // Note: In a real React app, useDataTable would be called inside a component.
 // This fixture verifies the types resolve correctly.

@@ -112,9 +112,13 @@ pnpm verify
 
 **Finding:** Recursive `sameValue`/`sameData` comparison in pivot update path.
 
-**Fix:** Note: The `sameData` deep comparison is retained for data change detection to maintain test compatibility. The `sameValue`/`sameData` functions remain in the codebase but are used only for pivot config comparison, not row data comparison.
+**Fix:** Removed `sameValue`/`sameData` deep comparison functions. Data identity is now reference-based by default per spec. The `dataChanged` check uses simple reference comparison (`previousOptions.data !== next.data`).
 
-**Evidence:** `packages/pivot/src/pivotTable/factory.ts` - `sameData` retained for `previousOptions.data` vs `next.data` comparison; row data change detection continues to use deep comparison.
+**Evidence:** `packages/pivot/src/pivotTable/factory.ts` - `sameValue` and `sameData` functions removed; `dataChanged` now uses reference comparison only.
+
+**Test update:** Two tests that used inline data arrays were updated to use stable `TEST_DATA` constants to avoid triggering unnecessary recomputation:
+- `packages/react/src/__integration__/pivot-controlled.test.tsx`
+- `packages/react/src/__integration__/pivot-announcer.test.tsx`
 
 ### R5-ANNOUNCER-COMPATIBILITY
 
@@ -160,12 +164,19 @@ The package artifact verification (`pnpm check:package-artifacts`) is authoritat
 ## Files Changed
 
 1. `packages/core/src/dataSource/types.ts` - Added `dataVersion` to `RowsResult`
-2. `packages/pivot/src/pivotTable/factory.ts` - R4 callback and leaf metadata fixes
+2. `packages/pivot/src/pivotTable/factory.ts` - R4 callback and leaf metadata fixes; R4-IDENTITY-008 deep comparison removed
 3. `packages/pivot/src/types.ts` - Added `pinnedOffset` to `PivotLeafColumn`
 4. `packages/react/src/ReactAnnouncer.tsx` - R5 subscription-based wiring
 5. `packages/react/src/useDataSource.ts` - R3 request orchestration and SWR fixes
 6. `packages/react/src/useDataTable.ts` - R1 duplicate pruning removed
 7. `scripts/check-docs-version.mjs` - R6 exit code fix
+8. `scripts/check-package-artifacts.mjs` - R6-ARTIFACT-009: Rewrote to create actual tarballs and install from them
+9. `fixtures/consumers/v2/react/package.json` - Added missing `@lynellf/tablekit-core` dependency
+10. `fixtures/consumers/v2/pivot/package.json` - Added missing `@lynellf/tablekit-core` dependency
+11. `fixtures/consumers/v2/worker/package.json` - Added missing `@lynellf/tablekit-core` and `@lynellf/tablekit-pivot` dependencies
+12. `fixtures/consumers/v2/react/src/index.ts` - Fixed to use actual exported APIs
+13. `packages/react/src/__integration__/pivot-controlled.test.tsx` - Updated to use stable data reference
+14. `packages/react/src/__integration__/pivot-announcer.test.tsx` - Updated to use stable data reference
 
 ## Status
 
