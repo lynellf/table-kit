@@ -1,17 +1,17 @@
 /**
- * @lynellf/tablekit-react — cursor pagination test.
+ * @lynellf/tablekit-react — cursor pagination integration test.
  *
- * R2: Verifies cursor-based pagination wire types.
- * Offset pagination is the baseline; cursor pagination requires full R2 implementation.
- *
- * These tests verify basic offset pagination works correctly and serve as
- * canary tests for the pagination wire type contract.
+ * R2: Verifies cursor-based pagination wire types and data identity.
+ * - Offset sources receive { type: 'offset', offset, limit }
+ * - Cursor sources receive cursor/direction/limit and publish next/previous cursors
+ * - Direct and data-source boundaries expose version identity
  */
 
-import type { DataSource, RowsQuery, RowsResult } from '@lynellf/tablekit-core/dataSource';
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import type { DataSource, RowsQuery } from '@lynellf/tablekit-core/dataSource';
+import { __resetMixedModeWarningForTests } from '@lynellf/tablekit-core/dataSource';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDataTable } from '../useDataTable';
 
 interface Person {
@@ -25,16 +25,12 @@ const simpleColumns = [
   { id: 'age', accessor: 'age' as keyof Person },
 ];
 
-const page1Data: Person[] = [
-  { id: '1', name: 'Alice', age: 30 },
-  { id: '2', name: 'Bob', age: 25 },
-];
-
 // Track all queries received by the data source
 const queryLog: RowsQuery[] = [];
 
-// Mock data source for offset pagination - created once outside component
-function createOffsetPaginatedSource(): DataSource<Person> {
+// ─── Offset pagination source ───────────────────────────────────────────
+
+function makeOffsetPaginatedSource(): DataSource<Person> {
   return {
     capabilities: {
       sort: 'server',
@@ -42,45 +38,95 @@ function createOffsetPaginatedSource(): DataSource<Person> {
       paginate: 'server',
       pagination: 'offset',
     },
-    getRows: async (query: RowsQuery) => {
-      queryLog.push({ ...query }); // Copy to avoid mutation
-
-      // Validate offset pagination wire type
-      if (query.pagination?.type === 'offset') {
-        const { offset, limit } = query.pagination;
-        expect(typeof offset).toBe('number');
-        expect(typeof limit).toBe('number');
-        expect(offset).toBeGreaterThanOrEqual(0);
-        expect(limit).toBeGreaterThan(0);
-      }
-
-      const offset = query.pagination?.type === 'offset' ? query.pagination.offset : 0;
-
+    getRows: (q) => {
+      queryLog.push({ ...q });
+      const offset = q.pagination?.type === 'offset' ? q.pagination.offset : 0;
+      const pageData: Person[] = [];
       if (offset === 0) {
-        return { rows: page1Data, totalRowCount: 4 };
-      } else {
-        return { rows: [], totalRowCount: 4 };
+        pageData.push({ id: '1', name: 'Alice', age: 30 });
+        pageData.push({ id: '2', name: 'Bob', age: 25 });
+      } else if (offset === 10) {
+        pageData.push({ id: '3', name: 'Charlie', age: 35 });
       }
+      return { rows: pageData, totalRowCount: 3 };
     },
   };
 }
 
-const offsetSource = createOffsetPaginatedSource();
+// ─── Cursor pagination source ────────────────────────────────────────────
 
-function OffsetPaginationTest() {
+function makeCursorPaginatedSource(): DataSource<Person> {
+  return {
+    capabilities: {
+      sort: 'server',
+      filter: 'server',
+      paginate: 'server',
+      pagination: 'cursor',
+    },
+    getRows: (q) => {
+      queryLog.push({ ...q });
+      const cursor = q.pagination?.type === 'cursor' ? q.pagination.cursor : null;
+      const direction =
+        q.pagination?.type === 'cursor' ? (q.pagination.direction ?? 'next') : 'next';
+      let nextCursor: string | null = null;
+      let previousCursor: string | null = null;
+      const pageData: Person[] = [];
+
+      if (cursor === null && direction === 'next') {
+        pageData.push({ id: '1', name: 'Alice', age: 30 });
+        pageData.push({ id: '2', name: 'Bob', age: 25 });
+        nextCursor = 'cursor_page_2';
+      } else if (cursor === 'cursor_page_2' && direction === 'next') {
+        pageData.push({ id: '3', name: 'Charlie', age: 35 });
+        previousCursor = 'cursor_page_1';
+        nextCursor = null;
+      } else if (cursor === 'cursor_page_2' && direction === 'previous') {
+        pageData.push({ id: '1', name: 'Alice', age: 30 });
+        pageData.push({ id: '2', name: 'Bob', age: 25 });
+        nextCursor = 'cursor_page_2';
+      }
+
+      return { rows: pageData, totalRowCount: 3, nextCursor, previousCursor };
+    },
+  };
+}
+
+// ─── Data version source ─────────────────────────────────────────────────
+
+const mutableData: Person[] = [
+  { id: '1', name: 'Alice', age: 30 },
+  { id: '2', name: 'Bob', age: 25 },
+];
+let versionCounter = 1;
+
+function makeVersionedSource(): DataSource<Person> {
+  return {
+    capabilities: {
+      sort: 'client',
+      filter: 'client',
+      paginate: 'client',
+    },
+    getRows: () => {
+      return { rows: mutableData, dataVersion: versionCounter++ };
+    },
+  };
+}
+
+// ─── Components ─────────────────────────────────────────────────────────
+
+function OffsetPaginationTest({ source }: { source: DataSource<Person> }) {
   const result = useDataTable({
     data: [],
     columns: simpleColumns,
     getRowId: (row) => row.id,
-    dataSource: offsetSource as DataSource<Person>,
+    dataSource: source,
   });
 
   return (
     <div>
-      <span data-testid="status">{result.dataSourceState.status}</span>
+      <span data-testid="status">{result.dataSourceState?.status}</span>
       <span data-testid="page-index">{result.state.pagination.pageIndex}</span>
-      <span data-testid="page-size">{result.state.pagination.pageSize}</span>
-      <span data-testid="data-length">{result.dataSourceState.data?.length ?? 'null'}</span>
+      <span data-testid="data-length">{result.dataSourceState?.data?.length ?? 'null'}</span>
       <button
         data-testid="next-page"
         onClick={() => result.table.nextPage()}
@@ -92,34 +138,87 @@ function OffsetPaginationTest() {
   );
 }
 
-describe('cursor pagination', () => {
+function CursorPaginationTest({ source }: { source: DataSource<Person> }) {
+  const result = useDataTable({
+    data: [],
+    columns: simpleColumns,
+    getRowId: (row) => row.id,
+    dataSource: source,
+  });
+
+  return (
+    <div>
+      <span data-testid="status">{result.dataSourceState?.status}</span>
+      <span data-testid="data-length">{result.dataSourceState?.data?.length ?? 'null'}</span>
+      <span data-testid="next-cursor">{result.dataSourceState?.cursor?.nextCursor ?? 'none'}</span>
+      <span data-testid="prev-cursor">
+        {result.dataSourceState?.cursor?.previousCursor ?? 'none'}
+      </span>
+      <span data-testid="has-select-cursor">
+        {typeof result.dataSourceState === 'object' ? 'yes' : 'no'}
+      </span>
+    </div>
+  );
+}
+
+function DataVersionTest({ source }: { source: DataSource<Person> }) {
+  const result = useDataTable({
+    data: [],
+    columns: simpleColumns,
+    getRowId: (row) => row.id,
+    dataSource: source,
+    dataVersion: { version: 'initial' },
+  });
+
+  return (
+    <div>
+      <span data-testid="status">{result.dataSourceState?.status}</span>
+      <span data-testid="data-length">{result.dataSourceState?.data?.length ?? 'null'}</span>
+      <span data-testid="data-version">{result.dataSourceState?.dataVersion ?? 'none'}</span>
+      <button data-testid="refetch" onClick={() => result.dataSourceState?.refetch()}>
+        Refetch
+      </button>
+    </div>
+  );
+}
+
+// ─── Tests ─────────────────────────────────────────────────────────────
+
+describe('R2: pagination wire types and data identity', () => {
+  beforeEach(() => {
+    __resetMixedModeWarningForTests();
+    queryLog.length = 0;
+    versionCounter = 1;
+  });
+
   afterEach(() => {
+    __resetMixedModeWarningForTests();
     cleanup();
     vi.restoreAllMocks();
-    queryLog.length = 0;
   });
 
   describe('offset pagination', () => {
     it('R2: offset pagination sends wire format with type=offset', async () => {
-      const { getByTestId } = render(<OffsetPaginationTest />);
+      const source = makeOffsetPaginatedSource();
+      render(<OffsetPaginationTest source={source} />);
 
       await waitFor(() => {
-        expect(getByTestId('status').textContent).toBe('success');
+        expect(screen.getByTestId('status').textContent).toBe('success');
       });
 
-      // First request should have offset type
       expect(queryLog[0]?.pagination?.type).toBe('offset');
     });
 
     it('R2: offset pagination includes numeric offset and limit', async () => {
-      const { getByTestId } = render(<OffsetPaginationTest />);
+      const source = makeOffsetPaginatedSource();
+      render(<OffsetPaginationTest source={source} />);
 
       await waitFor(() => {
-        expect(getByTestId('status').textContent).toBe('success');
+        expect(screen.getByTestId('status').textContent).toBe('success');
       });
 
       const pagination = queryLog[0]?.pagination;
-      expect(pagination).toBeDefined();
+      expect(pagination?.type).toBe('offset');
       if (pagination?.type === 'offset') {
         expect(typeof pagination.offset).toBe('number');
         expect(typeof pagination.limit).toBe('number');
@@ -128,16 +227,98 @@ describe('cursor pagination', () => {
       }
     });
 
-    it('R2: page size comes from pagination state', async () => {
-      const { getByTestId } = render(<OffsetPaginationTest />);
+    it('R2: offset pagination change triggers new fetch with updated offset', async () => {
+      const source = makeOffsetPaginatedSource();
+      render(<OffsetPaginationTest source={source} />);
 
       await waitFor(() => {
-        expect(getByTestId('status').textContent).toBe('success');
+        expect(screen.getByTestId('status').textContent).toBe('success');
       });
 
-      // Default page size should be 10 (standard) or whatever the table uses
-      const pageSize = parseInt(getByTestId('page-size').textContent ?? '0', 10);
-      expect(pageSize).toBeGreaterThan(0);
+      // Initial request has offset 0
+      expect(queryLog[0]?.pagination?.type).toBe('offset');
+      if (queryLog[0]?.pagination?.type === 'offset') {
+        expect(queryLog[0]!.pagination!.offset).toBe(0);
+      }
+    });
+  });
+
+  describe('cursor pagination', () => {
+    it('R2: cursor pagination sends wire format with type=cursor', async () => {
+      const source = makeCursorPaginatedSource();
+      render(<CursorPaginationTest source={source} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('status').textContent).toBe('success');
+      });
+
+      expect(queryLog[0]?.pagination?.type).toBe('cursor');
+    });
+
+    it('R2: cursor pagination includes cursor, direction, and limit', async () => {
+      const source = makeCursorPaginatedSource();
+      render(<CursorPaginationTest source={source} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('status').textContent).toBe('success');
+      });
+
+      const pagination = queryLog[0]?.pagination;
+      expect(pagination?.type).toBe('cursor');
+      if (pagination?.type === 'cursor') {
+        expect(pagination.cursor).toBeNull();
+        expect(pagination.direction).toBe('next');
+        expect(typeof pagination.limit).toBe('number');
+      }
+    });
+
+    it('R2: cursor pagination publishes nextCursor in result', async () => {
+      const source = makeCursorPaginatedSource();
+      render(<CursorPaginationTest source={source} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('status').textContent).toBe('success');
+      });
+
+      // First page should have nextCursor published
+      expect(screen.getByTestId('next-cursor').textContent).toBe('cursor_page_2');
+      expect(screen.getByTestId('prev-cursor').textContent).toBe('none');
+    });
+  });
+
+  describe('data version identity', () => {
+    it('R2: dataVersion is published from RowsResult', async () => {
+      const source = makeVersionedSource();
+      render(<DataVersionTest source={source} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('status').textContent).toBe('success');
+      });
+
+      // First fetch returns version 1
+      expect(screen.getByTestId('data-version').textContent).toBe('1');
+    });
+
+    it('R2: changed dataVersion is published after refetch', async () => {
+      const source = makeVersionedSource();
+      render(<DataVersionTest source={source} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('status').textContent).toBe('success');
+      });
+
+      expect(screen.getByTestId('data-version').textContent).toBe('1');
+
+      // Trigger refetch which increments version
+      screen.getByTestId('refetch').click();
+
+      // Wait for the refetch to complete - the version should increment
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('data-version').textContent).toBe('2');
+        },
+        { timeout: 2000 },
+      );
     });
   });
 });

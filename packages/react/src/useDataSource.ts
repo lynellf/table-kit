@@ -44,6 +44,8 @@ export interface UseDataSourceResult<TRow> {
   refetch: () => void;
   /** v2.0.0: Cursor state for navigating cursor-based pagination. */
   cursor?: CursorState;
+  /** v2.0.0: Data version token for mutable data patterns. */
+  dataVersion?: string | number;
   /**
    * v2.0.0: Navigate to a specific cursor position.
    * Only available for cursor-capable data sources.
@@ -173,6 +175,7 @@ export const useDataSource = <TRow>(
     sort: unknown;
     filter: unknown;
     paginationRef: unknown; // Track pagination object reference for controlled state
+    refetchNonce: number; // Track refetch nonce for context comparison
   } | null>(null);
   // R3-SWR-004 fix: Track the previously published token for SWR retention.
   const publishedDataVersionRef = useRef<string | number | DataVersionSentinel>(UNSET_DATA_VERSION);
@@ -295,6 +298,7 @@ export const useDataSource = <TRow>(
       sort: currentTableState.sorting,
       filter: currentTableState.columnFilters,
       paginationRef: currentPagination, // Track pagination object for controlled state
+      refetchNonce: refetchNonceRef.current, // Track refetch nonce for context comparison
     };
     const prevContext = prevQueryContextRef.current;
 
@@ -303,6 +307,8 @@ export const useDataSource = <TRow>(
     const isFreshMount = prevContext === null;
 
     // Check if any non-cursor context changed (requires cursor reset and new request)
+    // R3 fix: Include refetchNonceRef in context comparison so refetch() forces a new request.
+    const prevRefetchNonce = prevQueryContextRef.current?.refetchNonce ?? 0;
     const contextChanged =
       prevContext === null ||
       prevContext.sourceRef !== currentContext.sourceRef ||
@@ -311,7 +317,9 @@ export const useDataSource = <TRow>(
       prevContext.sort !== currentContext.sort ||
       prevContext.filter !== currentContext.filter ||
       // R3 fix: Also detect controlled pagination changes by object reference
-      prevContext.paginationRef !== currentContext.paginationRef;
+      prevContext.paginationRef !== currentContext.paginationRef ||
+      // R3 fix: Detect refetch() calls to force new requests
+      prevRefetchNonce !== refetchNonceRef.current;
 
     // R3-B1 fix: Reset cursor selection on non-cursor context changes
     if (contextChanged) {
@@ -562,6 +570,10 @@ export const useDataSource = <TRow>(
   // R2 fix: Expose cursor state and selectCursor for cursor-capable sources.
   if (snapshot.cursor !== undefined) {
     result.cursor = snapshot.cursor;
+  }
+  // R2 fix: Expose dataVersion for mutable data patterns.
+  if (snapshot.dataVersion !== undefined) {
+    result.dataVersion = snapshot.dataVersion;
   }
   // R2 fix: Expose selectCursor only for cursor-capable sources.
   if (source?.capabilities.pagination === 'cursor') {
