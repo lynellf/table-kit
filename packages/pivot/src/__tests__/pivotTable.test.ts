@@ -455,6 +455,52 @@ describe('createPivotTable', () => {
       expect(p.getState().columnSizing).toEqual({ region: 200 });
       expect(p.getState().columnSizingInfo).toBeNull();
     });
+
+    it('R4: controlled resize commands read from controlled options (R4 fix)', () => {
+      // In controlled mode, resize commands should read from currentOptions.state.columnSizingInfo
+      // (the controlled value) rather than state.columnSizingInfo (local state).
+      // This ensures commands work correctly when parent doesn't synchronously re-render.
+      let parentSizingInfo: {
+        columnId: string;
+        startSize: number;
+        delta: number;
+        mode: 'onChange' | 'onEnd';
+      } | null = null;
+      const onColumnSizingInfoChange = vi.fn((updater) => {
+        const prev = parentSizingInfo;
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        parentSizingInfo = next;
+      });
+
+      // Initialize with controlled state
+      parentSizingInfo = {
+        columnId: 'region',
+        startSize: 100,
+        delta: 0,
+        mode: 'onChange',
+      };
+
+      const p = createPivotTable({
+        ...baseOpts(),
+        state: { columnSizingInfo: parentSizingInfo },
+        onColumnSizingInfoChange,
+      });
+
+      // adjustResize should read from controlled options, not local state
+      p.adjustResize(50);
+      expect(onColumnSizingInfoChange).toHaveBeenCalled();
+      // Verify the callback received the correct update
+      const call = onColumnSizingInfoChange.mock.calls[0]![0];
+      const next = typeof call === 'function' ? call(parentSizingInfo) : call;
+      expect(next?.delta).toBe(50);
+
+      // Reset mock
+      onColumnSizingInfoChange.mockClear();
+
+      // commitResize should read from controlled options
+      p.commitResize();
+      expect(onColumnSizingInfoChange).toHaveBeenLastCalledWith(null); // Clear session
+    });
   });
 
   describe('focused cell', () => {

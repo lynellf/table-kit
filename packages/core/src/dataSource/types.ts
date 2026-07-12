@@ -112,8 +112,9 @@ export interface CursorPagination {
   /**
    * Pagination direction. 'next' fetches rows after the cursor;
    * 'previous' fetches rows before the cursor.
+   * Required per the wire contract; undefined direction is treated as 'next'.
    */
-  direction?: 'next' | 'previous';
+  direction: 'next' | 'previous';
   /** Number of rows to fetch. */
   limit: number;
 }

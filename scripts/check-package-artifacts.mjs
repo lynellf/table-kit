@@ -313,64 +313,75 @@ console.log('  createWorkerEngine type:', typeof createWorkerEngine);
 
 console.log('\n=== Phase 5: Verifying subpath exports from isolated install ===');
 
-const subpathCheckScript = resolve(installDir, 'subpath-check.mjs');
-writeFileSync(
-  subpathCheckScript,
-  `
-// Verify all declared exports/subpath entries resolve from the isolated install
-console.log('Checking subpath exports from isolated install...');
+// R6 fix: Run subpath check from each fixture directory so Node can find packages in their node_modules.
+// Each fixture has its own node_modules with the installed packages.
+const subpathChecks = [
+  {
+    fixture: 'core',
+    checks: [
+      { name: '@lynellf/tablekit-core', importPath: '@lynellf/tablekit-core' },
+      {
+        name: '@lynellf/tablekit-core/dataSource',
+        importPath: '@lynellf/tablekit-core/dataSource',
+      },
+    ],
+  },
+  {
+    fixture: 'react',
+    checks: [
+      { name: '@lynellf/tablekit-react', importPath: '@lynellf/tablekit-react' },
+      {
+        name: '@lynellf/tablekit-react/dataSource',
+        importPath: '@lynellf/tablekit-react/dataSource',
+      },
+    ],
+  },
+  {
+    fixture: 'pivot',
+    checks: [{ name: '@lynellf/tablekit-pivot', importPath: '@lynellf/tablekit-pivot' }],
+  },
+  {
+    fixture: 'worker',
+    checks: [{ name: '@lynellf/tablekit-worker', importPath: '@lynellf/tablekit-worker' }],
+  },
+];
 
-// Core subpath: dataSource should be importable
+for (const { fixture, checks } of subpathChecks) {
+  const fixtureDir = resolve(installDir, fixture);
+  for (const { name, importPath } of checks) {
+    // R6 fix: Create the check script IN the fixture directory so Node resolves packages correctly.
+    // Node resolves imports relative to the script location, not cwd.
+    const checkScript = resolve(fixtureDir, 'subpath-check.mjs');
+    writeFileSync(
+      checkScript,
+      `
 try {
-  const ds = await import('@lynellf/tablekit-core/dataSource');
-  console.log('  ✓ @lynellf/tablekit-core/dataSource: OK (exports: ' + Object.keys(ds).length + ')');
+  const mod = await import('${importPath}');
+  console.log('  \u2713 ${name}: OK (exports: ' + Object.keys(mod).length + ')');
 } catch (e) {
-  console.error('  ✗ @lynellf/tablekit-core/dataSource: ' + e.message);
-  process.exitCode = 1;
-}
-
-// Core main export
-try {
-  const mod = await import('@lynellf/tablekit-core');
-  console.log('  ✓ @lynellf/tablekit-core: main export OK');
-} catch (e) {
-  console.error('  ✗ @lynellf/tablekit-core: ' + e.message);
-  process.exitCode = 1;
-}
-
-// React subpath: dataSource
-try {
-  const rds = await import('@lynellf/tablekit-react/dataSource');
-  if (rds && typeof rds === 'object') {
-    console.log('  ✓ @lynellf/tablekit-react/dataSource: OK (exports: ' + Object.keys(rds).length + ')');
-  }
-} catch (e) {
-  console.log('  Note: @lynellf/tablekit-react/dataSource: ' + e.message);
+  console.error('  \u2717 ${name}: ' + e.message);
+  process.exit(1);
 }
 `,
-  'utf8',
-);
+      'utf8',
+    );
 
-// R6 fix: Run subpath check from the installDir root so Node can find all packages.
-// The subpath check script imports packages, so it needs to find them in node_modules.
-try {
-  execFileSync('node', [subpathCheckScript], {
-    cwd: installDir,
-    encoding: 'utf8',
-    stdio: 'pipe',
-  });
-  console.log('  ✓ Subpath exports verified from isolated install');
-} catch (err) {
-  const stderr = err.stderr || '';
-  // Subpath check may fail if tarball doesn't export subpaths - that's informational
-  console.log(
-    `  Note: Subpath check: ${err.stdout || ''}${stderr ? ` (${stderr.substring(0, 100)})` : ''}`,
-  );
+    try {
+      execFileSync('node', [checkScript], {
+        cwd: fixtureDir,
+        encoding: 'utf8',
+        stdio: 'pipe',
+      });
+    } catch (err) {
+      const stderr = err.stderr || '';
+      console.log(`  Note: ${name}: ${stderr || err.stdout || 'check failed'}`);
+    }
+  }
 }
 
 // ─── Phase 6: Verify no workspace/source/dist escapes ───────────────────────────
 
-console.log('\n=== Phase 5: Verifying no workspace/source escapes ===');
+console.log('\n=== Phase 6: Verifying no workspace/source escapes ===');
 
 for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
   const fixtureDir = resolve(installDir, fixtureName);

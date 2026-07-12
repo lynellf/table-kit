@@ -565,18 +565,29 @@ export const createPivotTable = <TRow>(
     setColumnSizingInfo(session);
   };
 
+  // R4 fix: In controlled mode, read the session from controlled options, not local state.
+  // This ensures commands work correctly when parent doesn't synchronously re-render.
+  const getEffectiveColumnSizingInfo = (): ColumnResizeSession | null | undefined => {
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'columnSizingInfo');
+    return isControlled ? currentOptions.state?.columnSizingInfo : state.columnSizingInfo;
+  };
+
   const adjustResize = (delta: number): void => {
-    if (!state.columnSizingInfo) return;
+    const session = getEffectiveColumnSizingInfo();
+    if (!session) return;
     setColumnSizingInfo({
-      ...state.columnSizingInfo,
+      ...session,
       delta,
       mode: 'onChange',
     });
   };
 
   const commitResize = (): void => {
-    if (!state.columnSizingInfo) return;
-    const { columnId, startSize, delta } = state.columnSizingInfo;
+    const session = getEffectiveColumnSizingInfo();
+    if (!session) return;
+    const { columnId, startSize, delta } = session;
     const newWidth = Math.max(0, startSize + delta);
     // Update columnSizing with the new width
     setColumnSizing((prev) => ({ ...prev, [columnId]: newWidth }));
@@ -585,7 +596,8 @@ export const createPivotTable = <TRow>(
   };
 
   const cancelResize = (): void => {
-    if (!state.columnSizingInfo) return;
+    const session = getEffectiveColumnSizingInfo();
+    if (!session) return;
     setColumnSizingInfo(null);
   };
 

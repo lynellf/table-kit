@@ -152,6 +152,7 @@ export type {
   PaginationStrategy,
   DataSourceCapabilities,
   DataVersion,
+  DataVersionToken,
   OffsetPagination,
   CursorPagination,
   PaginationWire,
@@ -167,6 +168,7 @@ export type {
   BuildRowsQueryOptions,
   CreateClientDataSourceOptions,
 } from './dataSource/types';
+export { UNSET_VERSION_TOKEN } from './dataSource/types';
 
 // ─── DataSource runtime (M3 phase 2) ───────────────────────────────────
 export { createClientDataSource } from './dataSource/client';
