@@ -759,13 +759,19 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
   /** Announce a message via the live-region. Used by useDataSource on success. */
   announce = (message: string, politeness: 'polite' | 'assertive' = 'polite'): void => {
-    // Use global announcer if available, otherwise fall back to options announcer.
-    // This allows the React adapter to set up the announcer after the table is created.
-    const global = getGlobalAnnouncer();
-    if (global !== noopAnnouncer) {
-      global.announce(message, politeness);
+    // R5 fix: Prefer the instance announcer (from options) over the global announcer.
+    // The global announcer is only a fallback when no instance announcer is supplied.
+    // This ensures each grid's announcements stay in its own live-region channel
+    // and unmounting one grid cannot replace another's channel.
+    const instance = this.getAnnouncer();
+    if (instance && instance !== noopAnnouncer) {
+      instance.announce(message, politeness);
     } else {
-      this.getAnnouncer().announce(message, politeness);
+      // Fall back to global announcer only when no instance announcer is configured
+      const global = getGlobalAnnouncer();
+      if (global !== noopAnnouncer) {
+        global.announce(message, politeness);
+      }
     }
   };
 

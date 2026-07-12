@@ -5,8 +5,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "//": "R6 fix: Use version placeholder instead of workspace:* for packed artifact verification",
   "dependencies": {
-    "@lynellf/tablekit-pivot": "workspace:*"
+    "@lynellf/tablekit-pivot": "2.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0"

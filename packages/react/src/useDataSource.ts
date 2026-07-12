@@ -129,30 +129,28 @@ export const useDataSource = <TRow>(
     });
   }, [table]);
 
-  // ─── v2.0.0: Handle nullable source ──────────────────────────────────────────
-  // When source is null/undefined, return idle state without subscriptions
-  const hasSource = source != null;
-
   // Subscribe to the table's data source state.
   const subscribe = useCallback((onChange: () => void) => table.subscribe(onChange), [table]);
   const getSnapshot = useCallback(() => table.__getDataSourceState(), [table]);
 
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  // When no source, return idle state
-  if (!hasSource) {
-    const idleResult: UseDataSourceResult<TRow> = {
-      status: 'idle',
-      data: null,
-      refetch,
-    };
-    return idleResult;
-  }
-
   // ─── Single combined effect ──────────────────────────────────────────────
+  // R3 fix: Effect is unconditional. When source is null, it sets idle state
+  // and cleans up. When source is present, it runs the fetch logic.
   useEffect(() => {
-    // v2.0.0: Skip if no source
-    if (!sourceRef.current) return;
+    // R3 fix: Handle null source by setting idle state and aborting in-flight requests
+    if (!sourceRef.current) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      // Set idle state with null data (no prior data retained for null source)
+      table.__setDataSourceState({
+        status: 'idle',
+        data: null,
+        refetch,
+      });
+      return;
+    }
 
     // 1. Validate mode capabilities.
     const caps = sourceRef.current.capabilities;
@@ -266,7 +264,9 @@ export const useDataSource = <TRow>(
       abortRef.current?.abort();
       unsubscribe();
     };
-  }, [refetch, table, t]);
+    // R3 fix: Include source in dependencies so the effect re-runs when source changes.
+    // This ensures proper transitions between null and non-null sources.
+  }, [refetch, table, t, source]);
 
   // Build return with only defined optional fields.
   const result: UseDataSourceResult<TRow> = {

@@ -5,8 +5,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "//": "R6 fix: Use version placeholder instead of workspace:* for packed artifact verification",
   "dependencies": {
-    "@lynellf/tablekit-worker": "workspace:*"
+    "@lynellf/tablekit-worker": "2.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0"
