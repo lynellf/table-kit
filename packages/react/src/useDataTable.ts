@@ -38,6 +38,12 @@ export interface UseDataTableOptions<TRow> extends DataTableOptions<TRow> {
    * - 'cells' (opt-in): Tab focuses the first cell; Arrow keys move within the row.
    */
   tabBehavior?: TabBehavior;
+  /**
+   * R5 fix: Announcer channel for instance-owned announcements.
+   * When provided, this channel is used for the announcer so custom announce-only
+   * announcers work correctly. When omitted, uses an internal no-op channel.
+   */
+  announcer?: AnnouncerChannel;
 }
 
 export interface UseDataTableResult<TRow> {
@@ -68,12 +74,17 @@ export interface UseDataTableResult<TRow> {
 export const useDataTable = <TRow>(
   options: UseDataTableOptions<TRow>,
 ): UseDataTableResult<TRow> => {
-  // R5 fix: Create announcer channel before table, so it can be shared.
-  // The channel is shared between the table (via options) and ReactAnnouncer (via props).
+  // R5 fix: Support options.announcer for custom announce-only announcers.
+  // If options.announcer is provided, use it. Otherwise, create an internal no-op channel.
   const announcerChannelRef = useRef<AnnouncerChannel | null>(null);
   if (announcerChannelRef.current === null) {
-    // Create a channel with a no-op announcer as the underlying implementation
-    announcerChannelRef.current = createAnnouncerChannel({ announce: () => {} });
+    if (options.announcer) {
+      // R5 fix: Use the provided announcer channel
+      announcerChannelRef.current = options.announcer;
+    } else {
+      // Create a channel with a no-op announcer as the underlying implementation
+      announcerChannelRef.current = createAnnouncerChannel({ announce: () => {} });
+    }
   }
 
   // Create the instance once. The ref initializer runs only on mount.
@@ -81,9 +92,11 @@ export const useDataTable = <TRow>(
   if (ref.current === null) {
     // R5 fix: Create an announcer that wraps the channel so the table can use it.
     // The channel ensures proper subscription lifecycle and instance isolation.
+    // Use the provided announcer if available, otherwise use the internal channel.
+    const announcerToUse = options.announcer ?? announcerChannelRef.current!;
     ref.current = createDataTable<TRow>({
       ...options,
-      announcer: announcerChannelRef.current!,
+      announcer: announcerToUse,
     });
   }
   const table = ref.current;

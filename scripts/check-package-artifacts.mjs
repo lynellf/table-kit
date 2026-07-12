@@ -371,8 +371,11 @@ try {
         stdio: 'pipe',
       });
     } catch (err) {
+      // R6 fix: Fail on subpath import errors, don't just note them
       const stderr = err.stderr || '';
-      console.log(`  Note: ${name}: ${stderr || err.stdout || 'check failed'}`);
+      const stdout = err.stdout || '';
+      console.error(`  \u2717 ${name}: ${stderr || stdout}`);
+      throw new Error(`${name}: subpath import failed from isolated install\n${stderr || stdout}`);
     }
   }
 }
@@ -466,8 +469,9 @@ console.log('  ✓ React bundle does not bundle React');
 
 console.log('\n=== Phase 8: Invoking docs and public-surface checks ===');
 
-// Run check-docs-version against the live docs (this tests docs drift)
-let docsResult = { pass: true, output: '' };
+// R6 fix: Run check-docs-version against the live docs (this tests docs drift).
+// The script exits 0 on success, 1 on drift.
+let docsResult = { pass: true, output: '', failed: false };
 try {
   const docsOutput = execFileSync('node', [resolve(root, 'scripts/check-docs-version.mjs')], {
     cwd: root,
@@ -475,16 +479,26 @@ try {
     stdio: 'pipe',
   });
   docsResult.output = docsOutput;
-  console.log('  ✓ check-docs-version: completed');
+  console.log('  ✓ check-docs-version: passed (no drift)');
 } catch (err) {
-  // check-docs-version may exit 1 on drift; that's expected
-  docsResult.pass = true;
-  docsResult.output = err.stdout || '';
-  console.log('  ✓ check-docs-version: completed (drift detected, recorded)');
+  const stderr = err.stderr || '';
+  const stdout = err.stdout || '';
+  docsResult.output = stdout + stderr;
+  // If the script exited with code 1, that's drift detected - record but don't fail
+  // If it exited with other code or has content, it may be a real error
+  if (err.status === 1) {
+    docsResult.failed = true;
+    docsResult.pass = false;
+    console.log('  ✗ check-docs-version: drift detected');
+  } else {
+    console.log('  ✗ check-docs-version: script error');
+    throw new Error(`check-docs-version failed unexpectedly:\n${stdout}\n${stderr}`);
+  }
 }
 
-// Run check-public-surface against the workspace dist (best available for comparison)
-let surfaceResult = { pass: true, output: '' };
+// R6 fix: Run check-public-surface against the workspace dist.
+// The script throws on real errors (missing exports, wrong versions, etc.).
+let surfaceResult = { pass: true, output: '', failed: false };
 try {
   const surfaceOutput = execFileSync('node', [resolve(root, 'scripts/check-public-surface.mjs')], {
     cwd: root,
@@ -492,28 +506,36 @@ try {
     stdio: 'pipe',
   });
   surfaceResult.output = surfaceOutput;
-  console.log('  ✓ check-public-surface: completed');
+  console.log('  ✓ check-public-surface: passed');
 } catch (err) {
-  surfaceResult.pass = true;
-  surfaceResult.output = err.stdout || '';
-  console.log('  ✓ check-public-surface: completed (issues found, recorded)');
+  const stderr = err.stderr || '';
+  const stdout = err.stdout || '';
+  surfaceResult.output = stdout + stderr;
+  surfaceResult.failed = true;
+  surfaceResult.pass = false;
+  console.log('  ✗ check-public-surface: failed');
+  throw new Error(`check-public-surface failed:\n${stdout}\n${stderr}`);
 }
 
-// Record the check results in the summary
-// Only count explicit failure indicators (✗ or FAIL), not the word 'drift' in a success message
-const docsFailures = (docsResult.output.match(/✗|FAIL/g) || []).length;
-const surfaceFailures = (surfaceResult.output.match(/✗|FAIL/g) || []).length;
+// R6 fix: Summary now uses the actual pass/fail flags set during execution.
+// Docs drift is informational (non-blocking), but public-surface errors are fatal.
 
 // ─── Cleanup and summary ───────────────────────────────────────────────────────
 
 console.log('\n=== Summary ===');
 console.log(`Artifact root: ${tempDir}`);
-console.log(`Docs drift issues: ${docsFailures}`);
-console.log(`Public surface issues: ${surfaceFailures}`);
+console.log(`check-docs-version: ${docsResult.failed ? '✗ drift detected' : '✓ passed'}`);
+console.log(`check-public-surface: ${surfaceResult.failed ? '✗ failed' : '✓ passed'}`);
 cleanup();
+
+// R6 fix: Only exit successfully if public-surface passed (docs drift is informational)
+if (surfaceResult.failed) {
+  throw new Error('check-public-surface failed - public surface verification did not pass');
+}
 
 console.log(
   `✓ Verified packed artifacts and isolated fixture boundaries for ${packageNames.length} packages`,
 );
 console.log('✓ No workspace/source/dist escapes detected');
 console.log('✓ All fixtures compile and execute from isolated install');
+console.log('✓ Public surface verification passed');

@@ -14,6 +14,8 @@ export type {
   PaginationStrategy,
   DataSourceCapabilities,
   DataVersion,
+  DataVersionToken,
+  UnsetVersionToken,
   OffsetPagination,
   CursorPagination,
   CursorDirection,
@@ -31,6 +33,9 @@ export type {
   BuildRowsQueryOptions,
   CreateClientDataSourceOptions,
 } from './types';
+
+// ─── Public constants ─────────────────────────────────────────────────────────
+export { UNSET_VERSION_TOKEN } from './types';
 
 // ─── Serializer ─────────────────────────────────────────────────────────
 export {

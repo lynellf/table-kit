@@ -278,6 +278,17 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       }
     }
 
+    // R2 fix: Also compare incoming state.dataVersion and cursor transitions.
+    // If the incoming state carries a different dataVersion or cursor, we must notify.
+    const incomingDataVersion = state.dataVersion;
+    const prevDataVersion = prev.dataVersion;
+    const dataVersionFieldChanged = incomingDataVersion !== prevDataVersion;
+
+    // R2 fix: Compare cursor state transitions.
+    const cursorChanged =
+      prev.cursor?.nextCursor !== state.cursor?.nextCursor ||
+      prev.cursor?.previousCursor !== state.cursor?.previousCursor;
+
     const statusChanged = prev.status !== state.status;
     const errorChanged = prev.error !== state.error;
     const totalRowCountChanged = prev.totalRowCount !== state.totalRowCount;
@@ -287,7 +298,9 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       !dataChanged &&
       !errorChanged &&
       !totalRowCountChanged &&
-      !versionChanged
+      !versionChanged &&
+      !dataVersionFieldChanged &&
+      !cursorChanged
     ) {
       // No meaningful change — skip to avoid unnecessary state updates.
       this.dataSourceState = state;

@@ -146,6 +146,10 @@ export const useDataSource = <TRow>(
   // Refs for mutable values.
   const sourceRef = useRef(source);
   const refetchNonceRef = useRef(0);
+  // R3 fix: Cleanup generation counter for Strict Mode microtask cancellation.
+  // When effect cleanup runs, we increment this counter. The scheduled microtask
+  // checks if it's still the current generation before aborting.
+  const cleanupGenerationRef = useRef(0);
   // R2 fix: Cursor selection owned by the hook.
   // Initial selection is { cursor: null, direction: 'next' }.
   const cursorSelectionRef = useRef<CursorSelection>({ cursor: null, direction: 'next' });
@@ -605,20 +609,29 @@ export const useDataSource = <TRow>(
     return () => {
       // Clear processing guard on cleanup
       processingRef.current = false;
-      // R3 fix: Don't abort immediately - schedule for microtask so Strict Mode
-      // effect replay can reattach to the same entry before it's released
+      // R3 fix: Use cleanup generation to cancel stale microtasks.
+      // Increment the generation so any pending microtask from a previous cleanup
+      // will see it's no longer current and skip abort.
+      const myGeneration = ++cleanupGenerationRef.current;
       const entry = inFlightRef.current;
       if (entry && entry.key === queryKey) {
-        // Mark as pending cleanup - if replay happens, the check above will reattach
+        // R3 fix: Schedule microtask with generation check.
+        // If Strict Mode replays the effect before this microtask runs, the new
+        // effect's reattachment check will find the pending entry and return early.
+        // This microtask will then see the generation mismatch and skip abort.
         queueMicrotask(() => {
-          // If still the same entry and not resolved, abort it
-          if (inFlightRef.current === entry && entry.status === 'pending') {
+          // Only abort if: same entry, still pending, and still this generation
+          if (
+            inFlightRef.current === entry &&
+            entry.status === 'pending' &&
+            cleanupGenerationRef.current === myGeneration
+          ) {
             controller.abort();
             entry.status = 'aborted';
           }
         });
       } else {
-        // Different key, abort immediately
+        // Different key or no entry, abort immediately
         controller.abort();
       }
     };

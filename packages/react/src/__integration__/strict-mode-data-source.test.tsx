@@ -223,10 +223,9 @@ describe('Strict Mode data source', () => {
     });
   });
 
-  // B7-STRICT-MODE-OWNERSHIP: refetch test is skipped due to a pre-existing issue
-  // where refetch() increments the nonce but doesn't properly trigger a new request.
-  // This is tracked as part of B7-REQUEST-TRIGGERING and needs further investigation.
-  it.skip('B7: refetch makes exactly one new call with same key', async () => {
+  // B7-STRICT-MODE-OWNERSHIP: refetch test verifies that refetch()
+  // increments the nonce and triggers a new request.
+  it('B7: refetch makes exactly one new call with same key', async () => {
     const mockSource = createMockDataSource('source1', { rows: simpleData, totalRowCount: 2 });
 
     function RefetchComponent() {
