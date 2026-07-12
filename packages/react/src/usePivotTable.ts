@@ -54,16 +54,18 @@ export interface UsePivotTableResult<TRow> {
 export const usePivotTable = <TRow>(
   options: UsePivotTableOptions<TRow>,
 ): UsePivotTableResult<TRow> => {
-  // R5 fix: Create announcer instance before pivot, so it can be shared.
+  // R5 fix: Respect caller's announcer if provided, otherwise create internal one.
   // The announcer is shared between the pivot (via options) and ReactAnnouncer (via props).
   const announcerRef = useRef<Announcer | null>(null);
   if (announcerRef.current === null) {
-    announcerRef.current = { announce: () => {} };
+    // Use caller's announcer if provided, otherwise create minimal internal one
+    announcerRef.current = options.announcer ?? { announce: () => {} };
   }
 
   const ref = useRef<PivotTableInstance<TRow> | null>(null);
   if (ref.current === null) {
-    // R5 fix: Pass the announcer to the pivot factory so it uses our instance
+    // R5 fix: Pass the announcer to the pivot factory so it uses our instance.
+    // If caller provided announcer, it's already set in announcerRef.current.
     ref.current = createPivotTable<TRow>({ ...options, announcer: announcerRef.current });
   }
   const pivot = ref.current;

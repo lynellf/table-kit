@@ -25,6 +25,7 @@ import type {
   DataSourceCapabilities,
   DataSourceState,
   DataSourceStatus,
+  MaybePromise,
   RowsResult,
 } from '@lynellf/tablekit-core/dataSource';
 import {
@@ -34,6 +35,15 @@ import {
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { defaultMessages } from './messages';
 import type { AnnouncerKey } from './messages';
+
+/**
+ * R3-THENABLE fix: Check if a value is a thenable (Promise-like) without using instanceof.
+ * This handles custom thenable objects that aren't actual Promises.
+ */
+const isPromiseLike = <T>(value: MaybePromise<T>): value is Promise<T> =>
+  value !== null &&
+  (typeof value === 'object' || typeof value === 'function') &&
+  typeof (value as { then?: unknown }).then === 'function';
 
 /** Return type. `data` is the latest successful result; consumers use it as the `data` prop. */
 export interface UseDataSourceResult<TRow> {
@@ -199,9 +209,13 @@ export const useDataSource = <TRow>(
   }, []);
 
   // R2 fix: Stable selectCursor function for cursor-capable sources.
+  // Increment refetchVersion to trigger the effect to rebuild the query with new cursor.
   const selectCursor = useCallback((cursor: string | null, direction: CursorDirection) => {
     cursorSelectionRef.current = { cursor, direction };
     refetchNonceRef.current += 1;
+    // R2-CURSOR-TRIGGER-RESET fix: Increment refetchVersion to ensure effect re-runs
+    // and rebuilds the query with the new cursor selection.
+    setRefetchVersion((v) => v + 1);
   }, []);
 
   // Subscribe to the table's data source state.
@@ -519,7 +533,8 @@ export const useDataSource = <TRow>(
     try {
       const result = sourceRef.current!.getRows(query, { signal: controller.signal });
 
-      if (result instanceof Promise) {
+      // R3-THENABLE fix: Use isPromiseLike instead of instanceof Promise to handle thenables
+      if (isPromiseLike(result)) {
         result.then(handleResult).catch(handleError);
       } else {
         handleResult(result);

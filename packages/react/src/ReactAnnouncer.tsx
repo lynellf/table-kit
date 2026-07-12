@@ -113,49 +113,12 @@ export const ReactAnnouncer = ({ announcer, politeness = 'polite' }: ReactAnnoun
         }
       };
     }
-    // Announcer only provides announce() - wrap it with a subscription proxy.
-    // This allows minimal custom announcers to still work.
-    let unsubscribe: (() => void) | null = null;
-
-    if ('announce' in announcer && typeof announcer.announce === 'function') {
-      const originalAnnounce = announcer.announce.bind(announcer);
-
-      // Create a wrapped announce that also updates React state
-      const wrappedAnnounce: typeof announcer.announce = (msg, msgPoliteness) => {
-        // Throttle duplicate messages
-        const now = Date.now();
-        if (
-          msg === lastAnnounceRef.current.message &&
-          now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
-        ) {
-          return;
-        }
-        lastAnnounceRef.current = { message: msg, ts: now };
-
-        // Call original announce for backward compatibility
-        originalAnnounce(msg, msgPoliteness);
-
-        // Update React state for the live region
-        setMessage(msg);
-      };
-
-      // Override the announce method (but keep reference for cleanup)
-      (announcer as unknown as { announce: typeof wrappedAnnounce }).announce = wrappedAnnounce;
-
-      unsubscribe = () => {
-        // Restore original announce on cleanup
-        (announcer as unknown as { announce: typeof originalAnnounce }).announce = originalAnnounce;
-      };
-    }
-
-    unsubscribeRef.current = unsubscribe ?? null;
-
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-    };
+    // Announcer only provides announce() without subscribe/dispose.
+    // R5 fix: We CANNOT safely mutate external announcers.
+    // Skip React live-region integration for announce-only announcers.
+    // The caller is responsible for providing a compatible announcer if they want live-region support.
+    // No cleanup needed since we didn't set up any subscription.
+    return undefined;
   }, [announcer]);
 
   return (

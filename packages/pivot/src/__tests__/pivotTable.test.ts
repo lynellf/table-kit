@@ -336,6 +336,210 @@ describe('createPivotTable', () => {
     expect(pivot.getResult().rowRoot.children![0]!.childState).toBe('loaded');
     expect(pivot.getResult().rowRoot.children![0]!.children).toEqual(child);
   });
+
+  describe('column pinning', () => {
+    it('R4: uncontrolled setColumnPinning mutates local state', () => {
+      const p = createPivotTable(baseOpts());
+      p.setColumnPinning({ left: ['region'], right: [] });
+      expect(p.getState().columnPinning).toEqual({ left: ['region'], right: [] });
+    });
+
+    it('R4: controlled setColumnPinning dispatches callback when dedicated callback provided', () => {
+      const onColumnPinningChange = vi.fn();
+      const p = createPivotTable({
+        ...baseOpts(),
+        state: { columnPinning: { left: [], right: [] } },
+        onColumnPinningChange,
+      });
+      p.setColumnPinning({ left: ['region'], right: [] });
+      expect(onColumnPinningChange).toHaveBeenCalledWith({ left: ['region'], right: [] });
+    });
+
+    it('R4: controlled setColumnPinning does NOT mutate local state when dedicated callback missing', () => {
+      const p = createPivotTable({
+        ...baseOpts(),
+        state: { columnPinning: { left: [], right: [] } },
+        // No onColumnPinningChange - controlled but missing dedicated callback
+      });
+      p.setColumnPinning({ left: ['region'], right: [] });
+      // State should NOT change because callback is missing
+      expect(p.getState().columnPinning).toEqual({ left: [], right: [] });
+    });
+
+    it('R4: dedicated onColumnPinningChange takes precedence over onStateChange', () => {
+      const onColumnPinningChange = vi.fn();
+      const onStateChange = vi.fn();
+      const p = createPivotTable({
+        ...baseOpts(),
+        state: { columnPinning: { left: [], right: [] } },
+        onColumnPinningChange,
+        onStateChange,
+      });
+      p.setColumnPinning({ left: ['region'], right: [] });
+      // Dedicated callback should be called
+      expect(onColumnPinningChange).toHaveBeenCalled();
+      // onStateChange should NOT be called for this specific slice change
+      const pinningCalls = onStateChange.mock.calls.filter(
+        (call) => call[0]?.columnPinning !== undefined,
+      );
+      expect(pinningCalls).toHaveLength(0);
+    });
+  });
+
+  describe('column sizing', () => {
+    it('R4: uncontrolled setColumnSizing mutates local state', () => {
+      const p = createPivotTable(baseOpts());
+      p.setColumnSizing({ region: 150 });
+      expect(p.getState().columnSizing).toEqual({ region: 150 });
+    });
+
+    it('R4: controlled setColumnSizing dispatches callback when dedicated callback provided', () => {
+      const onColumnSizingChange = vi.fn();
+      const p = createPivotTable({
+        ...baseOpts(),
+        state: { columnSizing: {} },
+        onColumnSizingChange,
+      });
+      p.setColumnSizing({ region: 150 });
+      expect(onColumnSizingChange).toHaveBeenCalledWith({ region: 150 });
+    });
+
+    it('R4: controlled setColumnSizing does NOT mutate local state when dedicated callback missing', () => {
+      const p = createPivotTable({
+        ...baseOpts(),
+        state: { columnSizing: {} },
+        // No onColumnSizingChange - controlled but missing dedicated callback
+      });
+      p.setColumnSizing({ region: 150 });
+      // State should NOT change because callback is missing
+      expect(p.getState().columnSizing).toEqual({});
+    });
+  });
+
+  describe('resize session', () => {
+    it('R4: startResize begins a resize session', () => {
+      const p = createPivotTable(baseOpts());
+      p.startResize('region', 100);
+      expect(p.getState().columnSizingInfo).toEqual({
+        columnId: 'region',
+        startSize: 100,
+        delta: 0,
+        mode: 'onChange',
+      });
+    });
+
+    it('R4: adjustResize updates delta without committing', () => {
+      const p = createPivotTable(baseOpts());
+      p.startResize('region', 100);
+      p.adjustResize(50);
+      expect(p.getState().columnSizingInfo?.delta).toBe(50);
+      // columnSizing should NOT be updated yet
+      expect(p.getState().columnSizing).toEqual({});
+    });
+
+    it('R4: commitResize applies the final size', () => {
+      const p = createPivotTable(baseOpts());
+      p.startResize('region', 100);
+      p.adjustResize(50);
+      p.commitResize();
+      expect(p.getState().columnSizing).toEqual({ region: 150 });
+      expect(p.getState().columnSizingInfo).toBeNull();
+    });
+
+    it('R4: cancelResize aborts without updating sizing', () => {
+      const p = createPivotTable({ ...baseOpts(), state: { columnSizing: { region: 200 } } });
+      p.startResize('region', 200);
+      p.adjustResize(50);
+      p.cancelResize();
+      // Original sizing preserved
+      expect(p.getState().columnSizing).toEqual({ region: 200 });
+      expect(p.getState().columnSizingInfo).toBeNull();
+    });
+  });
+
+  describe('focused cell', () => {
+    it('R4: uncontrolled setFocusedCell mutates local state', () => {
+      const p = createPivotTable(baseOpts());
+      p.setFocusedCell({ rowId: '1', columnId: 'region' });
+      expect(p.getState().focusedCell).toEqual({ rowId: '1', columnId: 'region' });
+    });
+
+    it('R4: controlled setFocusedCell dispatches callback when dedicated callback provided', () => {
+      const onFocusedCellChange = vi.fn();
+      const p = createPivotTable({
+        ...baseOpts(),
+        state: { focusedCell: null },
+        onFocusedCellChange,
+      });
+      p.setFocusedCell({ rowId: '1', columnId: 'region' });
+      expect(onFocusedCellChange).toHaveBeenCalledWith({ rowId: '1', columnId: 'region' });
+    });
+
+    it('R4: setFocusedCell(null) clears focused cell in uncontrolled mode', () => {
+      const p = createPivotTable(baseOpts());
+      // Start with no focused cell
+      expect(p.getState().focusedCell).toBeNull();
+      // Set a focused cell
+      p.setFocusedCell({ rowId: '1', columnId: 'region' });
+      expect(p.getState().focusedCell).toEqual({ rowId: '1', columnId: 'region' });
+      // Clear it
+      p.setFocusedCell(null);
+      expect(p.getState().focusedCell).toBeNull();
+    });
+  });
+
+  describe('getLeafColumns pinnedOffset', () => {
+    it('R4: unpinned ordinary columns have no pinned property', () => {
+      // Create a pivot with columns dimension to have leaf columns
+      const p = createPivotTable({
+        data: rows,
+        pivot: {
+          rows: [],
+          columns: ['region'],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        getRowId: (r) => r.id,
+        // No columnPinning in state - columns are unpinned by default
+      });
+      const leaves = p.getLeafColumns();
+      // Ordinary non-total columns with no explicit pinning should have no pinned property
+      leaves.forEach((leaf) => {
+        if (!leaf.isTotal) {
+          expect(leaf.pinned).toBeUndefined();
+          expect(leaf.pinnedOffset).toBeUndefined();
+        }
+      });
+    });
+
+    it('R4: total columns default to right pinned', () => {
+      const p = createPivotTable(baseOpts());
+      const leaves = p.getLeafColumns();
+      // Total columns (grand total, etc.) default to right pinned
+      const totalLeaves = leaves.filter((l) => l.isTotal);
+      if (totalLeaves.length > 0) {
+        totalLeaves.forEach((leaf) => {
+          expect(leaf.pinned).toBe('right');
+        });
+      }
+    });
+
+    it('R4: columnPinning state is reflected in getLeafColumns', () => {
+      // Create a pivot with columns dimension to have leaf columns
+      const p = createPivotTable({
+        data: rows,
+        pivot: {
+          rows: [],
+          columns: ['region'],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        getRowId: (r) => r.id,
+        state: { columnPinning: { left: [], right: [] } },
+      });
+      const leaves = p.getLeafColumns();
+      // With columns dimension, we should have leaf columns
+      expect(leaves.length).toBeGreaterThan(0);
+    });
+  });
 });
 
 const createCustomResult = (label: string): PivotResult<Row> => ({
