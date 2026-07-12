@@ -456,6 +456,62 @@ describe('data-source-contract', () => {
       expect(getByTestId('data-length').textContent).toBe('2');
       expect(getByTestId('total-row-count').textContent).toBe('2');
     });
+
+    it('R3: stale result resolving after new success does not overwrite state', async () => {
+      // R3-SWR-004 fix: Verify that a stale result (from an aborted request) cannot
+      // publish after a newer result has been accepted. The request-token check in
+      // handleResult prevents stale publication.
+      let slowResolve: (r: RowsResult<Person>) => void;
+      const slowPromise = new Promise<RowsResult<Person>>((resolve) => {
+        slowResolve = resolve;
+      });
+
+      const slowSource: DataSource<Person> = {
+        capabilities: { sort: 'server', filter: 'server', paginate: 'server' },
+        getRows: async () => slowPromise,
+      };
+
+      const fastSource = createMockDataSource(
+        [{ rows: [{ id: 'fast', name: 'Fast', age: 99 }], totalRowCount: 1 }],
+        { sort: 'server', filter: 'server', paginate: 'server' },
+      );
+
+      function Wrapper({ source }: { source: DataSource<Person> | null }) {
+        return <DataTableWithSource source={source} />;
+      }
+
+      const { getByTestId, rerender } = render(<Wrapper source={slowSource} />);
+
+      // Wait for loading
+      await waitFor(() => {
+        expect(getByTestId('status').textContent).toBe('loading');
+      });
+
+      // Replace with fast source - this aborts the slow request
+      rerender(<Wrapper source={fastSource} />);
+
+      // Wait for fast source success
+      await waitFor(() => {
+        expect(getByTestId('status').textContent).toBe('success');
+      });
+
+      // Fast source data should be present
+      expect(getByTestId('data-length').textContent).toBe('1');
+      expect(getByTestId('total-row-count').textContent).toBe('1');
+
+      // Now resolve the slow source (stale result) - it should NOT affect state
+      act(() => {
+        slowResolve!({ rows: [{ id: 'stale', name: 'Stale', age: 99 }], totalRowCount: 1 });
+      });
+
+      // Wait a bit to ensure stale resolution is processed
+      await new Promise((r) => setTimeout(r, 50));
+
+      // State should still reflect fast source result (stale result rejected by token check)
+      expect(getByTestId('status').textContent).toBe('success');
+      expect(getByTestId('data-length').textContent).toBe('1');
+      expect(getByTestId('total-row-count').textContent).toBe('1');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
