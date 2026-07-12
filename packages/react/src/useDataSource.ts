@@ -353,9 +353,15 @@ export const useDataSource = <TRow>(
 
     // Skip fetch if this is a re-run without context change
     // (e.g., status publication from a different request that doesn't affect our query)
-    if (!isFreshMount && !contextChanged) {
+    // But still fetch if selectCursor was the trigger, even if context hasn't changed.
+    if (!isFreshMount && !contextChanged && !selectCursorTriggeredRef.current) {
       // No new request needed
       return;
+    }
+
+    // Reset selectCursor trigger flag after checking early-return condition
+    if (selectCursorTriggeredRef.current) {
+      selectCursorTriggeredRef.current = false;
     }
 
     // Build the query with current cursor selection

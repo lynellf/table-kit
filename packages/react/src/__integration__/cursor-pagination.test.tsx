@@ -161,6 +161,34 @@ function CursorPaginationTest({ source }: { source: DataSource<Person> }) {
   );
 }
 
+function SelectCursorTest({ source }: { source: DataSource<Person> }) {
+  const result = useDataTable({
+    data: [],
+    columns: simpleColumns,
+    getRowId: (row) => row.id,
+    dataSource: source,
+  });
+
+  return (
+    <div>
+      <span data-testid="status">{result.dataSourceState?.status}</span>
+      <span data-testid="data-length">{result.dataSourceState?.data?.length ?? 'null'}</span>
+      <button
+        data-testid="select-next-page"
+        onClick={() => result.dataSourceState?.selectCursor?.('cursor_page_2', 'next')}
+      >
+        Select Next Page
+      </button>
+      <button
+        data-testid="select-prev-page"
+        onClick={() => result.dataSourceState?.selectCursor?.('cursor_page_2', 'previous')}
+      >
+        Select Previous Page
+      </button>
+    </div>
+  );
+}
+
 function DataVersionTest({ source }: { source: DataSource<Person> }) {
   const result = useDataTable({
     data: [],
@@ -283,6 +311,76 @@ describe('R2: pagination wire types and data identity', () => {
       // First page should have nextCursor published
       expect(screen.getByTestId('next-cursor').textContent).toBe('cursor_page_2');
       expect(screen.getByTestId('prev-cursor').textContent).toBe('none');
+    });
+
+    it('R2: selectCursor triggers new request with selected cursor', async () => {
+      const source = makeCursorPaginatedSource();
+      render(<SelectCursorTest source={source} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('status').textContent).toBe('success');
+      });
+
+      // Initial request has cursor: null
+      expect(queryLog[0]?.pagination?.type).toBe('cursor');
+      if (queryLog[0]?.pagination?.type === 'cursor') {
+        expect(queryLog[0]!.pagination!.cursor).toBeNull();
+        expect(queryLog[0]!.pagination!.direction).toBe('next');
+      }
+
+      // Call selectCursor to navigate to the next page
+      screen.getByTestId('select-next-page').click();
+
+      // Wait for the new request with the selected cursor
+      await waitFor(
+        () => {
+          // Should have 2 queries now - initial and the selectCursor trigger
+          expect(queryLog.length).toBeGreaterThanOrEqual(2);
+        },
+        { timeout: 2000 },
+      );
+
+      // Verify the second query used the selected cursor
+      const secondQuery = queryLog[queryLog.length - 1];
+      expect(secondQuery?.pagination?.type).toBe('cursor');
+      if (secondQuery?.pagination?.type === 'cursor') {
+        expect(secondQuery.pagination.cursor).toBe('cursor_page_2');
+        expect(secondQuery.pagination.direction).toBe('next');
+      }
+    });
+
+    it('R2: selectCursor preserves selection after navigation', async () => {
+      const source = makeCursorPaginatedSource();
+      render(<SelectCursorTest source={source} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('status').textContent).toBe('success');
+      });
+
+      // Navigate to second page using selectCursor
+      screen.getByTestId('select-next-page').click();
+
+      await waitFor(
+        () => {
+          expect(queryLog[queryLog.length - 1]?.pagination?.type).toBe('cursor');
+        },
+        { timeout: 2000 },
+      );
+
+      // Now navigate back using selectCursor with previous direction
+      screen.getByTestId('select-prev-page').click();
+
+      await waitFor(
+        () => {
+          const lastQuery = queryLog[queryLog.length - 1];
+          expect(lastQuery?.pagination?.type).toBe('cursor');
+          if (lastQuery?.pagination?.type === 'cursor') {
+            expect(lastQuery.pagination.cursor).toBe('cursor_page_2');
+            expect(lastQuery.pagination.direction).toBe('previous');
+          }
+        },
+        { timeout: 2000 },
+      );
     });
   });
 
