@@ -1,8 +1,10 @@
 # Phase 1 Foundation — Review Evidence Round 7
 
-**Commit:** 9a0d064b35b60e1c0d6ed3f0d1e2b3c4d5e6f7a8
+**Commit:** 4f4c52f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7
 **Date:** 2026-07-12
 **Reviewer:** implementer
+
+**Last update:** Added R2-CURSOR-001 fix for selectCursor() cursor preservation bug.
 
 ## Implementation Summary
 
@@ -170,6 +172,19 @@ pnpm verify
   - dataVersion is published from RowsResult through useDataSource
   - refetch properly triggers new requests with incremented dataVersion
 
+### R2-CURSOR-001 (2026-07-12 follow-up)
+
+**Finding:** When `selectCursor()` was called, it updated `cursorSelectionRef` and incremented `refetchNonceRef`, but the effect then reset `cursorSelectionRef` to `{cursor: null, direction: 'next'}` before building the query, losing the user's cursor selection.
+
+**Fix:**
+1. Added `selectCursorTriggeredRef` to track whether `selectCursor` was the trigger for the effect run
+2. When `selectCursor` is called, it sets `selectCursorTriggeredRef.current = true` instead of incrementing `refetchNonceRef`
+3. In the effect, when `contextChanged` is true, the effect now checks `selectCursorTriggeredRef` - if true, it resets the flag to false and preserves the cursor selection (doesn't reset). Other context changes still reset to first page.
+
+**Evidence:** `packages/react/src/useDataSource.ts` - `selectCursorTriggeredRef` added, `selectCursor` logic updated, effect reset logic updated. 691 tests pass (all tests).
+
+**Commit:** 4f4c52f
+
 ## Non-Blocking Observations
 
 ### N1-PINNED-OFFSET
@@ -200,10 +215,11 @@ The package artifact verification (`pnpm check:package-artifacts`) is authoritat
 13. `packages/react/src/__integration__/pivot-controlled.test.tsx` - Updated to use stable data reference
 14. `packages/react/src/__integration__/pivot-announcer.test.tsx` - Updated to use stable data reference
 15. `packages/react/src/__integration__/cursor-pagination.test.tsx` - R2 cursor pagination integration tests (new file, 8 tests)
+16. `packages/react/src/useDataSource.ts` - R2-CURSOR-001 selectCursor cursor preservation fix (2026-07-12)
 
 ## Status
 
-This evidence document demonstrates implementation progress on R1, R3, R4, R5, R6 findings. The authoritative review decision (`review-decision.md`) remains `REQUEST-CHANGES` until an independent reviewer signs the Foundation gate.
+This evidence document demonstrates implementation progress on R1, R2, R3, R4, R5, R6 findings. The authoritative review decision (`review-decision.md`) remains `REQUEST-CHANGES` until an independent reviewer signs the Foundation gate.
 
 ---
 
