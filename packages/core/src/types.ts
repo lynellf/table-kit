@@ -244,6 +244,34 @@ export interface DataTableOptions<TRow> {
    * `state.pagination.pageSize`. Set to 0 to disable placeholder rows.
    */
   placeholderRows?: number;
+  // ─────── Data identity (v2.0.0) ───────────────────────────────────────────────
+  /**
+   * Data version escape hatch for mutable data patterns.
+   *
+   * By default, the engine treats data as immutable: same reference = no update.
+   * When data is mutated in-place (common in live-updating datasets), consumers
+   * can provide a version token to signal that the data changed even if the
+   * array reference is unchanged.
+   *
+   * `dataVersion` can be:
+   * - A static version token (string or number)
+   * - A function that derives the version from the current data array
+   *
+   * @example
+   * ```ts
+   * // Static token
+   * dataVersion: { version: 1 }
+   *
+   * // Derived version
+   * dataVersion: { getVersion: (data) => data.length }
+   * ```
+   */
+  dataVersion?: {
+    /** Static version token. */
+    version?: string | number;
+    /** Derive version token from data. */
+    getVersion?: (data: TRow[]) => string | number;
+  };
 }
 
 /**
@@ -412,4 +440,13 @@ export interface DataTableInstance<TRow> {
   ): import('./dataSource/types').RowsQuery;
   /** @internal Prune invalid column IDs from state slices when columns change. */
   __pruneColumnIds(validColumnIds: Set<string>): void;
+
+  // ─── Data identity (v2.0.0) ─────────────────────────────────────────────────
+  /**
+   * Returns the current data version token.
+   * Used by mutable integrations to signal that data changed even if the
+   * array reference is unchanged.
+   * @returns The current version token, or undefined if no dataVersion is configured.
+   */
+  getDataVersion(): string | number | undefined;
 }

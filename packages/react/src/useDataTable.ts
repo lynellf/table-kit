@@ -11,6 +11,7 @@
 
 import { createDataTable } from '@lynellf/tablekit-core';
 import type {
+  Announcer,
   DataTableInstance,
   DataTableOptions,
   DataTableState,
@@ -25,6 +26,18 @@ import { createT } from './i18n/t';
 import type { MessagesMap } from './messages';
 import { useDataSource } from './useDataSource';
 import { useTabBehavior } from './useTabBehavior';
+
+/**
+ * Compare two Set<string> for equality (same elements).
+ * Used to detect column changes for pruning.
+ */
+const setsAreEqual = (a: Set<string>, b: Set<string>): boolean => {
+  if (a.size !== b.size) return false;
+  for (const item of a) {
+    if (!b.has(item)) return false;
+  }
+  return true;
+};
 
 export interface UseDataTableOptions<TRow> extends DataTableOptions<TRow> {
   /** M3 phase 3: wire a data source for server modes. */
@@ -46,8 +59,8 @@ export interface UseDataTableResult<TRow> {
   state: DataTableState;
   /** Render this component to mount the announcer. */
   Announcer: () => ReactElement;
-  /** M3 phase 3: present iff `dataSource` option is provided. */
-  dataSourceState?: DataSourceState<TRow>;
+  /** M3 phase 3: always present (idle when no dataSource). */
+  dataSourceState: DataSourceState<TRow>;
   /**
    * M6 phase 2: assign this ref to the root grid element to enable Tab behavior.
    * Consumers typically spread it into their grid div: <div {...table.getGridProps()} ref={gridRef} />
@@ -67,12 +80,25 @@ export interface UseDataTableResult<TRow> {
 export const useDataTable = <TRow>(
   options: UseDataTableOptions<TRow>,
 ): UseDataTableResult<TRow> => {
+  // R5 fix: Create announcer instance before table, so it can be shared.
+  // The announcer is shared between the table (via options) and ReactAnnouncer (via props).
+  const announcerRef = useRef<Announcer | null>(null);
+  if (announcerRef.current === null) {
+    // Initial no-op announcer; ReactAnnouncer will override announce()
+    announcerRef.current = { announce: () => {} };
+  }
+
   // Create the instance once. The ref initializer runs only on mount.
   const ref = useRef<DataTableInstance<TRow> | null>(null);
   if (ref.current === null) {
-    ref.current = createDataTable<TRow>(options);
+    // R5 fix: Pass the announcer to the table factory so it uses our instance
+    ref.current = createDataTable<TRow>({ ...options, announcer: announcerRef.current });
   }
   const table = ref.current;
+
+  // R1 fix: Track the previous columns to detect changes and trigger pruning.
+  // We store the column IDs as a ref so we can compare on the next render.
+  const prevColumnIdsRef = useRef<Set<string> | null>(null);
 
   // ── Side-effect: push the latest options into the instance.
   //
@@ -91,8 +117,24 @@ export const useDataTable = <TRow>(
   //   - We rely on `sliceValuesEqual` to keep setOptions a no-op when the
   //     post-commit options derive the same state, so the per-render effect
   //     does not storm notifications.
+  //
+  // R1 fix: After setOptions, if columns changed, prune invalid column IDs
+  // from state slices (sorting, filters, visibility, etc.).
   useEffect(() => {
     table.setOptions(options);
+
+    // R1 fix: Extract column IDs from the new columns and compare with previous.
+    // If different, call __pruneColumnIds to remove invalid IDs from state.
+    const newColumnIds = new Set(options.columns.map((col) => col.id));
+    const prevColumnIds = prevColumnIdsRef.current;
+
+    // Prune if columns have changed (and this isn't the first render)
+    if (prevColumnIds !== null && !setsAreEqual(prevColumnIds, newColumnIds)) {
+      table.__pruneColumnIds(newColumnIds);
+    }
+
+    // Update the ref for next comparison
+    prevColumnIdsRef.current = newColumnIds;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, table]);
 
@@ -107,14 +149,13 @@ export const useDataTable = <TRow>(
   // M6 phase 1: i18n translator (created once per hook; no per-call allocation).
   const t = useMemo(() => createT(options.messages), [options.messages]);
 
-  // M3 phase 3: dataSource wiring (passes t() for announcer localization).
-  const dataSourceState = options.dataSource
-    ? useDataSource(
-        table as DataTableInstance<TRow> & Parameters<typeof useDataSource<TRow>>[0],
-        options.dataSource,
-        t,
-      )
-    : undefined;
+  // M3 phase 3: Always call useDataSource unconditionally (R3 fix).
+  // When dataSource is null, it returns idle state without subscriptions.
+  const dataSourceState = useDataSource(
+    table as DataTableInstance<TRow> & Parameters<typeof useDataSource<TRow>>[0],
+    options.dataSource ?? null,
+    t,
+  );
 
   // M6 phase 2: tabBehavior ref and hook.
   // Consumers assign gridRef.current to the root grid element so the Tab handler
@@ -126,10 +167,12 @@ export const useDataTable = <TRow>(
   return {
     table,
     state,
+    // R5 fix: Pass the shared announcer instance to ReactAnnouncer.
+    // This ensures the same announcer is used by both the table and the live region.
     Announcer: () => {
-      return React.createElement(ReactAnnouncer);
+      return React.createElement(ReactAnnouncer, { announcer: announcerRef.current! });
     },
-    ...(dataSourceState ? { dataSourceState } : {}),
+    dataSourceState,
     gridRef,
   };
 };

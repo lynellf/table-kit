@@ -1071,61 +1071,81 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
    * @internal
    * Prune invalid column IDs from state slices when columns change.
    * Called by the React adapter after columns are updated.
+   *
+   * R1 fix: Respects the controlled-slice contract. For uncontrolled slices,
+   * prunes directly. For controlled slices, invokes the callback with the
+   * pruned value so the consumer can update their state.
    */
   __pruneColumnIds(validColumnIds: Set<string>): void {
     const prev = this.state;
     let next = prev;
     let anyChange = false;
+    // Track which slices changed for notification purposes
+    const changedSlices: SliceChangeKey[] = [];
 
-    // Prune sorting: remove sort items with invalid column IDs
-    // NOTE: .filter() always creates a new array, so compare content not reference.
+    // ─── Sorting ────────────────────────────────────────────────────────────────
     const validSorting = prev.sorting.filter((s) => validColumnIds.has(s.id));
     const sortingActuallyChanged =
       validSorting.length !== prev.sorting.length ||
       !validSorting.every((item, i) => Object.is(item, prev.sorting[i]));
     if (sortingActuallyChanged) {
-      next = { ...next, sorting: validSorting };
+      if (isSliceControlled(this.options.state, 'sorting')) {
+        // Controlled: invoke callback with pruned value
+        const cb = this.sliceCallback('sorting');
+        if (cb) cb(validSorting);
+      } else {
+        // Uncontrolled: apply directly
+        next = { ...next, sorting: validSorting };
+        changedSlices.push('sorting');
+      }
       anyChange = true;
     }
 
-    // Prune columnFilters: remove filter items with invalid column IDs
+    // ─── Column Filters ─────────────────────────────────────────────────────────
     const validColumnFilters = prev.columnFilters.filter((f) => validColumnIds.has(f.id));
     const filtersActuallyChanged =
       validColumnFilters.length !== prev.columnFilters.length ||
       !validColumnFilters.every((item, i) => Object.is(item, prev.columnFilters[i]));
     if (filtersActuallyChanged) {
-      next = { ...next, columnFilters: validColumnFilters };
+      if (isSliceControlled(this.options.state, 'columnFilters')) {
+        const cb = this.sliceCallback('columnFilters');
+        if (cb) cb(validColumnFilters);
+      } else {
+        next = { ...next, columnFilters: validColumnFilters };
+        changedSlices.push('columnFilters');
+      }
       anyChange = true;
     }
 
-    // Prune columnOrder: remove column IDs not in validColumnIds
+    // ─── Column Order ───────────────────────────────────────────────────────────
     const validColumnOrder = prev.columnOrder.filter((id) => validColumnIds.has(id));
     const orderActuallyChanged =
       validColumnOrder.length !== prev.columnOrder.length ||
       !validColumnOrder.every((item, i) => Object.is(item, prev.columnOrder[i]));
     if (orderActuallyChanged) {
-      next = { ...next, columnOrder: validColumnOrder };
+      if (isSliceControlled(this.options.state, 'columnOrder')) {
+        const cb = this.sliceCallback('columnOrder');
+        if (cb) cb(validColumnOrder);
+      } else {
+        next = { ...next, columnOrder: validColumnOrder };
+        changedSlices.push('columnOrder');
+      }
       anyChange = true;
     }
 
-    // Prune columnVisibility: remove visibility for invalid column IDs
+    // ─── Column Visibility ───────────────────────────────────────────────────────
     const validColumnVisibility: Record<string, boolean> = {};
-    let visibilityChanged = false;
     for (const id of validColumnIds) {
       if (Object.prototype.hasOwnProperty.call(prev.columnVisibility, id)) {
-        // hasOwnProperty ensures the key exists; non-null assertion needed due to noUncheckedIndexedAccess
         validColumnVisibility[id] = prev.columnVisibility[id]!;
       }
     }
-    // Check if visibility actually changed by comparing keys AND values
-    // NOTE: Do NOT sort validVisKeys - it uses insertion order from validColumnIds iteration,
-    // which must match the sorted prevVisKeys for correct comparison.
     const prevVisKeys = Object.keys(prev.columnVisibility).sort();
     const validVisKeys = Object.keys(validColumnVisibility).sort();
+    let visibilityChanged = false;
     if (prevVisKeys.length !== validVisKeys.length) {
       visibilityChanged = true;
     } else {
-      // Both arrays are sorted, so we can compare element-by-element
       for (let i = 0; i < prevVisKeys.length; i++) {
         const k = prevVisKeys[i]!;
         const validK = validVisKeys[i]!;
@@ -1136,12 +1156,17 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       }
     }
     if (visibilityChanged) {
-      next = { ...next, columnVisibility: validColumnVisibility };
+      if (isSliceControlled(this.options.state, 'columnVisibility')) {
+        const cb = this.sliceCallback('columnVisibility');
+        if (cb) cb(validColumnVisibility);
+      } else {
+        next = { ...next, columnVisibility: validColumnVisibility };
+        changedSlices.push('columnVisibility');
+      }
       anyChange = true;
     }
 
-    // Prune columnPinning: remove column IDs from left/right arrays that are not valid
-    // NOTE: .filter() always creates new arrays, so compare content not reference.
+    // ─── Column Pinning ────────────────────────────────────────────────────────
     const validLeft = prev.columnPinning.left.filter((id) => validColumnIds.has(id));
     const validRight = prev.columnPinning.right.filter((id) => validColumnIds.has(id));
     const pinningActuallyChanged =
@@ -1150,26 +1175,30 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       validRight.length !== prev.columnPinning.right.length ||
       !validRight.every((item, i) => Object.is(item, prev.columnPinning.right[i]));
     if (pinningActuallyChanged) {
-      next = { ...next, columnPinning: { left: validLeft, right: validRight } };
+      const newPinning = { left: validLeft, right: validRight };
+      if (isSliceControlled(this.options.state, 'columnPinning')) {
+        const cb = this.sliceCallback('columnPinning');
+        if (cb) cb(newPinning);
+      } else {
+        next = { ...next, columnPinning: newPinning };
+        changedSlices.push('columnPinning');
+      }
       anyChange = true;
     }
 
-    // Prune columnSizing: remove sizing for invalid column IDs
+    // ─── Column Sizing ─────────────────────────────────────────────────────────
     const validColumnSizing: ColumnSizingState = {};
-    let sizingChanged = false;
     for (const id of validColumnIds) {
       if (Object.prototype.hasOwnProperty.call(prev.columnSizing, id)) {
-        // hasOwnProperty ensures the key exists; non-null assertion needed due to noUncheckedIndexedAccess
         validColumnSizing[id] = prev.columnSizing[id]!;
       }
     }
-    // Compare sizing keys using sorted order for both to ensure correct comparison
     const prevSizingKeys = Object.keys(prev.columnSizing).sort();
     const validSizingKeys = Object.keys(validColumnSizing).sort();
+    let sizingChanged = false;
     if (prevSizingKeys.length !== validSizingKeys.length) {
       sizingChanged = true;
     } else {
-      // Both arrays are sorted, so we can compare element-by-element
       for (let i = 0; i < prevSizingKeys.length; i++) {
         const k = prevSizingKeys[i]!;
         const validK = validSizingKeys[i]!;
@@ -1180,28 +1209,72 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       }
     }
     if (sizingChanged) {
-      next = { ...next, columnSizing: validColumnSizing };
+      if (isSliceControlled(this.options.state, 'columnSizing')) {
+        const cb = this.sliceCallback('columnSizing');
+        if (cb) cb(validColumnSizing);
+      } else {
+        next = { ...next, columnSizing: validColumnSizing };
+        changedSlices.push('columnSizing');
+      }
       anyChange = true;
     }
 
-    // Prune focusedCell: clear if rowId or columnId is no longer valid
-    if (prev.focusedCell !== null) {
-      if (!validColumnIds.has(prev.focusedCell.columnId)) {
+    // ─── Focused Cell ─────────────────────────────────────────────────────────
+    if (prev.focusedCell !== null && !validColumnIds.has(prev.focusedCell.columnId)) {
+      if (isSliceControlled(this.options.state, 'focusedCell')) {
+        const cb = this.sliceCallback('focusedCell');
+        if (cb) cb(null);
+      } else {
         next = { ...next, focusedCell: null };
-        anyChange = true;
+        changedSlices.push('focusedCell');
       }
+      anyChange = true;
     }
 
-    // Clear columnSizingInfo if the column being resized is no longer valid
+    // ─── Column Sizing Info ─────────────────────────────────────────────────────
     if (prev.columnSizingInfo !== null && !validColumnIds.has(prev.columnSizingInfo.columnId)) {
-      next = { ...next, columnSizingInfo: null };
+      if (isSliceControlled(this.options.state, 'columnSizingInfo')) {
+        const cb = this.sliceCallback('columnSizingInfo');
+        if (cb) cb(null);
+      } else {
+        next = { ...next, columnSizingInfo: null };
+        changedSlices.push('columnSizingInfo');
+      }
       anyChange = true;
     }
 
     if (!anyChange) return;
 
-    this.state = next;
-    this.notify();
+    // For uncontrolled changes, update state and notify
+    if (changedSlices.length > 0) {
+      this.state = next;
+      this.notify();
+    }
+  }
+
+  /**
+   * Returns the current data version token.
+   *
+   * R2 fix: Exposes version identity at the table boundary for mutable
+   * data patterns. When `dataVersion` is configured with a `getVersion`
+   * function, this method calls it with the current data to derive the token.
+   * When configured with a static `version`, this returns that value.
+   *
+   * @returns The current version token, or undefined if `dataVersion` is not configured.
+   */
+  getDataVersion(): string | number | undefined {
+    const dv = this.options.dataVersion;
+    if (!dv) return undefined;
+
+    // If getVersion is provided, call it with the current data
+    if (dv.getVersion) {
+      // Use the data from the data source if available, otherwise use options.data
+      const data = this.dataSourceState.data ?? this.options.data;
+      return dv.getVersion(data);
+    }
+
+    // Otherwise return the static version token
+    return dv.version;
   }
 }
 

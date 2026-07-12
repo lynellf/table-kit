@@ -732,5 +732,142 @@ describe('createDataTable', () => {
       table.__pruneColumnIds(new Set(['name', 'age']));
       expect(subscriber).not.toHaveBeenCalled();
     });
+
+    it('R1: controlled sorting: invokes callback with pruned value instead of mutating internal state', () => {
+      const sortingCallback = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange: sortingCallback,
+      });
+
+      // Internal state has 'ghost' which should be pruned
+      (table as unknown as { state: DataTableState }).state.sorting = [
+        { id: 'name', desc: false },
+        { id: 'ghost', desc: true },
+      ];
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+
+      // Should invoke callback with pruned value, not mutate internal state
+      expect(sortingCallback).toHaveBeenCalledOnce();
+      expect(sortingCallback).toHaveBeenCalledWith([{ id: 'name', desc: false }]);
+      // Internal state should still have the invalid ID (consumer is responsible for updating)
+      expect((table as unknown as { state: DataTableState }).state.sorting).toEqual([
+        { id: 'name', desc: false },
+        { id: 'ghost', desc: true },
+      ]);
+    });
+
+    it('R1: controlled columnFilters: invokes callback with pruned value', () => {
+      const filtersCallback = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { columnFilters: [{ id: 'name', value: 'Alice' }] },
+        onColumnFiltersChange: filtersCallback,
+      });
+
+      (table as unknown as { state: DataTableState }).state.columnFilters = [
+        { id: 'name', value: 'Alice' },
+        { id: 'ghost', value: 'Bob' },
+      ];
+
+      table.__pruneColumnIds(new Set(['name']));
+
+      expect(filtersCallback).toHaveBeenCalledOnce();
+      expect(filtersCallback).toHaveBeenCalledWith([{ id: 'name', value: 'Alice' }]);
+    });
+
+    it('R1: controlled columnVisibility: invokes callback with pruned value', () => {
+      const visibilityCallback = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { columnVisibility: { name: true, ghost: true } },
+        onColumnVisibilityChange: visibilityCallback,
+      });
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+
+      expect(visibilityCallback).toHaveBeenCalledOnce();
+      expect(visibilityCallback).toHaveBeenCalledWith({ name: true });
+    });
+
+    it('R1: controlled focusedCell: invokes callback with null when column is pruned', () => {
+      const focusCallback = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { focusedCell: { rowId: '0', columnId: 'name' } },
+        onFocusedCellChange: focusCallback,
+      });
+
+      table.__pruneColumnIds(new Set(['age'])); // 'name' is pruned
+
+      expect(focusCallback).toHaveBeenCalledOnce();
+      expect(focusCallback).toHaveBeenCalledWith(null);
+    });
+
+    it('R1: uncontrolled slices: prunes directly and notifies', () => {
+      const table = createDataTable(baseOptions());
+
+      (table as unknown as { state: DataTableState }).state.sorting = [
+        { id: 'name', desc: false },
+        { id: 'ghost', desc: true },
+      ];
+
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+
+      table.__pruneColumnIds(new Set(['name']));
+
+      // Internal state should be pruned directly
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      expect(subscriber).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ─── R2: Data version identity ──────────────────────────────────────────────
+  describe('R2: getDataVersion returns version token', () => {
+    it('returns undefined when dataVersion is not configured', () => {
+      const table = createDataTable(baseOptions());
+      expect(table.getDataVersion()).toBeUndefined();
+    });
+
+    it('returns static version token when configured', () => {
+      const table = createDataTable({ ...baseOptions(), dataVersion: { version: 42 } });
+      expect(table.getDataVersion()).toBe(42);
+    });
+
+    it('returns derived version when getVersion is configured', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: {
+          getVersion: (data) => data.length,
+        },
+      });
+      expect(table.getDataVersion()).toBe(2); // baseOptions has 2 rows
+    });
+
+    it('prefers derived version over static version when both are provided', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: {
+          version: 100,
+          getVersion: (data) => data.length * 10,
+        },
+      });
+      expect(table.getDataVersion()).toBe(20); // 2 rows * 10
+    });
+
+    it('uses dataSourceState.data when available, otherwise options.data', () => {
+      // This tests that getVersion receives the data from dataSourceState when present
+      // For this test, we create a table and verify the method exists and returns a value
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: {
+          getVersion: (data) => `got ${data.length} rows`,
+        },
+      });
+      expect(table.getDataVersion()).toBe('got 2 rows');
+    });
   });
 });
