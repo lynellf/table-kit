@@ -4,7 +4,7 @@
 **Date:** 2026-07-12
 **Reviewer:** implementer
 
-**Last update:** Added R2-CURSOR-001 fix for selectCursor() cursor preservation bug.
+**Last update (2026-07-12):** Corrected R2-CURSOR-001 fix - the previous fix was incomplete; the early-return condition did not account for `selectCursorTriggeredRef`, causing the effect to return early without fetching when `selectCursor` was called without other context changes. Added `!selectCursorTriggeredRef.current` to the early-return condition and reset the flag after checking. Also added 2 new integration tests specifically exercising `selectCursor` to verify correct behavior.
 
 ## Implementation Summary
 
@@ -181,9 +181,24 @@ pnpm verify
 2. When `selectCursor` is called, it sets `selectCursorTriggeredRef.current = true` instead of incrementing `refetchNonceRef`
 3. In the effect, when `contextChanged` is true, the effect now checks `selectCursorTriggeredRef` - if true, it resets the flag to false and preserves the cursor selection (doesn't reset). Other context changes still reset to first page.
 
-**Evidence:** `packages/react/src/useDataSource.ts` - `selectCursorTriggeredRef` added, `selectCursor` logic updated, effect reset logic updated. 691 tests pass (all tests).
+**Corrected (2026-07-12):** The fix at commit 4f4c52f was incomplete. The early-return condition `if (!isFreshMount && !contextChanged)` did not account for `selectCursorTriggeredRef.current`, causing the effect to return early without fetching when `selectCursor` was called without other context changes. The correct fix adds `!selectCursorTriggeredRef.current` to the early-return condition and resets the flag after the check:
 
-**Commit:** 4f4c52f
+```typescript
+if (!isFreshMount && !contextChanged && !selectCursorTriggeredRef.current) {
+  return;
+}
+if (selectCursorTriggeredRef.current) {
+  selectCursorTriggeredRef.current = false;
+}
+```
+
+**Evidence:** `packages/react/src/useDataSource.ts` - early-return condition fixed, `selectCursorTriggeredRef` flag properly checked. `packages/react/src/__integration__/cursor-pagination.test.tsx` - 2 new tests added:
+- `R2: selectCursor triggers new request with selected cursor`
+- `R2: selectCursor preserves selection after navigation`
+
+**Test result:** 10 tests pass in cursor-pagination.test.tsx, 693 tests pass (full suite).
+
+**Commit:** e7143e9
 
 ## Non-Blocking Observations
 
@@ -216,6 +231,8 @@ The package artifact verification (`pnpm check:package-artifacts`) is authoritat
 14. `packages/react/src/__integration__/pivot-announcer.test.tsx` - Updated to use stable data reference
 15. `packages/react/src/__integration__/cursor-pagination.test.tsx` - R2 cursor pagination integration tests (new file, 8 tests)
 16. `packages/react/src/useDataSource.ts` - R2-CURSOR-001 selectCursor cursor preservation fix (2026-07-12)
+17. `packages/react/src/__integration__/cursor-pagination.test.tsx` - Added 2 new tests for `selectCursor` triggering new requests (now 10 tests total)
+18. `packages/react/src/useDataSource.ts` - R2-CURSOR-001 early-return condition fix to ensure `selectCursor` triggers fetch (e7143e9)
 
 ## Status
 
