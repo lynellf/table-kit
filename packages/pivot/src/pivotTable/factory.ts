@@ -742,19 +742,32 @@ export const createPivotTable = <TRow>(
       // left-pinned columns in leaf order (first left-pinned = 0, next = width of first, etc.)
       //
       // For RIGHT-pinned columns (R4 fix): offset is accumulated from the RIGHT EDGE
-      // in pin-array order. The rightmost column in the pin array gets offset 0,
-      // the next rightmost gets the width of the rightmost, etc.
-      // We process pin-array order from right to left.
+      // in pin-array order. The rightmost column gets offset 0, the next rightmost
+      // gets the width of the rightmost, etc.
+      // We need to include ALL effective right-pinned leaves (including default-right totals).
       const result2: Array<PivotLeafColumn<TRow>> = [];
       let leftOffset = 0;
 
-      // Compute right offsets: iterate pin array in REVERSE order (right edge first)
-      const rightPinOrder = state.columnPinning.right;
+      // Build ordered list of ALL effective right-pinned leaves.
+      // This includes: explicit state.columnPinning.right members + default-right total leaves.
+      // State pin-array order is preserved for explicit members.
+      const explicitRightIds = new Set(state.columnPinning.right);
+      const allRightPinned: string[] = [...state.columnPinning.right];
+      // Add default-right total leaves not already in the state pin array
+      for (let i = 0; i < result.leafColumns.length; i++) {
+        const leaf = result.leafColumns[i]!;
+        const pinned = leafPinnedSides[i];
+        if (pinned === 'right' && !explicitRightIds.has(leaf.id)) {
+          allRightPinned.push(leaf.id);
+        }
+      }
+
+      // Compute right offsets: iterate the combined list in REVERSE order (right edge first)
       const rightOffsets = new Map<string, number>();
       let rightAccumulator = 0;
       // Process from LAST (rightmost) to FIRST
-      for (let i = rightPinOrder.length - 1; i >= 0; i--) {
-        const colId = rightPinOrder[i]!;
+      for (let i = allRightPinned.length - 1; i >= 0; i--) {
+        const colId = allRightPinned[i]!;
         // Find the leaf width
         const leaf = result.leafColumns.find((l) => l.id === colId);
         const width = leaf ? (state.columnSizing[leaf.id] ?? leaf.size) : 0;

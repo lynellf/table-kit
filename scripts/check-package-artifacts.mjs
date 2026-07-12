@@ -351,10 +351,11 @@ try {
   'utf8',
 );
 
-// Run subpath check from the core fixture directory (which has all dependencies available)
+// R6 fix: Run subpath check from the installDir root so Node can find all packages.
+// The subpath check script imports packages, so it needs to find them in node_modules.
 try {
   execFileSync('node', [subpathCheckScript], {
-    cwd: resolve(installDir, 'core'),
+    cwd: installDir,
     encoding: 'utf8',
     stdio: 'pipe',
   });

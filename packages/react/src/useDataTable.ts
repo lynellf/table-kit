@@ -11,7 +11,6 @@
 
 import { createDataTable } from '@lynellf/tablekit-core';
 import type {
-  Announcer,
   DataTableInstance,
   DataTableOptions,
   DataTableState,
@@ -22,6 +21,7 @@ import React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { ReactElement } from 'react';
 import { ReactAnnouncer } from './ReactAnnouncer';
+import { type AnnouncerChannel, createAnnouncerChannel } from './createAnnouncerChannel';
 import { createT } from './i18n/t';
 import type { MessagesMap } from './messages';
 import { useDataSource } from './useDataSource';
@@ -68,19 +68,23 @@ export interface UseDataTableResult<TRow> {
 export const useDataTable = <TRow>(
   options: UseDataTableOptions<TRow>,
 ): UseDataTableResult<TRow> => {
-  // R5 fix: Create announcer instance before table, so it can be shared.
-  // The announcer is shared between the table (via options) and ReactAnnouncer (via props).
-  const announcerRef = useRef<Announcer | null>(null);
-  if (announcerRef.current === null) {
-    // Initial no-op announcer; ReactAnnouncer will override announce()
-    announcerRef.current = { announce: () => {} };
+  // R5 fix: Create announcer channel before table, so it can be shared.
+  // The channel is shared between the table (via options) and ReactAnnouncer (via props).
+  const announcerChannelRef = useRef<AnnouncerChannel | null>(null);
+  if (announcerChannelRef.current === null) {
+    // Create a channel with a no-op announcer as the underlying implementation
+    announcerChannelRef.current = createAnnouncerChannel({ announce: () => {} });
   }
 
   // Create the instance once. The ref initializer runs only on mount.
   const ref = useRef<DataTableInstance<TRow> | null>(null);
   if (ref.current === null) {
-    // R5 fix: Pass the announcer to the table factory so it uses our instance
-    ref.current = createDataTable<TRow>({ ...options, announcer: announcerRef.current });
+    // R5 fix: Create an announcer that wraps the channel so the table can use it.
+    // The channel ensures proper subscription lifecycle and instance isolation.
+    ref.current = createDataTable<TRow>({
+      ...options,
+      announcer: announcerChannelRef.current!,
+    });
   }
   const table = ref.current;
 
@@ -142,8 +146,10 @@ export const useDataTable = <TRow>(
     state,
     // R5 fix: Pass the shared announcer instance to ReactAnnouncer.
     // This ensures the same announcer is used by both the table and the live region.
+    // R5 fix: Pass the channel to ReactAnnouncer for proper subscription lifecycle.
+    // This ensures instance isolation and post-mount message delivery.
     Announcer: () => {
-      return React.createElement(ReactAnnouncer, { announcer: announcerRef.current! });
+      return React.createElement(ReactAnnouncer, { channel: announcerChannelRef.current! });
     },
     dataSourceState,
     gridRef,

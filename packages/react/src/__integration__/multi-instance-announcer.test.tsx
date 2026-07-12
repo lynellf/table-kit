@@ -13,6 +13,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ReactAnnouncer } from '../ReactAnnouncer';
+import { createAnnouncerChannel } from '../createAnnouncerChannel';
 import { useDataTable } from '../useDataTable';
 import { usePivotTable } from '../usePivotTable';
 
@@ -321,13 +322,13 @@ describe('multi-instance announcer isolation', () => {
 
   describe('ReactAnnouncer component', () => {
     it('ReactAnnouncer renders with the correct politeness', () => {
-      // R5 fix: ReactAnnouncer now requires an announcer prop
-      const announcer1 = { announce: () => {} };
-      const announcer2 = { announce: () => {} };
+      // R5 fix: ReactAnnouncer now requires a channel prop
+      const channel1 = createAnnouncerChannel({ announce: () => {} });
+      const channel2 = createAnnouncerChannel({ announce: () => {} });
       const { getAllByRole } = render(
         <div>
-          <ReactAnnouncer announcer={announcer1} politeness="polite" />
-          <ReactAnnouncer announcer={announcer2} politeness="assertive" />
+          <ReactAnnouncer channel={channel1} politeness="polite" />
+          <ReactAnnouncer channel={channel2} politeness="assertive" />
         </div>,
       );
 
@@ -338,15 +339,15 @@ describe('multi-instance announcer isolation', () => {
     });
 
     it('multiple ReactAnnouncers render correctly', () => {
-      // R5 fix: ReactAnnouncer now requires an announcer prop
-      const announcer1 = { announce: () => {} };
-      const announcer2 = { announce: () => {} };
-      const announcer3 = { announce: () => {} };
+      // R5 fix: ReactAnnouncer now requires a channel prop
+      const channel1 = createAnnouncerChannel({ announce: () => {} });
+      const channel2 = createAnnouncerChannel({ announce: () => {} });
+      const channel3 = createAnnouncerChannel({ announce: () => {} });
       const { getAllByTestId } = render(
         <div>
-          <ReactAnnouncer announcer={announcer1} />
-          <ReactAnnouncer announcer={announcer2} />
-          <ReactAnnouncer announcer={announcer3} />
+          <ReactAnnouncer channel={channel1} />
+          <ReactAnnouncer channel={channel2} />
+          <ReactAnnouncer channel={channel3} />
         </div>,
       );
 

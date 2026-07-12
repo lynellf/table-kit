@@ -21,6 +21,7 @@ import type {
 import React, { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import type { ReactElement } from 'react';
 import { ReactAnnouncer } from './ReactAnnouncer';
+import { type AnnouncerChannel, createAnnouncerChannel } from './createAnnouncerChannel';
 import type { MessagesMap } from './messages';
 import { useTabBehavior } from './useTabBehavior';
 
@@ -54,19 +55,23 @@ export interface UsePivotTableResult<TRow> {
 export const usePivotTable = <TRow>(
   options: UsePivotTableOptions<TRow>,
 ): UsePivotTableResult<TRow> => {
-  // R5 fix: Respect caller's announcer if provided, otherwise create internal one.
-  // The announcer is shared between the pivot (via options) and ReactAnnouncer (via props).
-  const announcerRef = useRef<Announcer | null>(null);
-  if (announcerRef.current === null) {
-    // Use caller's announcer if provided, otherwise create minimal internal one
-    announcerRef.current = options.announcer ?? { announce: () => {} };
+  // R5 fix: Respect caller's announcer if provided, otherwise create internal channel.
+  // The channel is shared between the pivot (via options) and ReactAnnouncer (via props).
+  const announcerChannelRef = useRef<AnnouncerChannel | null>(null);
+  if (announcerChannelRef.current === null) {
+    // Use caller's announcer if provided, wrapping it in a channel; otherwise create internal one
+    const baseAnnouncer = options.announcer ?? { announce: () => {} };
+    announcerChannelRef.current = createAnnouncerChannel(baseAnnouncer);
   }
 
   const ref = useRef<PivotTableInstance<TRow> | null>(null);
   if (ref.current === null) {
-    // R5 fix: Pass the announcer to the pivot factory so it uses our instance.
-    // If caller provided announcer, it's already set in announcerRef.current.
-    ref.current = createPivotTable<TRow>({ ...options, announcer: announcerRef.current });
+    // R5 fix: Create an announcer that wraps the channel so the pivot can use it.
+    // The channel ensures proper subscription lifecycle and instance isolation.
+    ref.current = createPivotTable<TRow>({
+      ...options,
+      announcer: announcerChannelRef.current!,
+    });
   }
   const pivot = ref.current;
 
@@ -96,8 +101,10 @@ export const usePivotTable = <TRow>(
   return {
     pivot,
     state,
-    // R5 fix: Pass the shared announcer instance to ReactAnnouncer.
-    Announcer: () => React.createElement(ReactAnnouncer, { announcer: announcerRef.current! }),
+    // R5 fix: Pass the channel to ReactAnnouncer for proper subscription lifecycle.
+    // This ensures instance isolation and post-mount message delivery.
+    Announcer: () => React.createElement(ReactAnnouncer, { channel: announcerChannelRef.current! }),
+
     gridRef,
   };
 };

@@ -2,25 +2,22 @@
  * @lynellf/tablekit-react — React live-region announcer.
  *
  * Mounts a visually-hidden `aria-live="polite"` div. The `useDataTable`
- * hook creates the announcer instance and passes it to both this component
- * (via props) and to the table factory (via options).
+ * hook creates the announcer channel and passes it to this component (via props).
+ * The channel is also shared with the table factory (via options).
  *
- * R5 fix: No longer uses method-overwrite wiring. Instead, subscribes to
- * the announcer channel (if supported) and disposes properly. This ensures:
+ * R5 fix: Uses subscription/disposal lifecycle via the AnnouncerChannel.
+ * This ensures:
  * 1. Each instance is independent and isolated
  * 2. No cross-instance message leakage
  * 3. Proper cleanup on unmount
  * 4. Messages are delivered post-mount to the live region
  *
- * The announcer is passed as a prop from the hook, ensuring the same instance
- * is shared between the table and the live region.
- *
  * Spec §10 (M1 minimal): the live-region is the only M1 surface. The
  * `messages` map and i18n land in M6.
  */
 
-import type { Announcer } from '@lynellf/tablekit-core';
 import { useEffect, useRef, useState } from 'react';
+import type { AnnouncerChannel } from './createAnnouncerChannel';
 
 const visuallyHiddenStyle: React.CSSProperties = {
   position: 'absolute',
@@ -37,44 +34,24 @@ const visuallyHiddenStyle: React.CSSProperties = {
 const POLITENESS_INTERVAL_MS = 1000;
 
 /**
- * Minimal announce-only announcer type.
- * Custom announcers may only provide announce() without subscribe/dispose.
- */
-type MinimalAnnouncer = Pick<Announcer, 'announce'>;
-
-/**
- * Check if an announcer supports the channel/subscription interface.
- */
-const hasChannelSupport = (
-  announcer: MinimalAnnouncer,
-): announcer is MinimalAnnouncer & {
-  subscribe: (
-    listener: (message: string, politeness?: 'polite' | 'assertive') => void,
-  ) => () => void;
-} => {
-  return 'subscribe' in announcer && typeof announcer.subscribe === 'function';
-};
-
-/**
  * Props for ReactAnnouncer.
  */
 export interface ReactAnnouncerProps {
-  /** The announcer instance created by useDataTable. Shared with the table. */
-  announcer: MinimalAnnouncer;
+  /** The announcer channel created by useDataTable/usePivotTable. Shared with the table/pivot. */
+  channel: AnnouncerChannel;
   politeness?: 'polite' | 'assertive';
 }
 
 /**
  * ReactAnnouncer renders a visually-hidden live region and updates it
- * when the shared announcer receives messages.
+ * when the announcer channel receives messages.
  *
- * R5 fix: Uses subscription/disposal lifecycle instead of method-overwrite.
- * - If the announcer supports subscribe/dispose, use that for post-mount messages
- * - If the announcer only provides announce(), deliver messages synchronously
- * - Each hook-created table has its own isolated announcer
+ * R5 fix: Uses the AnnouncerChannel subscription/disposal lifecycle.
+ * - Each hook-created table/pivot has its own isolated channel
  * - Cleanup properly disposes the subscription on unmount
+ * - Messages are delivered post-mount to the live region
  */
-export const ReactAnnouncer = ({ announcer, politeness = 'polite' }: ReactAnnouncerProps) => {
+export const ReactAnnouncer = ({ channel, politeness = 'polite' }: ReactAnnouncerProps) => {
   const [message, setMessage] = useState('');
   const lastAnnounceRef = useRef<{ message: string; ts: number }>({
     message: '',
@@ -82,44 +59,34 @@ export const ReactAnnouncer = ({ announcer, politeness = 'polite' }: ReactAnnoun
   });
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  // R5 fix: Wire the announcer using subscription/disposal lifecycle.
+  // R5 fix: Wire the announcer channel using subscription/disposal lifecycle.
   // Messages delivered before subscription are not replayed.
   useEffect(() => {
-    // Check if the announcer supports channel/subscription interface
-    if (hasChannelSupport(announcer)) {
-      // Subscribe to the announcer channel
-      const handleMessage = (msg: string, _msgPoliteness?: 'polite' | 'assertive') => {
-        // Throttle duplicate messages
-        const now = Date.now();
-        if (
-          msg === lastAnnounceRef.current.message &&
-          now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
-        ) {
-          return;
-        }
-        lastAnnounceRef.current = { message: msg, ts: now };
+    const handleMessage = (msg: string, _msgPoliteness?: 'polite' | 'assertive') => {
+      // Throttle duplicate messages
+      const now = Date.now();
+      if (
+        msg === lastAnnounceRef.current.message &&
+        now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
+      ) {
+        return;
+      }
+      lastAnnounceRef.current = { message: msg, ts: now };
 
-        // Use setTimeout to batch with React's rendering cycle.
-        setMessage(msg);
-      };
+      // Use setMessage to batch with React's rendering cycle.
+      setMessage(msg);
+    };
 
-      unsubscribeRef.current = announcer.subscribe(handleMessage);
+    unsubscribeRef.current = channel.subscribe(handleMessage);
 
-      return () => {
-        // Dispose the subscription on cleanup
-        if (unsubscribeRef.current) {
-          unsubscribeRef.current();
-          unsubscribeRef.current = null;
-        }
-      };
-    }
-    // Announcer only provides announce() without subscribe/dispose.
-    // R5 fix: We CANNOT safely mutate external announcers.
-    // Skip React live-region integration for announce-only announcers.
-    // The caller is responsible for providing a compatible announcer if they want live-region support.
-    // No cleanup needed since we didn't set up any subscription.
-    return undefined;
-  }, [announcer]);
+    return () => {
+      // Dispose the subscription on cleanup
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    };
+  }, [channel]);
 
   return (
     <output

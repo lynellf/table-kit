@@ -1,50 +1,51 @@
-import type { Announcer } from '@lynellf/tablekit-core';
 // @jsxImportSource react
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReactAnnouncer } from './ReactAnnouncer';
+import { createAnnouncerChannel } from './createAnnouncerChannel';
 
 describe('ReactAnnouncer', () => {
   afterEach(() => {
     cleanup();
   });
-  // R5 fix: ReactAnnouncer now requires an announcer prop
-  const createTestAnnouncer = (): Announcer => ({ announce: () => {} });
+
+  // R5 fix: ReactAnnouncer now requires a channel prop
+  const createTestChannel = () => createAnnouncerChannel({ announce: () => {} });
 
   it('renders a visually-hidden aria-live region', () => {
-    const announcer = createTestAnnouncer();
-    render(<ReactAnnouncer announcer={announcer} />);
+    const channel = createTestChannel();
+    render(<ReactAnnouncer channel={channel} />);
     const regions = screen.getAllByTestId('tablekit-announcer');
     const region = regions[regions.length - 1];
     expect(region?.getAttribute('aria-live')).toBe('polite');
   });
 
   it('renders with assertive politeness', () => {
-    const announcer = createTestAnnouncer();
-    render(<ReactAnnouncer announcer={announcer} politeness="assertive" />);
+    const channel = createTestChannel();
+    render(<ReactAnnouncer channel={channel} politeness="assertive" />);
     const regions = screen.getAllByTestId('tablekit-announcer');
     const region = regions[regions.length - 1];
     expect(region?.getAttribute('aria-live')).toBe('assertive');
   });
 
   // Note: requestAnimationFrame-based announcements may not work reliably in jsdom.
-  // This test verifies the announce function exists and is callable.
-  it('announcer prop is functional', () => {
+  // This test verifies the channel subscription works.
+  it('channel prop is functional', () => {
     const announceSpy = vi.fn();
-    const announcer: Announcer = { announce: announceSpy };
-    render(<ReactAnnouncer announcer={announcer} />);
+    const channel = createAnnouncerChannel({ announce: announceSpy });
+    render(<ReactAnnouncer channel={channel} />);
 
-    // The announcer should have been wired to update state
-    expect(typeof announcer.announce).toBe('function');
+    // The channel's announce should be callable
+    expect(typeof channel.announce).toBe('function');
   });
 
-  // R5 fix: Each ReactAnnouncer has its own announcer instance, no singleton
+  // R5 fix: Each ReactAnnouncer has its own channel instance, no singleton
   it('R5: multiple announcers are independent', () => {
-    const announcer1 = createTestAnnouncer();
-    const announcer2 = createTestAnnouncer();
+    const channel1 = createTestChannel();
+    const channel2 = createTestChannel();
 
-    const { unmount: unmount1 } = render(<ReactAnnouncer announcer={announcer1} />);
-    const { getAllByTestId, unmount: unmount2 } = render(<ReactAnnouncer announcer={announcer2} />);
+    const { unmount: unmount1 } = render(<ReactAnnouncer channel={channel1} />);
+    const { getAllByTestId, unmount: unmount2 } = render(<ReactAnnouncer channel={channel2} />);
 
     // Both should render their own announcer (2 total since first is still mounted)
     expect(getAllByTestId('tablekit-announcer').length).toBe(2);
@@ -53,7 +54,7 @@ describe('ReactAnnouncer', () => {
     unmount2();
     unmount1();
 
-    // announcer1 and announcer2 should be different instances
-    expect(announcer1).not.toBe(announcer2);
+    // channel1 and channel2 should be different instances
+    expect(channel1).not.toBe(channel2);
   });
 });

@@ -413,6 +413,11 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // When the data source has fresh data, use it instead of options.data.
     let rows: TRow[] = this.dataSourceState.data ?? options.data;
 
+    // R2 fix: Resolve dataVersion for memo cache.
+    // Use accepted dataVersion from dataSourceState first (remote result token),
+    // then fall back to table-configured token.
+    const dataVersion = this.dataSourceState.dataVersion ?? this.getDataVersion();
+
     if (options.manualFiltering !== true) {
       rows = filterRows({ rows, filters: state.columnFilters, columns });
     }
@@ -426,12 +431,14 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // Memoize based on the computed rows identity
     const memoKey = this.rowModelCache.getMemoKey();
     const dataChanged = memoKey.data !== rows;
+    // R2 fix: Compare dataVersion for cache validity.
+    const versionChanged = memoKey.dataVersion !== dataVersion;
     const stateChanged =
       memoKey.sorting !== state.sorting ||
       memoKey.columnFilters !== state.columnFilters ||
       memoKey.pagination !== state.pagination;
 
-    if (!dataChanged && !stateChanged && memoKey.cachedRows) {
+    if (!dataChanged && !versionChanged && !stateChanged && memoKey.cachedRows) {
       return memoKey.cachedRows;
     }
 
@@ -468,8 +475,8 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       return base;
     }) as Row<TRow>[];
 
-    // Update cache
-    this.rowModelCache.setCachedResult(rows, state, result);
+    // Update cache with dataVersion
+    this.rowModelCache.setCachedResult(rows, state, result, dataVersion);
     return result;
   }
 
