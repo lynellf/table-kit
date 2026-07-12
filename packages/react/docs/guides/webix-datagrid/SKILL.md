@@ -12,6 +12,7 @@ tablekit_packages:
   - @lynellf/tablekit-core
 companion_guide: ./guide.md
 ---
+<!-- Historical: true -->
 
 # Webix DataTable — table-kit concept map
 

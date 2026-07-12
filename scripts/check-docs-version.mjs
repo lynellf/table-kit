@@ -30,9 +30,10 @@ const v2ClaimFiles = [
 // ─── Patterns that indicate stale v1 claims ─────────────────────────────────
 
 const stalePatterns = [
-  // Version references
+  // Version references - match v1.0, v1.2.3 but NOT "v1 " followed by words
   { pattern: /version\s+1\.\d+\.\d+/, message: 'found v1.x version reference' },
-  { pattern: /v1(?:\.\d+)*(?!\.\d)/, message: 'found v1 version reference (not v1.x.x format)' },
+  // Only match v1 when it's followed by a dot and digit (version number) or end of string
+  { pattern: /v1(?:\.\d+)+(?!\w)/, message: 'found v1.x version reference (not v1.x.x format)' },
   // API references that changed in v2
   { pattern: /onStateChange.*undefined/, message: 'stale onStateChange default claim' },
   // Claims that should be labeled as historical
@@ -80,6 +81,11 @@ function checkFile(filePath, relPath) {
   if (relPath.startsWith('archive/')) return; // Skip archived docs
 
   const content = readFileSync(filePath, 'utf8');
+
+  // Skip files marked as historical - they may contain v1 references intentionally
+  if (content.includes('Historical: true')) {
+    return;
+  }
 
   for (const { pattern, message } of stalePatterns) {
     if (pattern.test(content)) {

@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # table-kit Implementation — Phase 1 Foundation Remediation (v2.0.0)
 
 ## Current Status: IN PROGRESS

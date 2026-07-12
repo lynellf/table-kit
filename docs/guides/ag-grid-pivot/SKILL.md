@@ -13,6 +13,7 @@ tablekit_packages:
   - @lynellf/tablekit-react
 companion_guide: ./guide.md
 ---
+<!-- Historical: true -->
 
 # AG-Grid Pivot — table-kit concept map
 

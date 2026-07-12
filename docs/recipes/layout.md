@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # Layout Recipe — Virtualization + Sticky Pinning
 
 > Recipe — Last verified against v1.0.0 (`docs/m6-hardening/api-freeze.md`)

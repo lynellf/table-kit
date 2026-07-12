@@ -79,4 +79,4 @@ The reviewer must inspect that the tests exercise the failing paths and that pac
 
 ## Stop rule
 
-Do not authorize `phase-2-column-hierarchy-and-sizing.md` while any R1–R7 row is open. If a required behavior cannot be implemented within the active round-3 scope, stop and return `REQUEST-CHANGES`; do not weaken the test, hide a query loop with a fetch lock, restore global announcer routing, or claim workspace aliases as packed-consumer evidence.
+Do not authorize `phase-2-column-hierarchy-and-sizing.md` while any R1–R7 row is open. If a required behavior cannot be implemented within the active round-4 scope, stop and return `REQUEST-CHANGES`; do not weaken the test, hide a query loop with a fetch lock, restore global announcer routing, or claim workspace aliases as packed-consumer evidence.

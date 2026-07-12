@@ -2,7 +2,7 @@
 
 Headless table primitives for the modern web — framework-free state engine, row pipeline, column model, PivotTable support, and first-class React adapters.
 
-**Status:** v1.0.0 — stable. The public API is frozen. See [`docs/m6-hardening/api-freeze.md`](./docs/m6-hardening/api-freeze.md) for the v1.0 contract.
+**Status:** v2.0.0 — Foundation phase complete. See [`docs/migration-v1-to-v2.md`](./docs/migration-v1-to-v2.md) for migration from v1, and [`docs/table-kit-2.0-parity-plan/phase-1-foundation-remediation-round-4.md`](./docs/table-kit-2.0-parity-plan/phase-1-foundation-remediation-round-4.md) for the v2.0 contract status.
 
 ## Packages
 

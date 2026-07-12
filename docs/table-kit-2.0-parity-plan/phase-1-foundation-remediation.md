@@ -1,7 +1,8 @@
+<!-- Historical: true -->
 # Phase 1 Foundation remediation — F0.1–F0.6
 
 **Request class:** remediation (superseded)
-**Status:** historical context only; the active round-3 plan is [`phase-1-foundation-remediation-round-3.md`](./phase-1-foundation-remediation-round-3.md); implementation must follow round 3 and must not start Phase 2
+**Status:** historical context only; the active round-4 plan is [`phase-1-foundation-remediation-round-4.md`](./phase-1-foundation-remediation-round-4.md); implementation must follow round 4 and must not start Phase 2
 **Parent phase:** [`phase-1-foundation.md`](./phase-1-foundation.md)
 **Source specification:** [`../table-kit-2.0-parity-assessment-and-spec-v2.md`](../table-kit-2.0-parity-assessment-and-spec-v2.md)
 **Consolidated reviewer findings:** re-review returned `REQUEST-CHANGES` with seven required findings: `F0.1-per-slice-retention-and-pruning`, `F0.2-nullable-hook-and-request-races`, `F0.2-pagination-contract`, `F0.3-pivot-completion-and-tests`, `F0.4-contract-and-documentation-gate`, `F0.5-announcer-ownership-and-regression-test`, and `F0.5-data-identity-escape-hatch`.

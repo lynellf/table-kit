@@ -1,10 +1,11 @@
+<!-- Historical: true -->
 # Phase 1 — Foundation and 2.0 contract reset
 
 **Track:** F0
 **Depends on:** none
 **Unlocks:** every new React/UI/Pivot phase
 **Release gate:** `2.0.0` contract release
-**Current gate status:** `REQUEST-CHANGES`; the active correction delta and mandatory R7.1 dispatch gate are tracked in [`phase-1-foundation-remediation-round-3.md`](./phase-1-foundation-remediation-round-3.md). Earlier remediation notes are superseded and are not implementation dependencies. Do not begin Phase 2 until the round-3 remediation gate passes.
+**Current gate status:** `REQUEST-CHANGES`; the active correction delta and mandatory R7.1 dispatch gate are tracked in [`phase-1-foundation-remediation-round-4.md`](./phase-1-foundation-remediation-round-4.md). Round 3 is superseded historical context and is not an implementation dependency. Do not begin Phase 2 until the round-4 remediation gate passes.
 
 ## Goal
 

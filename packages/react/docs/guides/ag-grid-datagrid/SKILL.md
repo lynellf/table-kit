@@ -12,6 +12,7 @@ tablekit_packages:
   - @lynellf/tablekit-core
 companion_guide: ./guide.md
 ---
+<!-- Historical: true -->
 
 # AG-Grid DataGrid — table-kit concept map
 

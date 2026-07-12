@@ -1,6 +1,7 @@
+<!-- Historical: true -->
 # Phase 1 Foundation — Prior Implementation Note (superseded)
 
-> **Status:** This note is not Foundation-gate evidence. The implementation it describes received `REQUEST-CHANGES` on re-review. The active correction delta, tests, and stop conditions are in [`../../phase-1-foundation-remediation-round-3.md`](../../phase-1-foundation-remediation-round-3.md). Earlier remediation notes are superseded. Rewrite this note only after the round-3 remediation gate passes.
+> **Status:** This note is not Foundation-gate evidence. The implementation it describes received `REQUEST-CHANGES` on re-review. The active correction delta, tests, and stop conditions are in [`../../phase-1-foundation-remediation-round-4.md`](../../phase-1-foundation-remediation-round-4.md). Earlier remediation notes are superseded. Rewrite this note only after the round-4 remediation gate passes.
 
 ## Overview
 

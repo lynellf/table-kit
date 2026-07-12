@@ -142,7 +142,8 @@ This package is ready for plan review when every artifact listed below exists, e
 
 - `docs/table-kit-2.0-parity-plan/spec.md` — this scope, behavior, constraints, dependency map, risks, and global acceptance criteria.
 - `phase-1-foundation.md` — F0.1–F0.6; the 2.0 contract gate (currently blocked pending remediation).
-- `phase-1-foundation-remediation-round-3.md` — active REQUEST-CHANGES correction delta with the mandatory R7.1 status gate, ordered R1–R6 repairs, and Foundation re-gate evidence. Earlier remediation notes are historical context, not implementation dependencies.
+- `phase-1-foundation-remediation-round-4.md` — active REQUEST-CHANGES correction delta with the mandatory R7.1 status gate, named cursor/version and stale-while-revalidate contracts, isolated packed-artifact verification, ordered R1–R6 repairs, and Foundation re-gate evidence.
+- `phase-1-foundation-remediation-round-3.md` — superseded REQUEST-CHANGES correction delta retained as historical context; it is not an implementation dependency.
 - `phase-2-column-hierarchy-and-sizing.md` — D1; grouped columns and deterministic sizing.
 - `phase-3-walking-skeleton.md` — D2; high-risk three-region rendering architecture.
 - `design-three-region-scroll-protocol.md` — D2 pre-implementation synchronization and fixed-height protocol.

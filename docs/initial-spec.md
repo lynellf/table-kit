@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # Headless Table Primitives — Design Specification
 
 **Working name:** TableKit (`@tablekit/*` — placeholder pending a name/trademark

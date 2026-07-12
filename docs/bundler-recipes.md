@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # Bundler Recipes — Worker Entry
 
 > Last verified against v1.0.0 (`docs/m6-hardening/api-freeze.md`).
