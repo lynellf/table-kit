@@ -148,6 +148,28 @@ pnpm verify
 
 **Evidence:** `packages/core/src/dataSource/types.ts` - `dataVersion` field added to `RowsResult` interface.
 
+### R2-CURSOR-PAGINATION (2026-07-12)
+
+**Finding:** Cursor pagination integration tests were incomplete. The R2 contract requires:
+- Offset sources receive `{ type: 'offset', offset, limit }`
+- Cursor sources receive cursor/direction/limit and publish next/previous cursors
+- dataVersion is published through useDataSource
+
+**Fix:**
+1. Added comprehensive cursor pagination integration tests in `packages/react/src/__integration__/cursor-pagination.test.tsx`
+2. Added `dataVersion` to `UseDataSourceResult` interface
+3. Fixed `refetch()` to properly force new requests by including `refetchNonce` in context comparison
+
+**Evidence:**
+- `packages/react/src/useDataSource.ts` - `dataVersion` added to `UseDataSourceResult` and returned from hook
+- `packages/react/src/useDataSource.ts` - `refetchNonce` added to `prevQueryContextRef` type and context comparison
+- `packages/react/src/__integration__/cursor-pagination.test.tsx` - 8 tests covering:
+  - Offset pagination sends correct wire format
+  - Cursor pagination sends correct wire format with cursor/direction/limit
+  - Cursor pagination publishes nextCursor and previousCursor
+  - dataVersion is published from RowsResult through useDataSource
+  - refetch properly triggers new requests with incremented dataVersion
+
 ## Non-Blocking Observations
 
 ### N1-PINNED-OFFSET
@@ -167,7 +189,7 @@ The package artifact verification (`pnpm check:package-artifacts`) is authoritat
 2. `packages/pivot/src/pivotTable/factory.ts` - R4 callback and leaf metadata fixes; R4-IDENTITY-008 deep comparison removed
 3. `packages/pivot/src/types.ts` - Added `pinnedOffset` to `PivotLeafColumn`
 4. `packages/react/src/ReactAnnouncer.tsx` - R5 subscription-based wiring
-5. `packages/react/src/useDataSource.ts` - R3 request orchestration and SWR fixes
+5. `packages/react/src/useDataSource.ts` - R3 request orchestration, SWR fixes, R2 cursor/dataVersion contract fixes
 6. `packages/react/src/useDataTable.ts` - R1 duplicate pruning removed
 7. `scripts/check-docs-version.mjs` - R6 exit code fix
 8. `scripts/check-package-artifacts.mjs` - R6-ARTIFACT-009: Rewrote to create actual tarballs and install from them
@@ -177,6 +199,7 @@ The package artifact verification (`pnpm check:package-artifacts`) is authoritat
 12. `fixtures/consumers/v2/react/src/index.ts` - Fixed to use actual exported APIs
 13. `packages/react/src/__integration__/pivot-controlled.test.tsx` - Updated to use stable data reference
 14. `packages/react/src/__integration__/pivot-announcer.test.tsx` - Updated to use stable data reference
+15. `packages/react/src/__integration__/cursor-pagination.test.tsx` - R2 cursor pagination integration tests (new file, 8 tests)
 
 ## Status
 
