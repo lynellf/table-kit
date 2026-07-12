@@ -232,13 +232,42 @@ describe('createDataTable', () => {
       expect(listener).not.toHaveBeenCalled();
     });
 
-    it('honors a new initialState in setOptions', () => {
-      const table = createDataTable(baseOptions());
-      table.setOptions({
+    it('honors initialState in constructor', () => {
+      const table = createDataTable({
         ...baseOptions(),
         initialState: { sorting: [{ id: 'age', desc: true }] },
       });
       expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+    });
+
+    it('ignores initialState in subsequent setOptions calls (F0.1)', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: { sorting: [{ id: 'name', desc: false }] },
+      });
+      // Apply a user action (sort by age)
+      table.setSorting([{ id: 'age', desc: true }]);
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      // Subsequent setOptions with different initialState should NOT reset sorting
+      table.setOptions({
+        ...baseOptions(),
+        initialState: { sorting: [{ id: 'email', desc: false }] },
+      });
+      // F0.1: State must be preserved across setOptions calls
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+    });
+
+    it('resetSlice resets a slice to constructor-effective baseline', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: { sorting: [{ id: 'name', desc: false }] },
+      });
+      // Apply a user action
+      table.setSorting([{ id: 'age', desc: true }]);
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      // Reset sorting to constructor baseline (which includes initialState)
+      table.resetSlice('sorting');
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
     });
 
     it('honors a new controlled state in setOptions', () => {
@@ -418,6 +447,290 @@ describe('createDataTable', () => {
       dispatchers(table).setSorting([]); // already []
       expect(subscriber).not.toHaveBeenCalled();
       expect(onStateChange).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── R1: Constructor-effective baseline ─────────────────────────────────
+
+  describe('R1: constructor-effective baseline for reset', () => {
+    it('resetSlice restores the constructor-effective baseline (initialState + defaults), not DEFAULT_STATE', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: {
+          sorting: [{ id: 'name', desc: false }],
+          pagination: { pageIndex: 5, pageSize: 100 },
+        },
+      });
+      // Apply user actions that differ from initialState
+      table.setSorting([{ id: 'age', desc: true }]);
+      table.setPagination((p) => ({ ...p, pageIndex: 10 }));
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      expect(table.getState().pagination.pageIndex).toBe(10);
+
+      // Reset sorting — should restore initialState baseline, not DEFAULT_STATE
+      table.resetSlice('sorting');
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      expect(table.getState().pagination.pageIndex).toBe(10); // pagination untouched
+
+      // Reset pagination — should restore initialState baseline
+      table.resetSlice('pagination');
+      expect(table.getState().pagination).toEqual({ pageIndex: 5, pageSize: 100 });
+    });
+
+    it('resetState restores the constructor-effective baseline for all uncontrolled slices', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: {
+          sorting: [{ id: 'name', desc: false }],
+          columnVisibility: { name: false },
+        },
+      });
+      // Apply user actions
+      table.setSorting([{ id: 'age', desc: true }]);
+      table.setColumnVisibility({ name: true, age: false });
+      table.setPagination((p) => ({ ...p, pageIndex: 7 }));
+
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      expect(table.getState().columnVisibility).toEqual({ name: true, age: false });
+      expect(table.getState().pagination.pageIndex).toBe(7);
+
+      // resetState should restore all slices to constructor baseline in ONE notification
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+      table.resetState();
+
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      expect(table.getState().columnVisibility).toEqual({ name: false });
+      expect(table.getState().pagination).toEqual({ pageIndex: 0, pageSize: 25 }); // defaults, not initialState
+      expect(subscriber).toHaveBeenCalledTimes(1); // one atomic notification
+    });
+
+    it('resetState emits exactly one notification regardless of how many slices are reset', () => {
+      const table = createDataTable(baseOptions());
+      // Apply changes to multiple slices
+      table.setSorting([{ id: 'age', desc: true }]);
+      table.setColumnVisibility({ name: false });
+      table.setPagination((p) => ({ ...p, pageIndex: 3 }));
+
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+      subscriber.mockClear();
+
+      table.resetState();
+      // Should be exactly 1 notification, not 3 (one per slice)
+      expect(subscriber).toHaveBeenCalledTimes(1);
+    });
+
+    it('resetSlice does not notify when the slice is already at baseline', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: { sorting: [{ id: 'name', desc: false }] },
+      });
+      // State already matches baseline
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+
+      table.resetSlice('sorting');
+      expect(subscriber).not.toHaveBeenCalled();
+    });
+
+    it('resetSlice for controlled slices invokes the callback with the baseline value', () => {
+      const onSortingChange = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange,
+      });
+
+      table.resetSlice('sorting');
+      // Should invoke callback with baseline value, not DEFAULT_STATE
+      expect(onSortingChange).toHaveBeenCalledWith([{ id: 'name', desc: false }]);
+    });
+  });
+
+  // ─── R1: Partial controlled state preservation ────────────────────────────
+
+  describe('R1: partial controlled state does not reset omitted slices', () => {
+    it('setOptions with partial controlled state preserves uncontrolled slices', () => {
+      const table = createDataTable(baseOptions());
+
+      // Apply some uncontrolled state changes
+      table.setSorting([{ id: 'age', desc: true }]);
+      table.setPagination((p) => ({ ...p, pageIndex: 5 }));
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      expect(table.getState().pagination.pageIndex).toBe(5);
+
+      // Now pass a partial controlled state (only sorting controlled)
+      table.setOptions({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange: vi.fn(),
+      });
+
+      // Controlled slice should update
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      // Uncontrolled slice should be PRESERVED, not reset
+      expect(table.getState().pagination.pageIndex).toBe(5);
+    });
+
+    it('setOptions without state argument preserves all current slices', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange: vi.fn(),
+      });
+
+      // Apply uncontrolled changes
+      table.setSorting([{ id: 'age', desc: true }]); // but this goes through callback since controlled
+      table.setPagination((p) => ({ ...p, pageIndex: 7 }));
+
+      // Pass setOptions without state — should preserve current state
+      table.setOptions({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] }, // same controlled
+        onSortingChange: vi.fn(),
+      });
+
+      // pagination should be preserved
+      expect(table.getState().pagination.pageIndex).toBe(7);
+    });
+
+    it('controlled slice can be later released to uncontrolled without losing state', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange: vi.fn(),
+      });
+
+      // Change uncontrolled pagination
+      table.setPagination((p) => ({ ...p, pageIndex: 3 }));
+      expect(table.getState().pagination.pageIndex).toBe(3);
+
+      // Release sorting control by passing no state
+      table.setOptions({
+        ...baseOptions(),
+        // No state — all slices now uncontrolled, but should preserve current values
+      });
+
+      // Sorting should have retained the controlled value
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      // Pagination should be preserved
+      expect(table.getState().pagination.pageIndex).toBe(3);
+    });
+  });
+
+  // ─── R1: Column ID pruning ──────────────────────────────────────────────
+
+  describe('R1: __pruneColumnIds removes invalid IDs from state', () => {
+    it('prunes invalid column IDs from sorting state', () => {
+      const table = createDataTable(baseOptions());
+      table.setSorting([
+        { id: 'name', desc: false },
+        { id: 'age', desc: true },
+        { id: 'ghost', desc: false },
+      ]);
+      expect(table.getState().sorting.map((s) => s.id)).toEqual(['name', 'age', 'ghost']);
+
+      // Prune: only 'name' and 'age' are valid
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().sorting.map((s) => s.id)).toEqual(['name', 'age']);
+    });
+
+    it('prunes invalid column IDs from columnFilters state', () => {
+      const table = createDataTable(baseOptions());
+      table.setColumnFilters([
+        { id: 'name', value: 'Alice' },
+        { id: 'ghost', value: 'Bob' },
+      ]);
+      expect(table.getState().columnFilters.map((f) => f.id)).toEqual(['name', 'ghost']);
+
+      table.__pruneColumnIds(new Set(['name']));
+      expect(table.getState().columnFilters.map((f) => f.id)).toEqual(['name']);
+    });
+
+    it('prunes invalid column IDs from columnOrder state', () => {
+      const table = createDataTable(baseOptions());
+      // Default columnOrder is empty, so set one with invalid IDs
+      (table as unknown as { state: DataTableState }).state.columnOrder = [
+        'name',
+        'age',
+        'ghost',
+        'other',
+      ];
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().columnOrder).toEqual(['name', 'age']);
+    });
+
+    it('prunes invalid column IDs from columnVisibility state', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnVisibility = {
+        name: true,
+        age: false,
+        ghost: true,
+      };
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().columnVisibility).toEqual({ name: true, age: false });
+    });
+
+    it('prunes invalid column IDs from columnPinning state', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnPinning = {
+        left: ['name', 'ghost'],
+        right: ['age', 'other'],
+      };
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().columnPinning).toEqual({ left: ['name'], right: ['age'] });
+    });
+
+    it('prunes invalid column IDs from columnSizing state', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnSizing = {
+        name: 100,
+        age: 50,
+        ghost: 75,
+      };
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().columnSizing).toEqual({ name: 100, age: 50 });
+    });
+
+    it('clears focusedCell when its columnId is pruned', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.focusedCell = {
+        rowId: '1',
+        columnId: 'name',
+      };
+
+      table.__pruneColumnIds(new Set(['age'])); // 'name' is not valid
+      expect(table.getState().focusedCell).toBeNull();
+    });
+
+    it('clears columnSizingInfo when its columnId is pruned', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnSizingInfo = {
+        columnId: 'name',
+        startSize: 100,
+        delta: 10,
+        mode: 'onChange',
+      };
+
+      table.__pruneColumnIds(new Set(['age'])); // 'name' is not valid
+      expect(table.getState().columnSizingInfo).toBeNull();
+    });
+
+    it('does not notify when no column IDs are pruned', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnSizing = { name: 100, age: 50 };
+
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+
+      // All IDs are valid, nothing to prune
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(subscriber).not.toHaveBeenCalled();
     });
   });
 });

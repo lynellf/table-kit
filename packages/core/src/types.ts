@@ -376,6 +376,12 @@ export interface DataTableInstance<TRow> {
   toggleColumnVisibility(columnId: string): void;
   toggleAllColumnsVisibility(next?: boolean): void;
 
+  // ─── State reset (Phase 1 F0.1) ───────────────────────────────────────
+  /** Reset all state slices to their initial values. Respects controlled slices. */
+  resetState(): void;
+  /** Reset a specific state slice to its initial value. Respects controlled slices. */
+  resetSlice(slice: keyof DataTableState): void;
+
   // ─── Column resolution helpers (M1) ─────────────────────────────────
   getVisibleColumns(): Array<ColumnClass<TRow, unknown>>;
   getLeftLeafColumns(): Array<ColumnClass<TRow, unknown>>;
@@ -404,4 +410,6 @@ export interface DataTableInstance<TRow> {
   __buildRowsQuery(
     capabilities: import('./dataSource/types').DataSourceCapabilities,
   ): import('./dataSource/types').RowsQuery;
+  /** @internal Prune invalid column IDs from state slices when columns change. */
+  __pruneColumnIds(validColumnIds: Set<string>): void;
 }

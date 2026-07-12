@@ -114,9 +114,15 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     },
   };
 
+  // R1: Constructor-effective baseline for resetSlice/resetState.
+  // Captures DEFAULT_STATE + initialState + constructor state.
+  private constructorBaseline: DataTableState;
+
   constructor(options: DataTableOptions<TRow>) {
     this.options = options;
     this.state = mergeInitialState(options.initialState, options.state);
+    // Capture the constructor-effective baseline for reset operations.
+    this.constructorBaseline = this.state;
     this.navigationMode = options.navigationMode ?? 'cell';
     // M3 phase 1: mixed-mode trap warning. One-shot dev warning.
     validateModeConfiguration(this.options);
@@ -136,23 +142,37 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     const prevState = this.state;
     this.options = next;
 
-    // When next.state is undefined (e.g., useDataSource's setOptions calls),
-    // preserve the controlled slices from the current state. This prevents
-    // useDataSource's setOptions from resetting controlled slices to defaults.
-    // When next.state is provided, use it directly.
-    const controlledState =
-      next.state ??
-      (() => {
-        const keys = controlledSliceKeys(prevOptions?.state);
-        if (keys.length === 0) return undefined;
-        const partial: Partial<DataTableState> = {};
-        for (const key of keys) {
-          (partial as Record<string, unknown>)[key] = this.state[key];
-        }
-        return partial;
-      })();
+    // Phase 1 F0.1 / R1: Preserve ALL state slices on subsequent setOptions calls.
+    // - When next.state is provided, preserve current values for omitted slices
+    //   (partial controlled state must not reset omitted slices).
+    // - When next.state is undefined, preserve all current values
+    //   (omitted slices must not reset per spec).
+    // - initialState is constructor-only; subsequent calls treat it as undefined
+    //   to prevent re-initializing state from defaults.
+    const controlledState = (() => {
+      // First setOptions call: let mergeInitialState handle initialState.
+      if (prevOptions === undefined) {
+        return next.state;
+      }
 
-    const nextState = mergeInitialState(next.initialState, controlledState);
+      if (next.state !== undefined) {
+        // next.state is defined (partial or full controlled update):
+        // preserve current values for slices NOT in next.state.
+        // This ensures partial controlled state does not reset omitted slices.
+        const partial: Partial<DataTableState> = { ...this.state };
+        Object.assign(partial, next.state);
+        return partial;
+      }
+
+      // next.state is undefined: preserve ALL current slices.
+      // (omitted slices must not reset per spec)
+      return { ...this.state };
+    })();
+
+    // F0.1 fix: initialState is constructor-only. Subsequent calls ignore it.
+    const initialStateForMerge = isFirstSetOptions ? next.initialState : undefined;
+
+    const nextState = mergeInitialState(initialStateForMerge, controlledState);
 
     // Only update this.state if the derived state actually differs.
     // This prevents useSyncExternalStore's getSnapshot() from returning
@@ -212,11 +232,11 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   /** @internal Write the data source state. Used by the React hook. */
   __setDataSourceState(state: DataSourceState<TRow>): void {
     const prev = this.dataSourceState;
-    // Only update if status, data, error, or totalRowCount actually changed.
-    // Spreading { ...prev, refetch } creates a new object even when data is same;
-    // we use JSON stringify for deep comparison of the data field.
-    const dataChanged =
-      prev.data !== state.data && JSON.stringify(prev.data) !== JSON.stringify(state.data);
+    // F0.5: Treat data identity as reference-based by default.
+    // JSON.stringify is expensive for large datasets; reference equality is sufficient
+    // for typical data-fetching patterns where a new array means new data.
+    // Consumers who mutate data in-place should change the reference (or use dataVersion).
+    const dataChanged = prev.data !== state.data;
     const statusChanged = prev.status !== state.status;
     const errorChanged = prev.error !== state.error;
     const totalRowCountChanged = prev.totalRowCount !== state.totalRowCount;
@@ -228,6 +248,24 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     this.dataSourceState = state;
     // Always call notify() to trigger useSyncExternalStore re-renders
     this.notify();
+  }
+
+  /**
+   * @internal F0.2: Set manual* capability flags without calling setOptions.
+   * This allows useDataSource to control server/client mode without overwriting
+   * data and columns via sparse setOptions calls.
+   */
+  __setManualFlags(
+    manualSorting: boolean,
+    manualFiltering: boolean,
+    manualPagination: boolean,
+  ): void {
+    this.options = {
+      ...this.options,
+      manualSorting,
+      manualFiltering,
+      manualPagination,
+    };
   }
 
   /**
@@ -599,7 +637,10 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   getPageCount(): number {
     const { pageSize } = this.state.pagination;
     if (this.options.manualPagination === true) {
-      const total = this.options.rowCount ?? this.options.data.length;
+      // F0.2: Prefer dataSourceState.totalRowCount (from useDataSource) over options.rowCount.
+      // This keeps total-row count in data-source state rather than mutating table options.
+      const total =
+        this.dataSourceState.totalRowCount ?? this.options.rowCount ?? this.options.data.length;
       return computePageCount(total, pageSize);
     }
     const fullRowCount = this.getFullRowCount();
@@ -608,7 +649,10 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
   getRowCount(): number {
     if (this.options.manualPagination === true) {
-      return this.options.rowCount ?? this.options.data.length;
+      // F0.2: Prefer dataSourceState.totalRowCount (from useDataSource) over options.rowCount.
+      const total =
+        this.dataSourceState.totalRowCount ?? this.options.rowCount ?? this.options.data.length;
+      return total;
     }
     return this.getFullRowCount();
   }
@@ -951,6 +995,214 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   ): void => {
     this.applyChange('focusedCell', updater);
   };
+
+  // ─── State reset (Phase 1 F0.1) ─────────────────────────────────────────────
+
+  /**
+   * Reset all state slices to the constructor-effective baseline.
+   * Respects the controlled-slice contract: if a slice is controlled (present in options.state),
+   * it is NOT reset; only uncontrolled slices are affected.
+   * Emits one atomic notification for all reset slices.
+   */
+  resetState(): void {
+    const slices: SliceChangeKey[] = [
+      'sorting',
+      'columnFilters',
+      'pagination',
+      'columnOrder',
+      'columnVisibility',
+      'columnPinning',
+      'columnSizing',
+      'columnSizingInfo',
+      'focusedCell',
+    ];
+
+    const prev = this.state;
+    let next = prev;
+    let anyChange = false;
+
+    for (const slice of slices) {
+      const controlled = isSliceControlled(this.options.state, slice);
+      if (controlled) continue; // Skip controlled slices
+
+      const baselineValue = this.constructorBaseline[slice];
+      if (Object.is(prev[slice], baselineValue)) continue; // No change needed
+
+      next = { ...next, [slice]: baselineValue };
+      anyChange = true;
+    }
+
+    if (!anyChange) return;
+
+    this.state = next;
+    this.notifySliceAndAggregate(prev, next);
+  }
+
+  /**
+   * Reset a specific state slice to the constructor-effective baseline.
+   * Respects the controlled-slice contract: if the slice is controlled (present in options.state),
+   * it is NOT reset; the slice callback is invoked instead (consumer owns the state).
+   */
+  resetSlice(slice: keyof DataTableState): void {
+    const controlled = isSliceControlled(this.options.state, slice as SliceChangeKey);
+    if (controlled) {
+      // Controlled slices: invoke the callback with the baseline value to signal reset.
+      // The consumer decides what value to pass back.
+      const cb = this.sliceCallback(slice as SliceChangeKey);
+      if (cb) {
+        cb(this.constructorBaseline[slice as SliceChangeKey]);
+      }
+      return;
+    }
+
+    // Uncontrolled slices: reset to constructor baseline
+    const prev = this.state;
+    const next: DataTableState = {
+      ...prev,
+      [slice]: this.constructorBaseline[slice as SliceChangeKey],
+    };
+
+    if (Object.is(prev[slice], next[slice])) return;
+    this.state = next;
+    this.notifySliceAndAggregate(prev, next);
+  }
+
+  /**
+   * @internal
+   * Prune invalid column IDs from state slices when columns change.
+   * Called by the React adapter after columns are updated.
+   */
+  __pruneColumnIds(validColumnIds: Set<string>): void {
+    const prev = this.state;
+    let next = prev;
+    let anyChange = false;
+
+    // Prune sorting: remove sort items with invalid column IDs
+    // NOTE: .filter() always creates a new array, so compare content not reference.
+    const validSorting = prev.sorting.filter((s) => validColumnIds.has(s.id));
+    const sortingActuallyChanged =
+      validSorting.length !== prev.sorting.length ||
+      !validSorting.every((item, i) => Object.is(item, prev.sorting[i]));
+    if (sortingActuallyChanged) {
+      next = { ...next, sorting: validSorting };
+      anyChange = true;
+    }
+
+    // Prune columnFilters: remove filter items with invalid column IDs
+    const validColumnFilters = prev.columnFilters.filter((f) => validColumnIds.has(f.id));
+    const filtersActuallyChanged =
+      validColumnFilters.length !== prev.columnFilters.length ||
+      !validColumnFilters.every((item, i) => Object.is(item, prev.columnFilters[i]));
+    if (filtersActuallyChanged) {
+      next = { ...next, columnFilters: validColumnFilters };
+      anyChange = true;
+    }
+
+    // Prune columnOrder: remove column IDs not in validColumnIds
+    const validColumnOrder = prev.columnOrder.filter((id) => validColumnIds.has(id));
+    const orderActuallyChanged =
+      validColumnOrder.length !== prev.columnOrder.length ||
+      !validColumnOrder.every((item, i) => Object.is(item, prev.columnOrder[i]));
+    if (orderActuallyChanged) {
+      next = { ...next, columnOrder: validColumnOrder };
+      anyChange = true;
+    }
+
+    // Prune columnVisibility: remove visibility for invalid column IDs
+    const validColumnVisibility: Record<string, boolean> = {};
+    let visibilityChanged = false;
+    for (const id of validColumnIds) {
+      if (Object.prototype.hasOwnProperty.call(prev.columnVisibility, id)) {
+        // hasOwnProperty ensures the key exists; non-null assertion needed due to noUncheckedIndexedAccess
+        validColumnVisibility[id] = prev.columnVisibility[id]!;
+      }
+    }
+    // Check if visibility actually changed by comparing keys AND values
+    // NOTE: Do NOT sort validVisKeys - it uses insertion order from validColumnIds iteration,
+    // which must match the sorted prevVisKeys for correct comparison.
+    const prevVisKeys = Object.keys(prev.columnVisibility).sort();
+    const validVisKeys = Object.keys(validColumnVisibility).sort();
+    if (prevVisKeys.length !== validVisKeys.length) {
+      visibilityChanged = true;
+    } else {
+      // Both arrays are sorted, so we can compare element-by-element
+      for (let i = 0; i < prevVisKeys.length; i++) {
+        const k = prevVisKeys[i]!;
+        const validK = validVisKeys[i]!;
+        if (k !== validK || !Object.is(prev.columnVisibility[k], validColumnVisibility[k])) {
+          visibilityChanged = true;
+          break;
+        }
+      }
+    }
+    if (visibilityChanged) {
+      next = { ...next, columnVisibility: validColumnVisibility };
+      anyChange = true;
+    }
+
+    // Prune columnPinning: remove column IDs from left/right arrays that are not valid
+    // NOTE: .filter() always creates new arrays, so compare content not reference.
+    const validLeft = prev.columnPinning.left.filter((id) => validColumnIds.has(id));
+    const validRight = prev.columnPinning.right.filter((id) => validColumnIds.has(id));
+    const pinningActuallyChanged =
+      validLeft.length !== prev.columnPinning.left.length ||
+      !validLeft.every((item, i) => Object.is(item, prev.columnPinning.left[i])) ||
+      validRight.length !== prev.columnPinning.right.length ||
+      !validRight.every((item, i) => Object.is(item, prev.columnPinning.right[i]));
+    if (pinningActuallyChanged) {
+      next = { ...next, columnPinning: { left: validLeft, right: validRight } };
+      anyChange = true;
+    }
+
+    // Prune columnSizing: remove sizing for invalid column IDs
+    const validColumnSizing: ColumnSizingState = {};
+    let sizingChanged = false;
+    for (const id of validColumnIds) {
+      if (Object.prototype.hasOwnProperty.call(prev.columnSizing, id)) {
+        // hasOwnProperty ensures the key exists; non-null assertion needed due to noUncheckedIndexedAccess
+        validColumnSizing[id] = prev.columnSizing[id]!;
+      }
+    }
+    // Compare sizing keys using sorted order for both to ensure correct comparison
+    const prevSizingKeys = Object.keys(prev.columnSizing).sort();
+    const validSizingKeys = Object.keys(validColumnSizing).sort();
+    if (prevSizingKeys.length !== validSizingKeys.length) {
+      sizingChanged = true;
+    } else {
+      // Both arrays are sorted, so we can compare element-by-element
+      for (let i = 0; i < prevSizingKeys.length; i++) {
+        const k = prevSizingKeys[i]!;
+        const validK = validSizingKeys[i]!;
+        if (k !== validK || !Object.is(prev.columnSizing[k], validColumnSizing[k])) {
+          sizingChanged = true;
+          break;
+        }
+      }
+    }
+    if (sizingChanged) {
+      next = { ...next, columnSizing: validColumnSizing };
+      anyChange = true;
+    }
+
+    // Prune focusedCell: clear if rowId or columnId is no longer valid
+    if (prev.focusedCell !== null) {
+      if (!validColumnIds.has(prev.focusedCell.columnId)) {
+        next = { ...next, focusedCell: null };
+        anyChange = true;
+      }
+    }
+
+    // Clear columnSizingInfo if the column being resized is no longer valid
+    if (prev.columnSizingInfo !== null && !validColumnIds.has(prev.columnSizingInfo.columnId)) {
+      next = { ...next, columnSizingInfo: null };
+      anyChange = true;
+    }
+
+    if (!anyChange) return;
+
+    this.state = next;
+    this.notify();
+  }
 }
 
 /**
