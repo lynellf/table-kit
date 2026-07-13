@@ -123,8 +123,18 @@ export const useDataTable = <TRow>(
   // The core calls `__pruneColumnIds` when columns change, so the React adapter
   // does NOT need to call it separately. This prevents duplicate callback delivery
   // for controlled column replacement.
+  //
+  // R5 fix: Always include announcer in setOptions call. When the consumer doesn't
+  // provide an announcer, options.announcer is undefined. Passing undefined to setOptions
+  // would overwrite the internal channel that was set during createDataTable.
+  // We always pass the announcer (consumer-provided or internal channel).
+  const { announcer: _unusedAnnouncer, ...optionsWithoutAnnouncer } = options;
   useEffect(() => {
-    table.setOptions(options);
+    // Always include announcer: consumer-provided (if any) or internal channel
+    table.setOptions({
+      ...optionsWithoutAnnouncer,
+      announcer: options.announcer ?? announcerChannelRef.current!,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, table]);
 

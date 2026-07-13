@@ -227,12 +227,20 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       validateModeConfiguration(next);
     }
 
+    // R2 fix: Check if dataVersion changed. dataVersion is in options, not state,
+    // so we need to explicitly compare it. If dataVersion changes, we must notify
+    // so that useSyncExternalStore subscribers (like useDataSource) re-check the version.
+    const dataVersionChanged =
+      this.options.dataVersion !== next.dataVersion &&
+      !Object.is(this.options.dataVersion, next.dataVersion);
+
     // Notify listeners:
     // - Always notify on first setOptions call (to initialize useSyncExternalStore)
     // - After first call, only notify if state actually changed
+    // - Also notify if dataVersion changed (even if state slices didn't change)
     // - Skip if options reference is unchanged (no-op call)
     if (Object.is(next, prevOptions)) return;
-    if (isFirstSetOptions || slicesChanged) {
+    if (isFirstSetOptions || slicesChanged || dataVersionChanged) {
       this.notify();
     }
   }

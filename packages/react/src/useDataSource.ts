@@ -511,6 +511,9 @@ export const useDataSource = <TRow>(
         if (inFlightRef.current && inFlightRef.current.requestToken === requestToken) {
           inFlightRef.current.status = 'aborted';
         }
+        // R3 fix: Always reset processingRef when returning early, even if aborted.
+        // Otherwise subsequent requests will be blocked by the processing guard.
+        processingRef.current = false;
         return;
       }
 
@@ -569,6 +572,9 @@ export const useDataSource = <TRow>(
         if (inFlightRef.current && inFlightRef.current.requestToken === requestToken) {
           inFlightRef.current.status = 'aborted';
         }
+        // R3 fix: Always reset processingRef when returning early, even if aborted.
+        // Otherwise subsequent requests will be blocked by the processing guard.
+        processingRef.current = false;
         return;
       }
 
