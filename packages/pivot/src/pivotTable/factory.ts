@@ -49,6 +49,17 @@ import { getVisibleRows } from './visibleRows';
 
 const noopAnnouncer: Announcer = { announce: () => {} };
 
+// R5-PIVOT-GLOBAL-006: Module-level global announcer for direct pivot consumers.
+// This mirrors the pattern in @lynellf/tablekit-core/announcer.
+// When ReactAnnouncer sets the global via setGlobalAnnouncer, direct pivot consumers
+// (without the React hook) also benefit from announcements.
+// Exported for test setup; consumers should use setGlobalPivotAnnouncer.
+let _globalPivotAnnouncer: Announcer = noopAnnouncer;
+export const setGlobalPivotAnnouncer = (a: Announcer): void => {
+  _globalPivotAnnouncer = a;
+};
+const getGlobalPivotAnnouncer = (): Announcer => _globalPivotAnnouncer;
+
 const isFieldRef = <TRow>(value: unknown): value is FieldRef<TRow> => {
   if (typeof value === 'string') return true;
   if (!value || typeof value !== 'object') return false;
@@ -208,7 +219,10 @@ export const createPivotTable = <TRow>(
 ): PivotTableInstance<TRow> => {
   let currentOptions = options;
   let engine: AggregationEngine<TRow> = options.engine ?? createMainThreadEngine<TRow>();
-  let announcer: Announcer = options.announcer ?? noopAnnouncer;
+  // R5-PIVOT-GLOBAL-006 fix: Use explicit instance announcer first, getGlobalPivotAnnouncer only
+  // when no instance announcer is supplied. This matches DataTable's announcer ownership
+  // contract and allows direct pivot consumers to rely on the permitted global fallback.
+  let announcer: Announcer = options.announcer ?? getGlobalPivotAnnouncer();
   let state: PivotTableState = {
     ...DEFAULT_PIVOT_STATE,
     ...(options.initialState ?? {}),
@@ -633,7 +647,8 @@ export const createPivotTable = <TRow>(
     const previousState = state;
     const previousEngine = engine;
     currentOptions = next;
-    announcer = next.announcer ?? noopAnnouncer;
+    // R5-PIVOT-GLOBAL-006 fix: Use instance announcer first, global as fallback.
+    announcer = next.announcer ?? getGlobalPivotAnnouncer();
 
     const nextEngine =
       next.engine ??

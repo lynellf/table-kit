@@ -332,8 +332,10 @@ export const useDataSource = <TRow>(
     // Build the request descriptor. This is derived from the current committed
     // snapshot and source reference. It contains only request inputs, not status.
     //
-    // R2 fix: Resolve dataVersion from table configuration.
-    const resolvedDataVersion = table.getDataVersion();
+    // R2-SOURCE-VERSION-001 fix: Resolve dataVersion — source token first, table token second.
+    // Source-owned versions win over table token and participate in request identity.
+    const sourceDataVersion = sourceRef.current?.dataVersion;
+    const resolvedDataVersion = sourceDataVersion ?? table.getDataVersion();
 
     // Get current query context from the table state
     const currentTableState = table.getState();

@@ -11,6 +11,7 @@
 
 import { createDataTable } from '@lynellf/tablekit-core';
 import type {
+  Announcer,
   DataTableInstance,
   DataTableOptions,
   DataTableState,
@@ -39,11 +40,12 @@ export interface UseDataTableOptions<TRow> extends DataTableOptions<TRow> {
    */
   tabBehavior?: TabBehavior;
   /**
-   * R5 fix: Announcer channel for instance-owned announcements.
-   * When provided, this channel is used for the announcer so custom announce-only
-   * announcers work correctly. When omitted, uses an internal no-op channel.
+   * R5-ANNOUNCE-ONLY-005 fix: Accept any Announcer object (including minimal
+   * { announce } without subscribe). The hook wraps it in a private stable
+   * AnnouncerChannel so both the table and ReactAnnouncer can use it safely.
+   * When omitted, uses an internal no-op announcer wrapped in a channel.
    */
-  announcer?: AnnouncerChannel;
+  announcer?: Announcer;
 }
 
 export interface UseDataTableResult<TRow> {
@@ -74,15 +76,22 @@ export interface UseDataTableResult<TRow> {
 export const useDataTable = <TRow>(
   options: UseDataTableOptions<TRow>,
 ): UseDataTableResult<TRow> => {
-  // R5 fix: Support options.announcer for custom announce-only announcers.
-  // If options.announcer is provided, use it. Otherwise, create an internal no-op channel.
+  // R5-ANNOUNCE-ONLY-005 fix: Create a stable channel for the announcer.
+  // If options.announcer is an AnnouncerChannel (has subscribe), use it directly.
+  // If it's a minimal Announcer (only announce), wrap it in a channel.
+  // This allows consumers to pass { announce } without subscribe.
   const announcerChannelRef = useRef<AnnouncerChannel | null>(null);
   if (announcerChannelRef.current === null) {
     if (options.announcer) {
-      // R5 fix: Use the provided announcer channel
-      announcerChannelRef.current = options.announcer;
+      // Check if it's a full AnnouncerChannel or a minimal Announcer
+      if (typeof (options.announcer as AnnouncerChannel).subscribe === 'function') {
+        announcerChannelRef.current = options.announcer as AnnouncerChannel;
+      } else {
+        // Wrap minimal Announcer in a channel
+        announcerChannelRef.current = createAnnouncerChannel(options.announcer);
+      }
     } else {
-      // Create a channel with a no-op announcer as the underlying implementation
+      // No announcer provided — create a no-op channel
       announcerChannelRef.current = createAnnouncerChannel({ announce: () => {} });
     }
   }

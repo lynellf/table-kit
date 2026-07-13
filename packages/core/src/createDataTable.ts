@@ -227,12 +227,17 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       validateModeConfiguration(next);
     }
 
+    // R2 fix: Capture the previous dataVersion BEFORE reassigning options.
+    // R2-DIRECT-INVALIDATION-002: The prior code assigned this.options=next first,
+    // then compared this.options.dataVersion vs next.dataVersion — which are always
+    // the same reference after the assignment, making the check always false.
+    const prevDataVersion = this.options?.dataVersion;
+
     // R2 fix: Check if dataVersion changed. dataVersion is in options, not state,
     // so we need to explicitly compare it. If dataVersion changes, we must notify
     // so that useSyncExternalStore subscribers (like useDataSource) re-check the version.
     const dataVersionChanged =
-      this.options.dataVersion !== next.dataVersion &&
-      !Object.is(this.options.dataVersion, next.dataVersion);
+      prevDataVersion !== next.dataVersion && !Object.is(prevDataVersion, next.dataVersion);
 
     // Notify listeners:
     // - Always notify on first setOptions call (to initialize useSyncExternalStore)

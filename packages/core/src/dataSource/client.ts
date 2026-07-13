@@ -68,6 +68,11 @@ export const createClientDataSource = <TRow>(
 
   return {
     capabilities,
+    // R2-SOURCE-VERSION-001 fix: Publish the configured dataVersion on the returned source.
+    // This allows useDataSource to resolve source token first, table token second.
+    // Use opts.dataVersion?.version since DataVersion<TRow> is an interface { version?, getVersion? }
+    // and DataSource.dataVersion is string | number.
+    ...(opts.dataVersion?.version !== undefined ? { dataVersion: opts.dataVersion.version } : {}),
     getRows: (
       q: RowsQuery,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars

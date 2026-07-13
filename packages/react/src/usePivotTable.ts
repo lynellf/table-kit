@@ -55,13 +55,25 @@ export interface UsePivotTableResult<TRow> {
 export const usePivotTable = <TRow>(
   options: UsePivotTableOptions<TRow>,
 ): UsePivotTableResult<TRow> => {
-  // R5 fix: Respect caller's announcer if provided, otherwise create internal channel.
-  // The channel is shared between the pivot (via options) and ReactAnnouncer (via props).
+  // R5-ANNOUNCE-ONLY-005 fix: Create a stable channel for the announcer.
+  // If options.announcer is an AnnouncerChannel (has subscribe), use it directly.
+  // If it's a minimal Announcer (only announce), wrap it in a channel.
+  // The channel is shared between the pivot (via setOptions) and ReactAnnouncer (via props).
   const announcerChannelRef = useRef<AnnouncerChannel | null>(null);
   if (announcerChannelRef.current === null) {
-    // Use caller's announcer if provided, wrapping it in a channel; otherwise create internal one
-    const baseAnnouncer = options.announcer ?? { announce: () => {} };
-    announcerChannelRef.current = createAnnouncerChannel(baseAnnouncer);
+    if (options.announcer) {
+      // Check if it's a full AnnouncerChannel or a minimal Announcer
+      if (typeof (options.announcer as AnnouncerChannel).subscribe === 'function') {
+        announcerChannelRef.current = options.announcer as AnnouncerChannel;
+      } else {
+        // Wrap minimal Announcer in a channel
+        announcerChannelRef.current = createAnnouncerChannel(options.announcer);
+      }
+    } else {
+      // No announcer provided — pivot factory will use getGlobalAnnouncer() as fallback
+      // Create a no-op channel for ReactAnnouncer
+      announcerChannelRef.current = createAnnouncerChannel({ announce: () => {} });
+    }
   }
 
   const ref = useRef<PivotTableInstance<TRow> | null>(null);
@@ -78,8 +90,18 @@ export const usePivotTable = <TRow>(
   // Push the latest options after commit. The factory compares the semantic
   // pivot slices, so inline option objects do not create a render loop while
   // callbacks and controlled slices still stay current.
+  //
+  // R5-PIVOT-CHANNEL-004 fix: Always pass the stable channel in setOptions.
+  // Factory setOptions assigns `announcer = next.announcer ?? noopAnnouncer`,
+  // which disconnects the pivot from its channel after the update effect unless
+  // we explicitly pass it back. ReactAnnouncer remains subscribed to the channel,
+  // so post-mount pivot messages would otherwise be lost from the live region.
+  const { announcer: _unused, ...optionsWithoutAnnouncer } = options;
   useEffect(() => {
-    pivot.setOptions(options);
+    pivot.setOptions({
+      ...optionsWithoutAnnouncer,
+      announcer: announcerChannelRef.current!,
+    });
   }, [pivot, options]);
 
   // Phase 1 F0.5: The global announcer is managed by the ReactAnnouncer component,

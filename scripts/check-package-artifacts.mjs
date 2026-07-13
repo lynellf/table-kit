@@ -313,8 +313,9 @@ console.log('  createWorkerEngine type:', typeof createWorkerEngine);
 
 console.log('\n=== Phase 5: Verifying subpath exports from isolated install ===');
 
-// R6 fix: Run subpath check from each fixture directory so Node can find packages in their node_modules.
-// Each fixture has its own node_modules with the installed packages.
+// R6-SUBPATH-008 fix: Expanded subpath matrix covering ALL documented exports.
+// R6 requires "all-package/subpath packed evidence" — previously only 4 subpaths were checked.
+// The matrix now mirrors the actual package.json exports fields for each package.
 const subpathChecks = [
   {
     fixture: 'core',
@@ -324,23 +325,56 @@ const subpathChecks = [
         name: '@lynellf/tablekit-core/dataSource',
         importPath: '@lynellf/tablekit-core/dataSource',
       },
+      {
+        name: '@lynellf/tablekit-core/virtualization',
+        importPath: '@lynellf/tablekit-core/virtualization',
+      },
+      { name: '@lynellf/tablekit-core/resize', importPath: '@lynellf/tablekit-core/resize' },
+      { name: '@lynellf/tablekit-core/pinning', importPath: '@lynellf/tablekit-core/pinning' },
+      {
+        name: '@lynellf/tablekit-core/keyboard-nav',
+        importPath: '@lynellf/tablekit-core/keyboard-nav',
+      },
+      { name: '@lynellf/tablekit-core/memo', importPath: '@lynellf/tablekit-core/memo' },
+      { name: '@lynellf/tablekit-core/announcer', importPath: '@lynellf/tablekit-core/announcer' },
     ],
   },
   {
     fixture: 'react',
     checks: [
       { name: '@lynellf/tablekit-react', importPath: '@lynellf/tablekit-react' },
-      // @lynellf/tablekit-react only exports '.' and './validate'; no './dataSource' subpath exists
-      // The React fixture tests @lynellf/tablekit-core/dataSource imports separately
+      { name: '@lynellf/tablekit-react/validate', importPath: '@lynellf/tablekit-react/validate' },
     ],
   },
   {
     fixture: 'pivot',
-    checks: [{ name: '@lynellf/tablekit-pivot', importPath: '@lynellf/tablekit-pivot' }],
+    checks: [
+      { name: '@lynellf/tablekit-pivot', importPath: '@lynellf/tablekit-pivot' },
+      {
+        name: '@lynellf/tablekit-pivot/aggregators',
+        importPath: '@lynellf/tablekit-pivot/aggregators',
+      },
+      { name: '@lynellf/tablekit-pivot/engine', importPath: '@lynellf/tablekit-pivot/engine' },
+      {
+        name: '@lynellf/tablekit-pivot/pivotTable',
+        importPath: '@lynellf/tablekit-pivot/pivotTable',
+      },
+      {
+        name: '@lynellf/tablekit-pivot/serialize',
+        importPath: '@lynellf/tablekit-pivot/serialize',
+      },
+    ],
   },
   {
     fixture: 'worker',
-    checks: [{ name: '@lynellf/tablekit-worker', importPath: '@lynellf/tablekit-worker' }],
+    checks: [
+      { name: '@lynellf/tablekit-worker', importPath: '@lynellf/tablekit-worker' },
+      {
+        name: '@lynellf/tablekit-worker/protocol',
+        importPath: '@lynellf/tablekit-worker/protocol',
+      },
+      { name: '@lynellf/tablekit-worker/server', importPath: '@lynellf/tablekit-worker/server' },
+    ],
   },
 ];
 
@@ -517,8 +551,8 @@ try {
   throw new Error(`check-public-surface failed:\n${stdout}\n${stderr}`);
 }
 
-// R6 fix: Summary now uses the actual pass/fail flags set during execution.
-// Docs drift is informational (non-blocking), but public-surface errors are fatal.
+// R6-DOC-EXIT-007 fix: Both docs drift AND public-surface errors are now fatal.
+// Previously docs drift was informational only, which allowed stale docs to pass the gate.
 
 // ─── Cleanup and summary ───────────────────────────────────────────────────────
 
@@ -528,9 +562,12 @@ console.log(`check-docs-version: ${docsResult.failed ? '✗ drift detected' : '�
 console.log(`check-public-surface: ${surfaceResult.failed ? '✗ failed' : '✓ passed'}`);
 cleanup();
 
-// R6 fix: Only exit successfully if public-surface passed (docs drift is informational)
+// R6-DOC-EXIT-007 fix: Fail on any check failure (docs drift or public-surface)
 if (surfaceResult.failed) {
   throw new Error('check-public-surface failed - public surface verification did not pass');
+}
+if (docsResult.failed) {
+  throw new Error('check-docs-version failed - docs drift detected');
 }
 
 console.log(

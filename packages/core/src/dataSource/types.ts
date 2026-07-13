@@ -238,13 +238,25 @@ export interface RowsQuery {
 export type DataSourceStatus = 'idle' | 'loading' | 'success' | 'error';
 
 /**
- * The state exposed by `useDataSource` (spec §5.2). `data` is non-null iff
- * `status === 'success'`; `error` is non-null iff `status === 'error'`.
+ * The state exposed by `useDataSource` (spec §5.2).
+ *
+ * R3-SWR-CONTRACT-003 fix: Document unconditional stale-while-revalidate (SWR).
+ * Prior data is ALWAYS retained through replacement loading and error states
+ * (the hook never clears data on a new request). This includes `data`,
+ * `totalRowCount`, `cursor`, and accepted `dataVersion` — all are preserved
+ * through replacement loading/error so the UI shows stale content with a loading
+ * indicator rather than a blank state.
+ *
+ * `data` is null only on: initial loading (no prior data yet), source removal,
+ * and error on initial load (no prior data to retain).
+ *
  * `refetch()` re-runs the current query with a fresh AbortController.
  */
 export interface DataSourceState<TRow> {
   status: DataSourceStatus;
+  /** R3-SWR: non-null during success AND during replacement loading/error. */
   data: TRow[] | null;
+  /** R3-SWR: retained through replacement loading/error. */
   totalRowCount?: number;
   error?: Error;
   refetch: () => void;
@@ -260,10 +272,21 @@ export interface DataSourceState<TRow> {
  * `RowsQuery` serialization.
  *
  * v2.0.0: Supports cursor-based pagination via the RowsResult interface.
+ * v2.0.0: Supports source-owned `dataVersion` token for mutable data identity.
+ *   When a source provides `dataVersion`, it takes precedence over the table's
+ *   configured token for request identity. The result token is accepted as
+ *   publication metadata and does not become the next outgoing query token.
  */
 export interface DataSource<TRow> {
   capabilities: DataSourceCapabilities;
   getRows(q: RowsQuery, ctx: { signal: AbortSignal }): MaybePromise<RowsResult<TRow>>;
+  /**
+   * R2-SOURCE-VERSION-001 fix: Optional source-owned data version token.
+   * When provided, this token is used for request identity (source token takes
+   * precedence over table token). The result's dataVersion is accepted as
+   * publication metadata only; it does not feed into the next outgoing token.
+   */
+  dataVersion?: string | number;
 }
 
 /**
