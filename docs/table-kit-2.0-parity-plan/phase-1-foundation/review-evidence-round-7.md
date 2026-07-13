@@ -1,6 +1,6 @@
 # Phase 1 Foundation — Review Evidence Round 17
 
-**Commit:** 39811c50c53b5f7c21c49c9e6ebc5de0e7c3f8a4 (HEAD)
+**Commit:** 690e6b0a6466e33003be37a9ef85f664b4f3022b (HEAD — includes code fixes + evidence update)
 **Date:** 2026-07-13
 **Reviewer:** implementer
 
@@ -230,7 +230,7 @@ Core `setOptions` is the sole column-ID pruning owner. React adapter does not in
 ### R7 — Re-Gate and Evidence Closeout
 
 **Evidence:**
-- Current commit SHA: `39811c50c53b5f7c21c49c9e6ebc5de0e7c3f8a4`
+- Current commit SHA: `690e6b0a6466e33003be37a9ef85f664b4f3022b`
 - Exact focused test counts: R1=106, R2=96, R3=46, R4=47, R5=61, all=719 passed, 1 skipped
 - `pnpm verify`: 75 test files, 719 passed, 1 skipped, 0 failed
 - `pnpm check:package-artifacts`: Phase 5 expanded to 14 subpaths, all pass; Phase 8 throws on docs drift; all 4 packages isolated, no escapes
@@ -257,7 +257,7 @@ Core `setOptions` is the sole column-ID pruning owner. React adapter does not in
 | R6 Packed boundary | PASS | Phase 5: 14 subpaths checked (core 8, react 2, pivot 5, worker 3); all compile/execute from isolated tarball |
 | R6 Docs drift | PASS | `check-package-artifacts.mjs` throws on docs drift (R6-DOC-EXIT-007 fix) |
 | R6 Version source | PASS | `inject-version.mjs` derives VERSION from root `package.json` during build |
-| R7 Evidence | PASS | 75 files, 719 passed, 1 skipped; current HEAD 39811c5; decision remains REQUEST-CHANGES |
+| R7 Evidence | PASS | 75 files, 719 passed, 1 skipped; current HEAD 690e6b0; decision remains REQUEST-CHANGES |
 
 ## Files Changed (Round 17 — addressing reviewer visit 6 blocking findings)
 
@@ -271,7 +271,7 @@ Core `setOptions` is the sole column-ID pruning owner. React adapter does not in
 8. `scripts/check-package-artifacts.mjs` — R6-SUBPATH-008 fix: Expanded to 14 subpaths; R6-DOC-EXIT-007 fix: throws on docs drift
 9. `scripts/inject-version.mjs` — R6-VERSION-SOURCE-009 fix: Derives VERSION from root package.json
 10. `package.json` — R6-VERSION-SOURCE-009 fix: Added `inject:version` script and prebuild step
-11. `docs/table-kit-2.0-parity-plan/phase-1-foundation/review-evidence-round-7.md` — R7 fix: Updated to Round 17 with correct HEAD SHA (39811c5) and test counts (719 passed, 1 skipped)
+11. `docs/table-kit-2.0-parity-plan/phase-1-foundation/review-evidence-round-7.md` — R7 fix: Updated to Round 17 with correct HEAD SHA (690e6b0) and test counts (719 passed, 1 skipped)
 
 ## Status
 
