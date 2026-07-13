@@ -66,23 +66,23 @@ export const createClientDataSource = <TRow>(
     validateModeConfiguration(syntheticOptions);
   }
 
-  // R2-SOURCE-VERSION-001 fix: Resolve the source dataVersion token.
-  // If getVersion is provided, derive the token from the data; otherwise use version.
-  // This ensures sources using {dataVersion: {getVersion: fn}} contribute a token.
-  let sourceToken: string | number | undefined;
-  if (opts.dataVersion !== undefined) {
-    if (opts.dataVersion.getVersion) {
-      sourceToken = opts.dataVersion.getVersion(rows);
-    } else {
-      sourceToken = opts.dataVersion.version;
+  // R2-R7 fix: Store getVersion function for dynamic resolution.
+  // If getVersion is provided, we call it on each getRows to support mutable data.
+  // Otherwise use static version if provided.
+  const versionFn = opts.dataVersion?.getVersion;
+  const staticVersion = opts.dataVersion?.version;
+
+  // R2-R7 fix: Resolve version dynamically on each getRows call.
+  // This ensures mutable data with getVersion gets fresh tokens on each query.
+  const resolveVersion = (): string | number | undefined => {
+    if (versionFn) {
+      return versionFn(rows);
     }
-  }
+    return staticVersion;
+  };
 
   return {
     capabilities,
-    // R2-SOURCE-VERSION-001 fix: Publish the resolved dataVersion token.
-    // This allows useDataSource to resolve source token first, table token second.
-    ...(sourceToken !== undefined ? { dataVersion: sourceToken } : {}),
     getRows: (
       q: RowsQuery,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -143,7 +143,17 @@ export const createClientDataSource = <TRow>(
         result = paginateRows({ rows: result, pagination: paginationState });
       }
 
-      return { rows: result, totalRowCount: opts.totalRowCount ?? rows.length };
+      // R2-R7 fix: Include resolved dataVersion in each result.
+      // This enables mutable-data SWR behavior: fresh version on each query.
+      const resolvedVersion = resolveVersion();
+      const baseResult: { rows: TRow[]; totalRowCount: number; dataVersion?: string | number } = {
+        rows: result,
+        totalRowCount: opts.totalRowCount ?? rows.length,
+      };
+      if (resolvedVersion !== undefined) {
+        baseResult.dataVersion = resolvedVersion;
+      }
+      return baseResult;
     },
   };
 };

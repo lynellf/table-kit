@@ -530,7 +530,7 @@ try {
   }
 }
 
-// R6 fix: Run check-public-surface against the workspace dist.
+// R6-R7 fix: Run check-public-surface against the isolated packages.
 // The script throws on real errors (missing exports, wrong versions, etc.).
 let surfaceResult = { pass: true, output: '', failed: false };
 try {
@@ -538,6 +538,10 @@ try {
     cwd: root,
     encoding: 'utf8',
     stdio: 'pipe',
+    // R6-R7 fix: Pass isolated prefix so check-public-surface verifies
+    // against isolated packages, not workspace dist.
+    // Note: packages are installed in installDir/{fixture}/node_modules/, so use installDir.
+    env: { ...process.env, ISOLATED_PREFIX: installDir },
   });
   surfaceResult.output = surfaceOutput;
   console.log('  ✓ check-public-surface: passed');

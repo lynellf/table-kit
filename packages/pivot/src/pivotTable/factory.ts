@@ -698,12 +698,22 @@ export const createPivotTable = <TRow>(
     // R4-IDENTITY-008 fix: Use reference comparison instead of deep equality.
     // Same reference = no change; different reference = changed (triggers recompute).
     const dataChanged = previousOptions.data !== next.data;
-    // R4 fix: Track dataVersion for mutable data patterns.
-    // When data reference is unchanged but dataVersion differs, trigger recompute.
-    const dataVersionChanged =
-      !dataChanged &&
-      previousOptions.data === next.data &&
-      previousOptions.dataVersion !== next.dataVersion;
+    // R4-R7 fix: Resolve dataVersion token for proper comparison.
+    // Compare resolved tokens, not object references, to support getVersion patterns.
+    const resolveDataVersion = (dv: unknown): string | number | undefined => {
+      if (!dv) return undefined;
+      const version = dv as {
+        version?: string | number;
+        getVersion?: (data: TRow[]) => string | number;
+      };
+      if (version.getVersion) {
+        return version.getVersion(next.data);
+      }
+      return version.version;
+    };
+    const prevVersion = resolveDataVersion(previousOptions.dataVersion);
+    const nextVersion = resolveDataVersion(next.dataVersion);
+    const dataVersionChanged = prevVersion !== nextVersion && !Object.is(prevVersion, nextVersion);
     const pivotChanged = !Object.is(previousState.pivot, nextState.pivot);
     const expandedChanged = !Object.is(previousState.expanded, nextState.expanded);
     const sortingChanged = !Object.is(previousState.pivotSorting, nextState.pivotSorting);

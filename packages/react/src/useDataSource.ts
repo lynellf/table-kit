@@ -484,11 +484,17 @@ export const useDataSource = <TRow>(
       oldController.abort();
     }
 
+    // R3-R7 fix: Capture source identity for stale-result guard.
+    // If the source prop changes after render but before effect cleanup, we need
+    // to detect that the result is from the wrong source.
+    const currentSourceToken = getSourceToken(sourceRef.current);
+
     // Create new in-flight entry
     const controller = new AbortController();
     const requestToken = Date.now(); // Simple unique token for this implementation
     inFlightRef.current = {
       key: queryKey,
+      sourceToken: currentSourceToken,
       controller,
       requestToken,
       status: 'pending',
@@ -511,12 +517,17 @@ export const useDataSource = <TRow>(
 
     // Hoist handlers so the catch (synchronous getRows throw) can reach them.
     const handleResult = (result: RowsResult<TRow>) => {
-      // R3 fix: Only process if this is still the latest request (token match)
-      if (controller.signal.aborted || inFlightRef.current?.requestToken !== requestToken) {
+      // R3-R7 fix: Guard against stale results from replaced sources.
+      // Only process if this is still the latest request AND source hasn't changed.
+      const isStale =
+        controller.signal.aborted ||
+        inFlightRef.current?.requestToken !== requestToken ||
+        inFlightRef.current?.sourceToken !== currentSourceToken;
+      if (isStale) {
         if (inFlightRef.current && inFlightRef.current.requestToken === requestToken) {
           inFlightRef.current.status = 'aborted';
         }
-        // R3 fix: Always reset processingRef when returning early, even if aborted.
+        // R3-R7 fix: Always reset processingRef when returning early, even if aborted.
         // Otherwise subsequent requests will be blocked by the processing guard.
         processingRef.current = false;
         return;
@@ -572,12 +583,17 @@ export const useDataSource = <TRow>(
     };
 
     const handleError = (err: unknown) => {
-      // R3 fix: Only process if this is still the latest request
-      if (controller.signal.aborted || inFlightRef.current?.requestToken !== requestToken) {
+      // R3-R7 fix: Guard against stale errors from replaced sources.
+      // Only process if this is still the latest request AND source hasn't changed.
+      const isStale =
+        controller.signal.aborted ||
+        inFlightRef.current?.requestToken !== requestToken ||
+        inFlightRef.current?.sourceToken !== currentSourceToken;
+      if (isStale) {
         if (inFlightRef.current && inFlightRef.current.requestToken === requestToken) {
           inFlightRef.current.status = 'aborted';
         }
-        // R3 fix: Always reset processingRef when returning early, even if aborted.
+        // R3-R7 fix: Always reset processingRef when returning early, even if aborted.
         // Otherwise subsequent requests will be blocked by the processing guard.
         processingRef.current = false;
         return;
@@ -710,9 +726,11 @@ export const useDataSource = <TRow>(
  * R3 fix: In-flight request entry.
  * Used for one-request-per-key guarantee including React Strict Mode effect replay.
  * A replay reattaches to the same entry rather than calling getRows again or aborting it.
+ * R3-R7 fix: Includes sourceToken to guard against stale results from replaced sources.
  */
 interface InFlightEntry<_TRow> {
   key: string;
+  sourceToken: string;
   controller: AbortController;
   requestToken: number;
   status: 'pending' | 'resolved' | 'rejected' | 'aborted';

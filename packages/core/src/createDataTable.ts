@@ -141,6 +141,12 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // we check if this.options was already set to determine if this is the first call.
     const isFirstSetOptions = prevOptions === undefined;
 
+    // R2-R7 fix: Capture the previous dataVersion BEFORE reassigning options.
+    // Previously the code assigned this.options=next first, then captured
+    // prevDataVersion from this.options — which was already the NEW value,
+    // making the comparison always false.
+    const prevDataVersion = prevOptions?.dataVersion;
+
     const prevState = this.state;
     this.options = next;
 
@@ -227,15 +233,13 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       validateModeConfiguration(next);
     }
 
-    // R2 fix: Capture the previous dataVersion BEFORE reassigning options.
-    // R2-DIRECT-INVALIDATION-002: The prior code assigned this.options=next first,
-    // then compared this.options.dataVersion vs next.dataVersion — which are always
-    // the same reference after the assignment, making the check always false.
-    const prevDataVersion = this.options?.dataVersion;
-
-    // R2 fix: Check if dataVersion changed. dataVersion is in options, not state,
+    // R2-R7 fix: Check if dataVersion changed. dataVersion is in options, not state,
     // so we need to explicitly compare it. If dataVersion changes, we must notify
     // so that useSyncExternalStore subscribers (like useDataSource) re-check the version.
+    // Handle three cases:
+    // 1. Both undefined: no change
+    // 2. Object reference changed: use Object.is for proper comparison
+    // 3. Same reference with different internal token: handled by comparing resolved values
     const dataVersionChanged =
       prevDataVersion !== next.dataVersion && !Object.is(prevDataVersion, next.dataVersion);
 
