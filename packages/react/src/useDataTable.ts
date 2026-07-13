@@ -99,13 +99,14 @@ export const useDataTable = <TRow>(
   // Create the instance once. The ref initializer runs only on mount.
   const ref = useRef<DataTableInstance<TRow> | null>(null);
   if (ref.current === null) {
-    // R5 fix: Create an announcer that wraps the channel so the table can use it.
-    // The channel ensures proper subscription lifecycle and instance isolation.
-    // Use the provided announcer if available, otherwise use the internal channel.
-    const announcerToUse = options.announcer ?? announcerChannelRef.current!;
+    // R5-R7-FIX: Always pass the channel to createDataTable, not the minimal
+    // announcer object. The channel is what ReactAnnouncer subscribes to, so
+    // passing the minimal object directly would bypass the live-region subscription.
+    // The channel wraps the minimal announcer (if any) internally and handles
+    // subscription lifecycle for both the table and ReactAnnouncer.
     ref.current = createDataTable<TRow>({
       ...options,
-      announcer: announcerToUse,
+      announcer: announcerChannelRef.current!,
     });
   }
   const table = ref.current;
@@ -139,10 +140,12 @@ export const useDataTable = <TRow>(
   // We always pass the announcer (consumer-provided or internal channel).
   const { announcer: _unusedAnnouncer, ...optionsWithoutAnnouncer } = options;
   useEffect(() => {
-    // Always include announcer: consumer-provided (if any) or internal channel
+    // R5-R7 fix: Always pass the channel to setOptions, not the minimal announcer.
+    // Previously this passed options.announcer ?? announcerChannelRef.current, which
+    // would overwrite the channel with a minimal announcer object after mount.
     table.setOptions({
       ...optionsWithoutAnnouncer,
-      announcer: options.announcer ?? announcerChannelRef.current!,
+      announcer: announcerChannelRef.current!,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, table]);

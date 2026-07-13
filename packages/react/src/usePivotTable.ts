@@ -78,8 +78,9 @@ export const usePivotTable = <TRow>(
 
   const ref = useRef<PivotTableInstance<TRow> | null>(null);
   if (ref.current === null) {
-    // R5 fix: Create an announcer that wraps the channel so the pivot can use it.
-    // The channel ensures proper subscription lifecycle and instance isolation.
+    // R5-R7-FIX: Always pass the channel to createPivotTable, not the minimal
+    // announcer object. The channel is what ReactAnnouncer subscribes to, so
+    // passing the minimal object directly would bypass the live-region subscription.
     ref.current = createPivotTable<TRow>({
       ...options,
       announcer: announcerChannelRef.current!,
@@ -98,6 +99,9 @@ export const usePivotTable = <TRow>(
   // so post-mount pivot messages would otherwise be lost from the live region.
   const { announcer: _unused, ...optionsWithoutAnnouncer } = options;
   useEffect(() => {
+    // R5-R7 fix: Always pass the channel to setOptions, not the minimal announcer.
+    // The channel is what ReactAnnouncer subscribes to, so passing the minimal
+    // announcer object would bypass the live-region subscription.
     pivot.setOptions({
       ...optionsWithoutAnnouncer,
       announcer: announcerChannelRef.current!,

@@ -295,6 +295,9 @@ export const useDataSource = <TRow>(
       // Clear cursor and reset query context
       prevQueryContextRef.current = null;
       publishedDataVersionRef.current = UNSET_DATA_VERSION;
+      // R3-R7-FIX: Reset cursor selection when source is removed.
+      // This ensures the source-removal state clears owned cursor state.
+      cursorSelectionRef.current = { cursor: null, direction: 'next' };
       // R3-MANUAL-CAPABILITY-OVERLAY fix: Clear the capability overlay on source removal.
       table.__applyCapabilityOverlay({
         manualSorting: false,

@@ -26,6 +26,8 @@ export type {
   ColumnResizeSession,
   ColumnSizingState,
 } from '@lynellf/tablekit-core';
+// Re-export DataVersion for pivot package consumers
+export type { DataVersion } from '@lynellf/tablekit-core/dataSource';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Callback types (Phase 1 F0.3)
@@ -490,13 +492,14 @@ export interface PivotTableOptions<TRow = unknown> {
   /** getRowId for the source dataset. Default: index-based dev fallback (warning in M4). */
   getRowId?: (row: TRow, index: number) => string;
   /**
-   * R4 fix: Data version token for mutable data identity.
+   * R4-R7 fix: Data version token for mutable data identity.
    * When the data array is mutated in-place (same reference), consumers can
    * increment/publish a new version token to signal that the data changed.
    * This triggers recomputation even when the data reference is unchanged.
-   * Comparison is reference-based for the token itself (string/number).
+   * Supports both static version token and getVersion() function escape hatch
+   * to match the shared DataVersion<TRow> contract across core/client/hook boundaries.
    */
-  dataVersion?: string | number;
+  dataVersion?: import('@lynellf/tablekit-core/dataSource').DataVersion<TRow>;
   /**
    * M6 phase 2: how Tab behaves inside the pivot grid.
    * - 'exit' (default, APG-conformant): Tab moves focus out of the grid.

@@ -66,13 +66,23 @@ export const createClientDataSource = <TRow>(
     validateModeConfiguration(syntheticOptions);
   }
 
+  // R2-SOURCE-VERSION-001 fix: Resolve the source dataVersion token.
+  // If getVersion is provided, derive the token from the data; otherwise use version.
+  // This ensures sources using {dataVersion: {getVersion: fn}} contribute a token.
+  let sourceToken: string | number | undefined;
+  if (opts.dataVersion !== undefined) {
+    if (opts.dataVersion.getVersion) {
+      sourceToken = opts.dataVersion.getVersion(rows);
+    } else {
+      sourceToken = opts.dataVersion.version;
+    }
+  }
+
   return {
     capabilities,
-    // R2-SOURCE-VERSION-001 fix: Publish the configured dataVersion on the returned source.
+    // R2-SOURCE-VERSION-001 fix: Publish the resolved dataVersion token.
     // This allows useDataSource to resolve source token first, table token second.
-    // Use opts.dataVersion?.version since DataVersion<TRow> is an interface { version?, getVersion? }
-    // and DataSource.dataVersion is string | number.
-    ...(opts.dataVersion?.version !== undefined ? { dataVersion: opts.dataVersion.version } : {}),
+    ...(sourceToken !== undefined ? { dataVersion: sourceToken } : {}),
     getRows: (
       q: RowsQuery,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars

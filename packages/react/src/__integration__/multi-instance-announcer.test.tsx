@@ -430,4 +430,117 @@ describe('multi-instance announcer isolation', () => {
       expect(announcers.length).toBe(3);
     });
   });
+
+  describe('Minimal announce-only announcer compatibility', () => {
+    it('R5-R7: minimal { announce } object reaches live region via channel', async () => {
+      // R5-R7 fix: When consumer passes a minimal announcer { announce } without subscribe,
+      // the hook should wrap it in a channel and pass the channel to both the table
+      // and ReactAnnouncer. This test verifies the live region receives the message.
+      const receivedMessages: string[] = [];
+      // Minimal announcer: only has announce, no subscribe
+      const minimalAnnouncer = {
+        announce: (message: string) => {
+          receivedMessages.push(message);
+        },
+      };
+
+      function TableWithMinimalAnnouncer() {
+        const table = useDataTable({
+          data: simpleData,
+          columns: simpleColumns,
+          getRowId: (row) => row.id,
+          announcer: minimalAnnouncer, // R5-R7 fix: minimal announcer
+        });
+
+        React.useEffect(() => {
+          // Announce a message after mount
+          table.table.announce('Minimal announcer test message');
+          // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, []);
+
+        return (
+          <div>
+            <table {...table.table.getGridProps()}>
+              <tbody>
+                {table.table.getRowModel().map((row) => (
+                  <tr key={row.id}>
+                    <td>{(row.original as Person).name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <table.Announcer />
+          </div>
+        );
+      }
+
+      render(<TableWithMinimalAnnouncer />);
+
+      // The minimal announcer should have received the message
+      await waitFor(() => {
+        expect(receivedMessages).toContain('Minimal announcer test message');
+      });
+
+      // The live region (from ReactAnnouncer via channel) should also receive the message
+      await waitFor(() => {
+        const liveRegions = screen.queryAllByRole('status');
+        expect(liveRegions.length).toBe(1);
+        expect(liveRegions[0].textContent).toBe('Minimal announcer test message');
+      });
+    });
+
+    it('R5-R7: channel is passed to createDataTable at mount time', async () => {
+      // This test verifies the fix: the channel must be passed to createDataTable
+      // at mount time, not just in the update effect. This ensures the table's
+      // internal announce function uses the channel from the start.
+      const announceCalls: string[] = [];
+      const minimalAnnouncer = {
+        announce: (msg: string) => announceCalls.push(msg),
+      };
+
+      function TableWithChannelMount() {
+        const table = useDataTable({
+          data: simpleData,
+          columns: simpleColumns,
+          getRowId: (row) => row.id,
+          announcer: minimalAnnouncer,
+        });
+
+        // Announce after mount (in effect)
+        React.useEffect(() => {
+          table.table.announce('Message after mount');
+          // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, []);
+
+        return (
+          <div>
+            <table {...table.table.getGridProps()}>
+              <tbody>
+                {table.table.getRowModel().map((row) => (
+                  <tr key={row.id}>
+                    <td>{(row.original as Person).name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <table.Announcer />
+          </div>
+        );
+      }
+
+      render(<TableWithChannelMount />);
+
+      // The minimal announcer should have received the message via the channel
+      await waitFor(() => {
+        expect(announceCalls).toContain('Message after mount');
+      });
+
+      // The live region should also receive the message
+      await waitFor(() => {
+        const liveRegions = screen.queryAllByRole('status');
+        expect(liveRegions.length).toBe(1);
+        expect(liveRegions[0].textContent).toBe('Message after mount');
+      });
+    });
+  });
 });
