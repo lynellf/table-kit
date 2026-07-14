@@ -148,9 +148,6 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // we check if this.options was already set to determine if this is the first call.
     const isFirstSetOptions = prevOptions === undefined;
 
-    // R2 fix: We now compare resolved tokens instead of option objects.
-    // (prevDataVersion capture removed - see resolvedPrevToken below)
-
     const prevState = this.state;
     this.options = next;
 
@@ -243,18 +240,10 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // R2 fix: Compare resolved tokens instead of option objects.
     // This handles the case where the same getVersion function returns the same value
     // (should NOT notify) versus when the resolved token changes (should notify).
-    const prevData = prevOptions?.data ?? [];
     const nextData = next.data ?? [];
 
-    // Resolve the previous token (if dataVersion was configured)
-    const resolvedPrevToken = (() => {
-      if (!prevOptions?.dataVersion) return undefined;
-      const dv = prevOptions.dataVersion;
-      if (dv.getVersion) return dv.getVersion(prevData as TRow[]);
-      return dv.version;
-    })();
-
-    // Resolve the new token (if dataVersion is configured)
+    // R2 fix: Resolve the new token (if dataVersion is configured).
+    // This is what the consumer wants to publish as the current version.
     const resolvedNextToken = (() => {
       if (!next.dataVersion) return undefined;
       const dv = next.dataVersion;
@@ -262,18 +251,35 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       return dv.version;
     })();
 
-    // R2 fix: Compare resolved tokens. The resolved token is "unchanged" when:
-    // - Both tokens are undefined (no dataVersion configured)
-    // - Both tokens are the same value (Object.is for strict equality)
-    // The resolved token "changed" when:
-    // - One is defined and the other is undefined
-    // - Both are defined but have different values
-    const dataVersionChanged = !Object.is(resolvedPrevToken, resolvedNextToken);
+    // R2 fix: Compare against the PREVIOUSLY PUBLISHED token, not the freshly-
+    // resolved previous token.  This is the core of the mutable-policy fix: if
+    // the same policy object is mutated in place (policy.version = 'v2'), the
+    // resolved token for the next call differs from what was last published,
+    // so we correctly detect the transition and notify listeners.
+    //
+    // Use _dataVersionConfigured to distinguish "was never configured" from
+    // "was configured and then removed".  When dataVersion is not currently
+    // configured BUT was configured previously, removing it is a real UNSET
+    // transition and must notify.
+    //
+    // When dataVersion is currently configured, compare _publishedDataVersion
+    // (which may be the sentinel, a prior token, or undefined) against the
+    // newly resolved token.  Object.is handles all three cases correctly.
+    const dataVersionChanged = next.dataVersion
+      ? !Object.is(this._publishedDataVersion, resolvedNextToken)
+      : this._dataVersionConfigured && !Object.is(this._publishedDataVersion, undefined);
 
-    // Update the published token tracker after resolving the change
-    if (dataVersionChanged) {
+    // Update the published token tracker when dataVersion is configured
+    if (next.dataVersion) {
       this._publishedDataVersion = resolvedNextToken;
+      this._dataVersionConfigured = true;
     }
+    // Note: we do NOT reset _dataVersionConfigured to false when dataVersion
+    // is removed — the UNSET transition (configured → unconfigured) is a
+    // real change that must notify on the removal call.  _dataVersionConfigured
+    // is a one-way flag: once true, it stays true for the table lifetime.
+    // _publishedDataVersion is updated to undefined on the removal call so that
+    // subsequent calls with no dataVersion are no-ops.
 
     // Notify listeners:
     // - Always notify on first setOptions call (to initialize useSyncExternalStore)
@@ -300,15 +306,23 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     return this.dataSourceState;
   }
 
-  /** @internal Previous data version for change detection. */
-  private _prevDataVersion?: string | number;
-
   /**
    * R2 fix: Tracks the previously published resolved dataVersion token.
    * Uses DATA_VERSION_UNSET sentinel to distinguish "never published" from
    * "published as undefined".
+   *
+   * Initialized to DATA_VERSION_UNSET so that the first setOptions call
+   * registers as a transition when dataVersion IS configured.
    */
-  private _publishedDataVersion: string | number | undefined | DataVersionUnset = undefined;
+  private _publishedDataVersion: string | number | undefined | DataVersionUnset =
+    DATA_VERSION_UNSET;
+
+  /**
+   * R2 fix: Tracks whether dataVersion was ever configured on the table.
+   * Distinguishes "dataVersion was configured and then removed" (should notify
+   * on removal) from "dataVersion was never configured" (no-op on first call).
+   */
+  private _dataVersionConfigured = false;
 
   /** @internal Write the data source state. Used by the React hook. */
   __setDataSourceState(state: DataSourceState<TRow>): void {
@@ -319,19 +333,30 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // For mutable data patterns (same reference, mutated content), check version.
     const dataChanged = prev.data !== state.data;
 
-    // R2 fix: If data reference is unchanged but dataVersion is configured,
-    // check if the version changed to detect mutable data updates.
+    // R2 fix: Compare the resolved token against the previously published token
+    // (using _publishedDataVersion, which carries the DATA_VERSION_UNSET sentinel
+    // for the "never published" case).  This mirrors the setOptions comparison so
+    // that mutable-data updates are detected even when the same policy reference
+    // is held across calls.
+    //
+    // The version check runs INDEPENDENTLY of data reference changes.  Even when
+    // a new data reference arrives, the version comparison must be consulted so
+    // that the same-version result is correctly skipped (no notify).  This is
+    // critical for SWR patterns where a remote result with the same token
+    // arrives but the data array is a new reference (fresh fetch, same version).
+    //
+    // Always update _publishedDataVersion to newVersion (even when undefined) so
+    // that subsequent calls with the same resolved token are correctly detected
+    // as no-ops.  This ensures Object.is correctly returns true when the same
+    // token is published twice.
     let versionChanged = false;
-    if (!dataChanged && prev.data === state.data && this.options.dataVersion) {
-      const prevVersion = this._prevDataVersion ?? this.getDataVersion();
-      // Compute version from the new data
+    if (this.options.dataVersion) {
       const dv = this.options.dataVersion;
       const newVersion = dv.getVersion ? dv.getVersion(state.data ?? []) : dv.version;
-      versionChanged = prevVersion !== newVersion;
-      // Only track defined versions
-      if (newVersion !== undefined) {
-        this._prevDataVersion = newVersion;
-      }
+      // Compare against _publishedDataVersion (which may be the sentinel or a prior token)
+      versionChanged = !Object.is(this._publishedDataVersion, newVersion);
+      // Always update so subsequent same-token calls are correctly no-ops
+      this._publishedDataVersion = newVersion;
     }
 
     // R2 fix: Also compare incoming state.dataVersion and cursor transitions.

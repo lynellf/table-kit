@@ -905,6 +905,62 @@ describe('createDataTable', () => {
       expect(listener).toHaveBeenCalledTimes(1);
     });
 
+    it('R2 regression: notifies when same policy reference is mutated in-place (A -> B -> UNSET)', () => {
+      // This is the exact scenario the reviewer flagged: the SAME policy object is
+      // reused across setOptions calls and its .version field is mutated in place.
+      // Before the fix, this test would fail because resolvedPrevToken was compared
+      // against resolvedNextToken (both read from the same policy before it was
+      // mutated), not against _publishedDataVersion.
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Create ONE policy reference — hold it for the entire test
+      const policy = { version: 'v1' as string | number };
+
+      // A: Publish with token 'v1'
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // A -> B: Mutate the policy in place (same reference, different resolved value)
+      policy.version = 'v2';
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // B -> UNSET: Mutate the policy to undefined (same reference, removes the token)
+      // @ts-expect-error - intentional mutation to undefined for UNSET test
+      delete policy.version;
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // UNSET -> A: Restore the token on the same reference
+      policy.version = 'v1';
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('R2 regression: same reference + same resolved token is a no-op (no notify)', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Create ONE policy reference with a static version
+      const policy = { version: 'v1' as string | number };
+
+      // A: Publish
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // Same reference + same resolved token — must NOT notify
+      // (The policy object reference is the same, and .version was not mutated)
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).not.toHaveBeenCalled();
+    });
+
     it('notifies exactly once per real token transition', () => {
       const table = createDataTable(baseOptions());
       const listener = vi.fn();
