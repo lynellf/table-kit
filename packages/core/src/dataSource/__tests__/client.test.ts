@@ -236,4 +236,97 @@ describe('createClientDataSource', () => {
       expect(warn).toHaveBeenCalled(); // Mixed mode still warns by default
     });
   });
+
+  // ─── R2 Source DataVersion Boundary Tests ───────────────────────────────────
+
+  describe('R2: dataVersion in client source', () => {
+    it('R2: returns dataVersion in result when static version is provided', () => {
+      const ds = createClientDataSource(rows, columns, {
+        dataVersion: { version: 'static-123' },
+      });
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBe('static-123');
+    });
+
+    it('R2: returns dataVersion in result when getVersion function is provided', () => {
+      const getVersion = vi.fn(() => 'dynamic-456');
+      const ds = createClientDataSource(rows, columns, {
+        dataVersion: { getVersion },
+      });
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBe('dynamic-456');
+      expect(getVersion).toHaveBeenCalledWith(rows);
+    });
+
+    it('R2: getVersion is called on each getRows call (re-evaluation)', () => {
+      const getVersion = vi.fn(() => 'dynamic-456');
+      const ds = createClientDataSource(rows, columns, {
+        dataVersion: { getVersion },
+      });
+      const signal = new AbortController().signal;
+
+      // First call
+      ds.getRows({ sorting: [], filters: [] }, { signal });
+      expect(getVersion).toHaveBeenCalledTimes(1);
+
+      // Second call
+      ds.getRows({ sorting: [], filters: [] }, { signal });
+      expect(getVersion).toHaveBeenCalledTimes(2);
+
+      // Third call
+      ds.getRows({ sorting: [], filters: [] }, { signal });
+      expect(getVersion).toHaveBeenCalledTimes(3);
+    });
+
+    it('R2: getVersion receives current rows array for mutable data patterns', () => {
+      const mutableRows: Row[] = [{ id: '1', name: 'Alice', region: 'West', sales: 100 }];
+      const getVersion = vi.fn((data: Row[]) => `v${data.length}`);
+      const ds = createClientDataSource(mutableRows, columns, {
+        dataVersion: { getVersion },
+      });
+
+      ds.getRows({ sorting: [], filters: [] }, { signal: new AbortController().signal });
+      expect(getVersion).toHaveBeenLastCalledWith(mutableRows);
+    });
+
+    it('R2: does not include dataVersion in result when neither version nor getVersion is provided', () => {
+      const ds = createClientDataSource(rows, columns);
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBeUndefined();
+    });
+
+    it('R2: getVersion takes precedence over static version when both are provided', () => {
+      const getVersion = vi.fn(() => 'function-version');
+      const ds = createClientDataSource(rows, columns, {
+        dataVersion: { version: 'static-version', getVersion },
+      });
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBe('function-version');
+      expect(getVersion).toHaveBeenCalled();
+    });
+
+    it('R2: dataVersion is returned even when paginate=server (server mode)', () => {
+      const ds = createClientDataSource(rows, columns, {
+        capabilities: { paginate: 'server' },
+        dataVersion: { version: 42 },
+      });
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBe(42);
+    });
+  });
 });
