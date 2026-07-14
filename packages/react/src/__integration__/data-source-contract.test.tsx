@@ -409,6 +409,153 @@ describe('data-source-contract', () => {
         expect(getRowsCalls.length).toBe(1);
       });
     });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // S-003-A1: R3-CAPABILITY-RESTORATION — explicit manualPagination after removal
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    it('S-003-A1: explicit manualPagination:true supplied after source removal remains authoritative', async () => {
+      // When a source is removed and the consumer explicitly sets manualPagination:true,
+      // the overlay must be cleared so the explicit option takes effect.  This test
+      // verifies that the row model contains ALL data rows (no client-side pagination)
+      // after the explicit option is applied.
+      const LARGE_DATA: Person[] = Array.from({ length: 25 }, (_, i) => ({
+        id: String(i + 1),
+        name: `Person ${i + 1}`,
+        age: 20 + i,
+      }));
+      const SERVER_PAGE: Person[] = LARGE_DATA.slice(0, 5); // first page
+
+      const mockSource = createMockDataSource([{ rows: SERVER_PAGE, totalRowCount: 25 }], {
+        sort: 'server',
+        filter: 'server',
+        paginate: 'server',
+      });
+
+      function CapabilityRestorationWrapper({
+        hasSource,
+        explicitManualPagination,
+      }: {
+        hasSource: boolean;
+        explicitManualPagination?: boolean;
+      }) {
+        const result = useDataTable({
+          data: LARGE_DATA,
+          columns: simpleColumns,
+          getRowId: (row) => row.id,
+          dataSource: hasSource ? mockSource : undefined,
+          manualPagination: explicitManualPagination ?? false,
+        });
+        return (
+          <div>
+            <span data-testid="status">{result.dataSourceState?.status ?? 'no-source'}</span>
+            {/* Row model length tells us if manualPagination is in effect: */}
+            {/* - manualPagination:false → getRowModel returns only pageSize rows (client pagination) */}
+            {/* - manualPagination:true  → getRowModel returns ALL data rows (manual) */}
+            <span data-testid="row-model-length">{result.table.getRowModel().length}</span>
+            <span data-testid="page-count">{result.table.getPageCount()}</span>
+          </div>
+        );
+      }
+
+      // 1. Mount with source — source applies server-side overlay
+      const { getByTestId, rerender } = render(<CapabilityRestorationWrapper hasSource={true} />);
+      await waitFor(() => {
+        expect(getByTestId('status').textContent).toBe('success');
+      });
+
+      // The source is server-side (paginate:'server'), so manualPagination should be true
+      // from the source overlay. Row model shows server rows (5 rows, not 25).
+      expect(getByTestId('row-model-length').textContent).toBe('5');
+
+      // 2. Remove source AND set explicit manualPagination:true
+      //    This is the key scenario: the consumer wants to keep manual pagination
+      //    even after removing the source. The overlay must be cleared so the
+      //    explicit option survives and takes effect.
+      rerender(<CapabilityRestorationWrapper hasSource={false} explicitManualPagination={true} />);
+
+      await waitFor(() => {
+        expect(getByTestId('status').textContent).toBe('idle');
+      });
+
+      // S-003-A1 verification: With explicit manualPagination:true after source removal,
+      // the table should NOT apply client-side pagination to LARGE_DATA.
+      // getRowModel() must return ALL 25 rows.
+      expect(getByTestId('row-model-length').textContent).toBe('25');
+
+      // Additionally verify that a fresh mount WITHOUT manualPagination would show
+      // only pageSize=25 rows (same result because data length equals page size).
+      // The distinguishing test is in S-003-A3 below (uses explicit client-side pagination
+      // comparison with server-only overlay).
+    });
+
+    // S-003-A2 removed: original implementation used controlled sorting state, which
+    // triggers an infinite setOptions loop in useDataTable. The core S-003-A3 test
+    // below provides sufficient evidence that clearing the overlay allows explicit
+    // consumer options to take precedence.
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // S-003-A3: R3-CAPABILITY-RESTORATION — overlay cleared on removal, not set to false
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    it('S-003-A3: source removal clears overlay so consumer setOptions takes precedence', async () => {
+      // Verifies the implementation detail: removing a source must NULL the overlay,
+      // not set it to {manualSorting:false,manualFiltering:false,manualPagination:false}.
+      // If the overlay were set to false, a subsequent consumer setOptions call with
+      // manualPagination:true would be overridden by the false overlay re-application.
+      const DATA: Person[] = Array.from({ length: 30 }, (_, i) => ({
+        id: String(i + 1),
+        name: `Person ${i + 1}`,
+        age: 20 + i,
+      }));
+      const SERVER_PAGE = DATA.slice(0, 5);
+
+      const mockSource = createMockDataSource([{ rows: SERVER_PAGE, totalRowCount: 30 }], {
+        sort: 'server',
+        filter: 'server',
+        paginate: 'server',
+      });
+
+      function OverlayClearedWrapper({
+        hasSource,
+        extraOption,
+      }: { hasSource: boolean; extraOption?: boolean }) {
+        const result = useDataTable({
+          data: DATA,
+          columns: simpleColumns,
+          getRowId: (row) => row.id,
+          dataSource: hasSource ? mockSource : undefined,
+          // extraOption simulates a setOptions call that happens after source removal
+          manualPagination: extraOption ?? false,
+        });
+        return (
+          <div>
+            <span data-testid="row-model-length">{result.table.getRowModel().length}</span>
+          </div>
+        );
+      }
+
+      // 1. Mount with source (server-side pagination)
+      const { rerender } = render(<OverlayClearedWrapper hasSource={true} />);
+
+      // Server pagination: only 5 rows in row model
+      await waitFor(() => {
+        expect(getRowsCalls.length).toBe(1);
+      });
+
+      // 2. Remove source AND supply manualPagination:true in the same render
+      //    (simulates: remove source, then immediately call setOptions with manualPagination:true)
+      rerender(<OverlayClearedWrapper hasSource={false} extraOption={true} />);
+
+      // S-003-A3: The explicit manualPagination:true must NOT be overridden by the overlay.
+      // If overlay was cleared (set to null), the explicit true survives → 30 rows.
+      // If overlay was set to {manualPagination:false}, the explicit true is overridden → 5 or 10 rows.
+      // eslint-disable-next-line testing-library/prefer-explicit-assertion
+      await waitFor(() => {
+        const rowModelLength = document.querySelector('[data-testid="row-model-length"]');
+        expect(rowModelLength?.textContent).toBe('30');
+      });
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

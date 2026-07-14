@@ -414,11 +414,9 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     manualPagination: boolean;
   } | null = null;
 
-  __applyCapabilityOverlay(overlay: {
-    manualSorting: boolean;
-    manualFiltering: boolean;
-    manualPagination: boolean;
-  }): void {
+  __applyCapabilityOverlay(
+    overlay: { manualSorting: boolean; manualFiltering: boolean; manualPagination: boolean } | null,
+  ): void {
     this._capabilityOverlay = overlay;
     this._applyOverlayToOptions();
   }

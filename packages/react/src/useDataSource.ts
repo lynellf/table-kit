@@ -78,11 +78,9 @@ type DataTableInstanceWithSeams<TRow> = DataTableInstance<TRow> & {
   __getDataSourceState(): DataSourceState<TRow>;
   __setDataSourceState(state: DataSourceState<TRow>): void;
   /** R3-MANUAL-CAPABILITY-OVERLAY fix: Apply the stable capability overlay. */
-  __applyCapabilityOverlay(overlay: {
-    manualSorting: boolean;
-    manualFiltering: boolean;
-    manualPagination: boolean;
-  }): void;
+  __applyCapabilityOverlay(
+    overlay: { manualSorting: boolean; manualFiltering: boolean; manualPagination: boolean } | null,
+  ): void;
   // R2 fix: Accept cursor selection and dataVersion for cursor pagination.
   __buildRowsQuery(
     capabilities: DataSourceCapabilities,
@@ -298,12 +296,11 @@ export const useDataSource = <TRow>(
       // R3-R7-FIX: Reset cursor selection when source is removed.
       // This ensures the source-removal state clears owned cursor state.
       cursorSelectionRef.current = { cursor: null, direction: 'next' };
-      // R3-MANUAL-CAPABILITY-OVERLAY fix: Clear the capability overlay on source removal.
-      table.__applyCapabilityOverlay({
-        manualSorting: false,
-        manualFiltering: false,
-        manualPagination: false,
-      });
+      // R3-CAPABILITY-RESTORATION fix: Clear the capability overlay on source removal.
+      // Setting the overlay to null allows the consumer's explicit manualPagination/
+      // manualSorting/manualFiltering options to remain authoritative after source removal.
+      // See Slice 3 (R3 capability restoration) acceptance criteria.
+      table.__applyCapabilityOverlay(null);
       // Set idle state with null data (no prior data retained for null source)
       table.__setDataSourceState({
         status: 'idle',

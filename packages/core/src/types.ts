@@ -443,11 +443,9 @@ export interface DataTableInstance<TRow> {
   /** @internal Prune invalid column IDs from state slices when columns change. */
   __pruneColumnIds(validColumnIds: Set<string>): void;
   /** @internal R3-MANUAL-CAPABILITY-OVERLAY: Apply data-source capability flags. */
-  __applyCapabilityOverlay(overlay: {
-    manualSorting: boolean;
-    manualFiltering: boolean;
-    manualPagination: boolean;
-  }): void;
+  __applyCapabilityOverlay(
+    overlay: { manualSorting: boolean; manualFiltering: boolean; manualPagination: boolean } | null,
+  ): void;
 
   // ─── Data identity (v2.0.0) ─────────────────────────────────────────────────
   /**
