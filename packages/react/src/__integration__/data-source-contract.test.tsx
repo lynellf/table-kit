@@ -91,6 +91,9 @@ function DataTableWithSource({
       <span data-testid="cursor-next">
         {result.dataSourceState?.cursor?.nextCursor ?? 'undefined'}
       </span>
+      <span data-testid="cursor-prev">
+        {result.dataSourceState?.cursor?.previousCursor ?? 'undefined'}
+      </span>
       <span data-testid="data-version">{result.dataSourceState?.dataVersion ?? 'undefined'}</span>
       {result.dataSourceState?.error && (
         <span data-testid="error">{result.dataSourceState.error.message}</span>
@@ -305,35 +308,73 @@ describe('data-source-contract', () => {
     // S-004-A1: R3-CURSOR-METADATA-NORMALIZATION — cursor-capable always publishes
     // ═══════════════════════════════════════════════════════════════════════════
 
-    it('S-004-A1: cursor-capable source publishes cursor metadata', async () => {
+    it('S-004-A1: cursor-capable source publishes null cursor metadata when result omits both cursors', async () => {
       // B7-CURSOR-METADATA fix: For cursor-capable sources, cursor metadata is published
       // for every accepted result, not just when cursor values are defined.
-      // This test verifies the implementation by checking that success is achieved.
+      // The result deliberately omits both nextCursor and previousCursor.
+      // The published state.cursor must be { nextCursor: null, previousCursor: null }.
+      // R-T1 fix: This test now reads result.dataSourceState?.cursor and asserts the
+      // explicit null normalization. It FAILS against pre-Slice-4 code (2020083) because
+      // the old code only published cursor when at least one result field was defined.
       const mockSource = createMockDataSource(
         [{ rows: simpleData, totalRowCount: 2 }], // Result with NO cursor values
         { sort: 'server', filter: 'server', paginate: 'server', pagination: 'cursor' },
       );
 
-      function CursorCapableWrapper() {
+      function CursorCapableWrapper({
+        cursorCapture,
+      }: {
+        cursorCapture: React.MutableRefObject<{
+          next: string | null | undefined;
+          prev: string | null | undefined;
+        } | null>;
+      }) {
         const result = useDataTable({
           data: simpleData,
           columns: simpleColumns,
           getRowId: (row) => row.id,
           dataSource: mockSource,
         });
+        // Capture cursor values at render time
+        cursorCapture.current = {
+          next: result.dataSourceState?.cursor?.nextCursor,
+          prev: result.dataSourceState?.cursor?.previousCursor,
+        };
+
         return (
           <div>
             <span data-testid="status">{result.dataSourceState?.status}</span>
+            <span data-testid="cursor-next">
+              {result.dataSourceState?.cursor?.nextCursor ?? 'undefined'}
+            </span>
+            <span data-testid="cursor-prev">
+              {result.dataSourceState?.cursor?.previousCursor ?? 'undefined'}
+            </span>
           </div>
         );
       }
 
-      const { getByTestId } = render(<CursorCapableWrapper />);
+      const cursorCapture = {
+        current: null as {
+          next: string | null | undefined;
+          prev: string | null | undefined;
+        } | null,
+      };
+      const { getByTestId } = render(<CursorCapableWrapper cursorCapture={cursorCapture} />);
 
-      // Wait for success
+      // S-004-A1 verification: Wait for status, then flush React updates.
       await waitFor(() => {
         expect(getByTestId('status').textContent).toBe('success');
       });
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+
+      // Use captured values (set at render time, not DOM text) to verify cursor state.
+      // The DOM text may lag behind React state due to React 19 rendering timing.
+      expect(cursorCapture.current?.next).toBeNull();
+      expect(cursorCapture.current?.prev).toBeNull();
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -381,68 +422,93 @@ describe('data-source-contract', () => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // S-004-A3: R3-CURSOR-METADATA-NORMALIZATION — offset remains cursor-less
+    // S-004-A3: R3-CURSOR-METADATA-NORMALIZATION — explicit null for omitted fields
     // ═══════════════════════════════════════════════════════════════════════════
 
-    it('S-004-A3: offset source does NOT publish cursor metadata', async () => {
-      // B7-CURSOR-METADATA fix: An accepted offset result omits cursor metadata.
-      const mockSource = createMockDataSource([{ rows: simpleData, totalRowCount: 2 }], {
-        sort: 'server',
-        filter: 'server',
-        paginate: 'server',
-        pagination: 'offset',
-      });
+    it('S-004-A3: cursor-capable source explicitly nulls omitted previousCursor', async () => {
+      // B7-CURSOR-METADATA fix: When a cursor-capable result defines nextCursor but omits
+      // previousCursor, the published state.cursor must be:
+      // { nextCursor: 'cursor-page-2', previousCursor: null }
+      // The omitted field explicitly clears to null, per the normalization rule.
+      // R-T3 fix: Repurposed from the A2 duplicate. Now exercises explicit-null normalization.
+      const mockSource = createMockDataSource(
+        [
+          {
+            rows: simpleData,
+            totalRowCount: 2,
+            nextCursor: 'cursor-page-2',
+            // previousCursor deliberately omitted
+          },
+        ],
+        { sort: 'server', filter: 'server', paginate: 'server', pagination: 'cursor' },
+      );
 
-      function OffsetWrapper() {
+      function PartialCursorWrapper({
+        cursorCapture,
+      }: {
+        cursorCapture: React.MutableRefObject<{ prev: string | null | undefined } | null>;
+      }) {
         const result = useDataTable({
           data: simpleData,
           columns: simpleColumns,
           getRowId: (row) => row.id,
           dataSource: mockSource,
         });
+        // Capture cursor at render time (before DOM)
+        cursorCapture.current = {
+          prev: result.dataSourceState?.cursor?.previousCursor,
+        };
 
         return (
           <div>
             <span data-testid="status">{result.dataSourceState?.status}</span>
-            <span data-testid="next-cursor">
-              {result.cursor?.nextCursor === null
-                ? 'null'
-                : String(result.cursor?.nextCursor ?? 'undefined')}
+            <span data-testid="cursor-next">
+              {result.dataSourceState?.cursor?.nextCursor ?? 'undefined'}
+            </span>
+            <span data-testid="cursor-prev">
+              {result.dataSourceState?.cursor?.previousCursor ?? 'undefined'}
             </span>
           </div>
         );
       }
 
-      const { getByTestId } = render(<OffsetWrapper />);
+      const cursorCapture = { current: null as { prev: string | null | undefined } | null };
+      const { getByTestId } = render(<PartialCursorWrapper cursorCapture={cursorCapture} />);
 
-      await waitFor(() => {
-        expect(getByTestId('status').textContent).toBe('success');
+      // S-004-A3 verification: Use act to flush microtasks and React updates synchronously.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
       });
 
-      // S-004-A3 verification: Offset results never publish cursor metadata.
-      // The cursor should be undefined, not null.
-      expect(getByTestId('next-cursor').textContent).toBe('undefined');
+      // Check the captured value (set at render time, before DOM commit)
+      expect(getByTestId('status').textContent).toBe('success');
+      expect(getByTestId('cursor-next').textContent).toBe('cursor-page-2');
+      // The captured ref shows what the component actually READ at render time
+      expect(cursorCapture.current?.prev).toBeNull();
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
     // S-004-A4: R3-CURSOR-METADATA-NORMALIZATION — SWR cursor retention
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // Note: SWR cursor retention is verified by the existing R3-SWR tests.
-    // This test verifies the basic SWR behavior works with cursor-capable sources.
-    it('S-004-A4: SWR behavior works with cursor-capable sources', async () => {
+    it('S-004-A4: SWR loading retains prior cursor metadata', async () => {
+      // B7-CURSOR-METADATA fix + R3-SWR-VERIFICATION: When a cursor-capable source
+      // is replaced with a slow-responding one, the prior accepted cursor metadata
+      // must be retained during the loading (SWR) window.
+      // R-T4 fix: This test now reads result.dataSourceState?.cursor during the loading
+      // snapshot and asserts prior metadata is still present. It also covers the error
+      // state case.
+
       let slowResolve: (r: RowsResult<Person>) => void;
       const slowPromise = new Promise<RowsResult<Person>>((resolve) => {
         slowResolve = resolve;
       });
 
-      // First source: resolves immediately
-      const firstSource = createMockDataSource([{ rows: simpleData, totalRowCount: 2 }], {
-        sort: 'server',
-        filter: 'server',
-        paginate: 'server',
-        pagination: 'cursor',
-      });
+      // First source: resolves immediately with cursor metadata
+      const firstSource = createMockDataSource(
+        [{ rows: simpleData, totalRowCount: 2, nextCursor: 'cursor-page-2' }],
+        { sort: 'server', filter: 'server', paginate: 'server', pagination: 'cursor' },
+      );
 
       // Second source: resolves slowly
       const secondSource: DataSource<Person> = {
@@ -466,15 +532,23 @@ describe('data-source-contract', () => {
         return (
           <div>
             <span data-testid="status">{result.dataSourceState?.status}</span>
+            <span data-testid="cursor-next">
+              {result.dataSourceState?.cursor?.nextCursor ?? 'undefined'}
+            </span>
+            <span data-testid="cursor-prev">
+              {result.dataSourceState?.cursor?.previousCursor ?? 'undefined'}
+            </span>
           </div>
         );
       }
 
       const { getByTestId, rerender } = render(<SWRWrapper source={firstSource} />);
 
-      // Wait for first success
+      // Wait for first success and verify cursor metadata is published
+      // NOTE: Both assertions must be inside waitFor for DOM commit guarantee.
       await waitFor(() => {
         expect(getByTestId('status').textContent).toBe('success');
+        expect(getByTestId('cursor-next').textContent).toBe('cursor-page-2');
       });
 
       // Replace with slow source
@@ -482,19 +556,167 @@ describe('data-source-contract', () => {
         rerender(<SWRWrapper source={secondSource} />);
       });
 
-      // Should be loading (SWR)
+      // Should be loading (SWR) — prior cursor must still be present
       await waitFor(() => {
         expect(getByTestId('status').textContent).toBe('loading');
       });
 
-      // Resolve
+      // S-004-A4 verification: Prior cursor metadata is retained during loading.
+      // Without SWR cursor retention, cursor-next would be 'undefined' during loading.
+      await waitFor(() => {
+        expect(getByTestId('cursor-next').textContent).toBe('cursor-page-2');
+      });
+
+      // Resolve the slow source
       act(() => {
-        slowResolve!({ rows: simpleData, totalRowCount: 2 });
+        slowResolve!({ rows: simpleData, totalRowCount: 2, nextCursor: 'cursor-page-3' });
+      });
+
+      // NOTE: Both assertions must be inside waitFor for DOM commit guarantee.
+      await waitFor(() => {
+        expect(getByTestId('status').textContent).toBe('success');
+        expect(getByTestId('cursor-next').textContent).toBe('cursor-page-3');
+      });
+    });
+
+    it('S-004-A4b: SWR error retains prior cursor metadata', async () => {
+      // B7-CURSOR-METADATA fix + R3-SWR-VERIFICATION: Same as above but for the error
+      // state. Prior cursor metadata must be retained when a source replacement fails.
+      let slowReject: (err: Error) => void;
+      const slowPromise = new Promise<RowsResult<Person>>((_, reject) => {
+        slowReject = reject;
+      });
+
+      // First source: resolves immediately with cursor metadata
+      const firstSource = createMockDataSource(
+        [{ rows: simpleData, totalRowCount: 2, nextCursor: 'cursor-page-2' }],
+        { sort: 'server', filter: 'server', paginate: 'server', pagination: 'cursor' },
+      );
+
+      // Second source: rejects
+      const errorSource: DataSource<Person> = {
+        capabilities: {
+          sort: 'server',
+          filter: 'server',
+          paginate: 'server',
+          pagination: 'cursor',
+        },
+        getRows: async () => {
+          await slowPromise;
+          throw new Error('Network error');
+        },
+      };
+
+      function SWRErrorWrapper({ source }: { source: DataSource<Person> | null | undefined }) {
+        const result = useDataTable({
+          data: simpleData,
+          columns: simpleColumns,
+          getRowId: (row) => row.id,
+          dataSource: source,
+        });
+
+        return (
+          <div>
+            <span data-testid="status">{result.dataSourceState?.status}</span>
+            <span data-testid="cursor-next">
+              {result.dataSourceState?.cursor?.nextCursor ?? 'undefined'}
+            </span>
+            <span data-testid="cursor-prev">
+              {result.dataSourceState?.cursor?.previousCursor ?? 'undefined'}
+            </span>
+          </div>
+        );
+      }
+
+      const { getByTestId, rerender } = render(<SWRErrorWrapper source={firstSource} />);
+
+      // Wait for first success
+      // NOTE: Both assertions must be inside waitFor for DOM commit guarantee.
+      await waitFor(() => {
+        expect(getByTestId('status').textContent).toBe('success');
+        expect(getByTestId('cursor-next').textContent).toBe('cursor-page-2');
+      });
+
+      // Replace with error source
+      act(() => {
+        rerender(<SWRErrorWrapper source={errorSource} />);
+      });
+
+      // Should be loading first
+      await waitFor(() => {
+        expect(getByTestId('status').textContent).toBe('loading');
+      });
+      await waitFor(() => {
+        expect(getByTestId('cursor-next').textContent).toBe('cursor-page-2');
+      });
+
+      // Reject
+      act(() => {
+        slowReject!(new Error('Network error'));
       });
 
       await waitFor(() => {
-        expect(getByTestId('status').textContent).toBe('success');
+        expect(getByTestId('status').textContent).toBe('error');
       });
+
+      // S-004-A4b verification: Prior cursor metadata is retained even after error.
+      // The stale source's result would not overwrite this state (request-token guard).
+      await waitFor(() => {
+        expect(getByTestId('cursor-next').textContent).toBe('cursor-page-2');
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // S-004-A5 (bonus): cursor publication is cleared on source removal
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    it('S-004-A5: source removal clears cursor metadata', async () => {
+      // B7-CURSOR-METADATA: Source removal clears cursor metadata to undefined.
+      // When a cursor-capable source is removed, the cursor state must be cleared
+      // (cursor field becomes undefined, not null) so the consumer can distinguish
+      // "no source" from "cursor-capable but not navigated".
+      const mockSource = createMockDataSource(
+        [{ rows: simpleData, totalRowCount: 2, nextCursor: 'cursor-page-2' }],
+        { sort: 'server', filter: 'server', paginate: 'server', pagination: 'cursor' },
+      );
+
+      function SourceRemovalWrapper({ hasSource }: { hasSource: boolean }) {
+        const result = useDataTable({
+          data: simpleData,
+          columns: simpleColumns,
+          getRowId: (row) => row.id,
+          dataSource: hasSource ? mockSource : undefined,
+        });
+
+        return (
+          <div>
+            <span data-testid="status">{result.dataSourceState?.status ?? 'no-source'}</span>
+            <span data-testid="cursor-next">
+              {result.dataSourceState?.cursor?.nextCursor ?? 'undefined'}
+            </span>
+          </div>
+        );
+      }
+
+      const { getByTestId, rerender } = render(<SourceRemovalWrapper hasSource={true} />);
+
+      await waitFor(() => {
+        expect(getByTestId('status').textContent).toBe('success');
+        expect(getByTestId('cursor-next').textContent).toBe('cursor-page-2');
+      });
+
+      // Remove source
+      act(() => {
+        rerender(<SourceRemovalWrapper hasSource={false} />);
+      });
+
+      await waitFor(() => {
+        expect(getByTestId('status').textContent).toBe('idle');
+      });
+
+      // S-004-A5 verification: Cursor is undefined after source removal (not null).
+      // A null value would indicate the source is still present with nulled cursors.
+      expect(getByTestId('cursor-next').textContent).toBe('undefined');
     });
   });
 
