@@ -399,11 +399,13 @@ try {
     );
 
     try {
-      execFileSync('node', [checkScript], {
+      const stdout = execFileSync('node', [checkScript], {
         cwd: fixtureDir,
         encoding: 'utf8',
         stdio: 'pipe',
       });
+      // R6 fix: Print subpath verification output so the matrix is visible
+      if (stdout) process.stdout.write(stdout);
     } catch (err) {
       // R6 fix: Fail on subpath import errors, don't just note them
       const stderr = err.stderr || '';
