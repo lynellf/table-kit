@@ -44,6 +44,6 @@
     "bench": "vitest bench --run bench/worker.bench.ts"
   },
   "peerDependencies": {
-    "@lynellf/tablekit-pivot": "workspace:*"
+    "@lynellf/tablekit-pivot": "^2.0.0"
   }
 }

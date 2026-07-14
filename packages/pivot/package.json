@@ -52,6 +52,6 @@
     "bench": "vitest bench --run bench/main-thread.bench.ts"
   },
   "peerDependencies": {
-    "@lynellf/tablekit-core": "workspace:*"
+    "@lynellf/tablekit-core": "^2.0.0"
   }
 }
