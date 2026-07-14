@@ -942,6 +942,54 @@ describe('createDataTable', () => {
       expect(listener).toHaveBeenCalledTimes(1);
     });
 
+    it('R2-R7 regression: repeated UNSET calls after first removal do NOT notify', () => {
+      // Bug: When dataVersion is removed (UNSET), _publishedDataVersion was not
+      // reset to undefined. This caused subsequent setOptions calls with no
+      // dataVersion to incorrectly detect a "change" (comparing old token
+      // against undefined), triggering spurious notifications.
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // A: Set dataVersion to 'v1'
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // A -> UNSET: Remove dataVersion — should notify ONCE
+      table.setOptions({
+        ...baseOptions(),
+        // dataVersion not set
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // UNSET -> UNSET: Repeated removal calls should NOT notify
+      // This is the core bug: without the fix, this would incorrectly notify.
+      table.setOptions({
+        ...baseOptions(),
+        // dataVersion not set
+      });
+      expect(listener).not.toHaveBeenCalled();
+
+      // Another UNSET call — still should NOT notify
+      table.setOptions({
+        ...baseOptions(),
+        // dataVersion not set
+      });
+      expect(listener).not.toHaveBeenCalled();
+
+      // UNSET -> A: Restoring should notify again
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
     it('R2 regression: same reference + same resolved token is a no-op (no notify)', () => {
       const table = createDataTable(baseOptions());
       const listener = vi.fn();

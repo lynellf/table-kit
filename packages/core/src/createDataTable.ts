@@ -269,17 +269,23 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       ? !Object.is(this._publishedDataVersion, resolvedNextToken)
       : this._dataVersionConfigured && !Object.is(this._publishedDataVersion, undefined);
 
-    // Update the published token tracker when dataVersion is configured
+    // R2-R7 remediation: Update the published token tracker.
+    // When dataVersion is configured, store the resolved token.
+    // When dataVersion is removed (UNSET), reset _publishedDataVersion to undefined
+    // so that subsequent calls with no dataVersion correctly detect as no-ops.
     if (next.dataVersion) {
       this._publishedDataVersion = resolvedNextToken;
       this._dataVersionConfigured = true;
+    } else {
+      // R2-R7 fix: Reset _publishedDataVersion to undefined on removal.
+      // Without this, subsequent UNSET calls would incorrectly detect a "change"
+      // (comparing old token against undefined), causing spurious notifications.
+      this._publishedDataVersion = undefined;
     }
     // Note: we do NOT reset _dataVersionConfigured to false when dataVersion
     // is removed — the UNSET transition (configured → unconfigured) is a
     // real change that must notify on the removal call.  _dataVersionConfigured
     // is a one-way flag: once true, it stays true for the table lifetime.
-    // _publishedDataVersion is updated to undefined on the removal call so that
-    // subsequent calls with no dataVersion are no-ops.
 
     // Notify listeners:
     // - Always notify on first setOptions call (to initialize useSyncExternalStore)
