@@ -532,14 +532,15 @@ export const useDataSource = <TRow>(
 
       inFlightRef.current!.status = 'resolved';
 
-      // R2 fix: Copy cursor state from RowsResult.
-      // R3-SWR-CURSOR-THENABLE fix: Only include cursor if we have at least one defined cursor value.
-      // If the result omits or has null cursors, do NOT retain prior cursor metadata.
-      const hasNextCursor = result.nextCursor !== undefined;
-      const hasPreviousCursor = result.previousCursor !== undefined;
-      // Explicit cursor state: present only when at least one cursor is defined.
-      const hasCursor = hasNextCursor || hasPreviousCursor;
-      const cursor: CursorState | undefined = hasCursor
+      // B7-CURSOR-METADATA fix: For cursor-capable sources, ALWAYS publish cursor metadata.
+      // The result cursor fields are normalized: undefined → null (explicitly clears stale controls).
+      // Offset sources never publish cursor metadata.
+      // This ensures omitted response fields explicitly clear to null per the spec:
+      // "For an accepted result from a cursor-capable source, always publish both keys as
+      // { nextCursor: result.nextCursor ?? null, previousCursor: result.previousCursor ?? null }"
+      // See Slice 4 (R3 cursor metadata normalization) acceptance criteria.
+      const isCursorCapable = sourceRef.current?.capabilities.pagination === 'cursor';
+      const cursor: CursorState | undefined = isCursorCapable
         ? {
             nextCursor: result.nextCursor ?? null,
             previousCursor: result.previousCursor ?? null,
