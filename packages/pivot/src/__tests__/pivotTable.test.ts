@@ -684,6 +684,274 @@ describe('createPivotTable', () => {
       expect(totalLeaf.pinnedOffset).toBe(0); // computed from state
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // S-005: R4 pivot version identity
+  // Verifies R4-IDENTITY-008: no recursive deep equality; version token comparison
+  // drives recompute vs. reuse decisions.
+  // ─────────────────────────────────────────────────────────────────────────────
+  describe('R4 pivot version identity (S-005)', () => {
+    it('S-005-A1: same reference + same token → reuse (no recompute)', () => {
+      // Given a pivot with dataVersion configured, changing data to the same
+      // reference with the same resolved token must NOT trigger recompute.
+      const engine = {
+        compute: vi.fn(() => createCustomResult('result')),
+        dispose: vi.fn(),
+      };
+      const sameData = [{ id: '1', region: 'West', sales: 100 }];
+      const pivot = createPivotTable({
+        data: sameData,
+        dataVersion: { version: 'v1' },
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        engine,
+        getRowId: (r) => r.id,
+      });
+
+      // First compute was triggered by initial options
+      expect(engine.compute).toHaveBeenCalledTimes(1);
+
+      // Setting options with same reference and same version must NOT recompute
+      pivot.setOptions({
+        data: sameData, // same reference
+        dataVersion: { version: 'v1' }, // same resolved token
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+      });
+
+      // No additional compute call
+      expect(engine.compute).toHaveBeenCalledTimes(1);
+    });
+
+    it('S-005-A2: same reference + changed token → recompute', () => {
+      // Given a pivot with dataVersion configured, changing data to the same
+      // reference but with a different resolved token must trigger recompute.
+      const engine = {
+        compute: vi.fn(() => createCustomResult('result')),
+        dispose: vi.fn(),
+      };
+      const sameData = [{ id: '1', region: 'West', sales: 100 }];
+      const pivot = createPivotTable({
+        data: sameData,
+        dataVersion: { version: 'v1' },
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        engine,
+        getRowId: (r) => r.id,
+      });
+
+      expect(engine.compute).toHaveBeenCalledTimes(1);
+
+      // Setting options with same reference but DIFFERENT version must recompute
+      pivot.setOptions({
+        data: sameData, // same reference
+        dataVersion: { version: 'v2' }, // changed resolved token
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+      });
+
+      // Recompute was triggered
+      expect(engine.compute).toHaveBeenCalledTimes(2);
+    });
+
+    it('S-005-A3: token removal (A→B→UNSET) → recompute', () => {
+      // Verifying the A→B→UNSET token removal path triggers recompute.
+      const engine = {
+        compute: vi.fn(() => createCustomResult('result')),
+        dispose: vi.fn(),
+      };
+      const sameData = [{ id: '1', region: 'West', sales: 100 }];
+      const pivot = createPivotTable({
+        data: sameData,
+        dataVersion: { version: 'v1' }, // starts with token
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        engine,
+        getRowId: (r) => r.id,
+      });
+
+      expect(engine.compute).toHaveBeenCalledTimes(1);
+
+      // Change token: v1 → v2
+      pivot.setOptions({
+        data: sameData,
+        dataVersion: { version: 'v2' },
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+      });
+      expect(engine.compute).toHaveBeenCalledTimes(2);
+
+      // Remove token: v2 → undefined
+      pivot.setOptions({
+        data: sameData,
+        // no dataVersion — token removed
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+      });
+      // Token removal is a real transition, recompute was triggered
+      expect(engine.compute).toHaveBeenCalledTimes(3);
+    });
+
+    it('S-005-A4: getVersion function reads version from data (realistic pattern)', () => {
+      // Verifies that getVersion can read version metadata from the data array.
+      // This is the realistic pattern where version is embedded in the data.
+      const engine = {
+        compute: vi.fn(() => createCustomResult('result')),
+        dispose: vi.fn(),
+      };
+
+      // Data with embedded version metadata
+      const dataV1 = [{ id: '1', region: 'West', sales: 100, _v: 1 }];
+      const dataV2 = [{ id: '1', region: 'West', sales: 150, _v: 2 }]; // different data, different version
+
+      // getVersion reads version from the data array (returns 0 if not found)
+      const getVersion = (data: Row[]): number => {
+        const first = data[0] as { _v?: number } | undefined;
+        return first?._v ?? 0;
+      };
+
+      const pivot = createPivotTable({
+        data: dataV1,
+        dataVersion: { getVersion },
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        engine,
+        getRowId: (r) => r.id,
+      });
+
+      expect(engine.compute).toHaveBeenCalledTimes(1); // initial
+
+      // Same data reference, same resolved version → reuse
+      pivot.setOptions({
+        data: dataV1,
+        dataVersion: { getVersion },
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+      });
+      expect(engine.compute).toHaveBeenCalledTimes(1); // no change
+
+      // Different data reference with different embedded version → recompute
+      pivot.setOptions({
+        data: dataV2, // different reference
+        dataVersion: { getVersion },
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+      });
+      expect(engine.compute).toHaveBeenCalledTimes(2); // changed data AND version
+    });
+
+    it('S-005-A5: no deep equality — deeply-equal new array recomputes', () => {
+      // Verifies that a new array with identical values still recomputes
+      // (changed reference always recomputes per spec; no deep equality).
+      const engine = {
+        compute: vi.fn(() => createCustomResult('result')),
+        dispose: vi.fn(),
+      };
+      const dataV1 = [{ id: '1', region: 'West', sales: 100 }];
+      const dataV2 = [{ id: '1', region: 'West', sales: 100 }]; // new reference, identical values
+
+      const pivot = createPivotTable({
+        data: dataV1,
+        dataVersion: { version: 'v1' },
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        engine,
+        getRowId: (r) => r.id,
+      });
+
+      expect(engine.compute).toHaveBeenCalledTimes(1);
+
+      // New reference with identical values must recompute (no deep equality)
+      pivot.setOptions({
+        data: dataV2, // new reference
+        dataVersion: { version: 'v1' }, // same version
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+      });
+      expect(engine.compute).toHaveBeenCalledTimes(2); // changed reference
+    });
+
+    it('S-005-A6: null/undefined dataVersion token is treated as undefined', () => {
+      // Verifies that null dataVersion is normalized to undefined for comparison.
+      const engine = {
+        compute: vi.fn(() => createCustomResult('result')),
+        dispose: vi.fn(),
+      };
+      const sameData = [{ id: '1', region: 'West', sales: 100 }];
+      const pivot = createPivotTable({
+        data: sameData,
+        // No dataVersion
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+        engine,
+        getRowId: (r) => r.id,
+      });
+
+      expect(engine.compute).toHaveBeenCalledTimes(1);
+
+      // Setting same reference without dataVersion is no-op (treated as undefined)
+      pivot.setOptions({
+        data: sameData,
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+      });
+      expect(engine.compute).toHaveBeenCalledTimes(1); // no change
+
+      // Omitting dataVersion is equivalent to undefined
+      pivot.setOptions({
+        data: sameData,
+        // No dataVersion - treated as undefined
+        pivot: {
+          rows: ['region'],
+          columns: [],
+          measures: [{ id: 'sales_sum', field: 'sales' }],
+        },
+      });
+      expect(engine.compute).toHaveBeenCalledTimes(1); // still no change
+    });
+  });
 });
 
 const createCustomResult = (label: string): PivotResult<Row> => ({

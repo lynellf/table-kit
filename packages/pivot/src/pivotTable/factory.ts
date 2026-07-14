@@ -646,13 +646,18 @@ export const createPivotTable = <TRow>(
     const previousOptions = currentOptions;
     const previousState = state;
     const previousEngine = engine;
-    currentOptions = next;
+
     // R5-PIVOT-GLOBAL-006 fix: Use instance announcer first, global as fallback.
     announcer = next.announcer ?? getGlobalPivotAnnouncer();
 
+    // Determine the engine to use:
+    // - If next.options explicitly provides an engine, use it
+    // - Otherwise, preserve the engine from previousOptions if it had one
+    // - Otherwise, create a new default engine
+    const explicitEngine = next.engine;
+    const inheritedEngine = previousOptions.engine;
     const nextEngine =
-      next.engine ??
-      (previousOptions.engine === undefined ? engine : createMainThreadEngine<TRow>());
+      explicitEngine ?? (inheritedEngine !== undefined ? engine : createMainThreadEngine<TRow>());
     const engineChanged = nextEngine !== previousEngine;
     if (engineChanged) {
       activeController?.abort();
@@ -660,6 +665,11 @@ export const createPivotTable = <TRow>(
       previousEngine.dispose?.();
       engine = nextEngine;
     }
+
+    // Update currentOptions to include the resolved engine.
+    // This ensures subsequent setOptions calls that don't specify engine
+    // can inherit the existing engine rather than creating a new one.
+    currentOptions = explicitEngine ? next : { ...next, engine };
 
     const resolvedPivot = resolvePivot(next);
     const previousPivot = previousState.pivot as unknown as PivotConfig<TRow>;
@@ -700,19 +710,19 @@ export const createPivotTable = <TRow>(
     const dataChanged = previousOptions.data !== next.data;
     // R4-R7 fix: Resolve dataVersion token for proper comparison.
     // Compare resolved tokens, not object references, to support getVersion patterns.
-    const resolveDataVersion = (dv: unknown): string | number | undefined => {
+    const resolveDataVersion = (dv: unknown, data: TRow[]): string | number | undefined => {
       if (!dv) return undefined;
       const version = dv as {
         version?: string | number;
         getVersion?: (data: TRow[]) => string | number;
       };
       if (version.getVersion) {
-        return version.getVersion(next.data);
+        return version.getVersion(data);
       }
       return version.version;
     };
-    const prevVersion = resolveDataVersion(previousOptions.dataVersion);
-    const nextVersion = resolveDataVersion(next.dataVersion);
+    const prevVersion = resolveDataVersion(previousOptions.dataVersion, previousOptions.data);
+    const nextVersion = resolveDataVersion(next.dataVersion, next.data);
     const dataVersionChanged = prevVersion !== nextVersion && !Object.is(prevVersion, nextVersion);
     const pivotChanged = !Object.is(previousState.pivot, nextState.pivot);
     const expandedChanged = !Object.is(previousState.expanded, nextState.expanded);
