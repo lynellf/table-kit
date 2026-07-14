@@ -71,6 +71,13 @@ import {
   toggleColumnVisibility as toggleColumnVisibilityHelper,
 } from './visibility';
 
+/**
+ * R2 fix: Sentinel value to track when dataVersion has been explicitly cleared.
+ * This distinguishes "never published" (undefined) from "published as undefined".
+ */
+const DATA_VERSION_UNSET = Symbol('DATA_VERSION_UNSET');
+type DataVersionUnset = typeof DATA_VERSION_UNSET;
+
 type SliceChangeKey =
   | 'sorting'
   | 'columnFilters'
@@ -141,11 +148,8 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // we check if this.options was already set to determine if this is the first call.
     const isFirstSetOptions = prevOptions === undefined;
 
-    // R2-R7 fix: Capture the previous dataVersion BEFORE reassigning options.
-    // Previously the code assigned this.options=next first, then captured
-    // prevDataVersion from this.options — which was already the NEW value,
-    // making the comparison always false.
-    const prevDataVersion = prevOptions?.dataVersion;
+    // R2 fix: We now compare resolved tokens instead of option objects.
+    // (prevDataVersion capture removed - see resolvedPrevToken below)
 
     const prevState = this.state;
     this.options = next;
@@ -236,12 +240,40 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // R2-R7 fix: Check if dataVersion changed. dataVersion is in options, not state,
     // so we need to explicitly compare it. If dataVersion changes, we must notify
     // so that useSyncExternalStore subscribers (like useDataSource) re-check the version.
-    // Handle three cases:
-    // 1. Both undefined: no change
-    // 2. Object reference changed: use Object.is for proper comparison
-    // 3. Same reference with different internal token: handled by comparing resolved values
-    const dataVersionChanged =
-      prevDataVersion !== next.dataVersion && !Object.is(prevDataVersion, next.dataVersion);
+    // R2 fix: Compare resolved tokens instead of option objects.
+    // This handles the case where the same getVersion function returns the same value
+    // (should NOT notify) versus when the resolved token changes (should notify).
+    const prevData = prevOptions?.data ?? [];
+    const nextData = next.data ?? [];
+
+    // Resolve the previous token (if dataVersion was configured)
+    const resolvedPrevToken = (() => {
+      if (!prevOptions?.dataVersion) return undefined;
+      const dv = prevOptions.dataVersion;
+      if (dv.getVersion) return dv.getVersion(prevData as TRow[]);
+      return dv.version;
+    })();
+
+    // Resolve the new token (if dataVersion is configured)
+    const resolvedNextToken = (() => {
+      if (!next.dataVersion) return undefined;
+      const dv = next.dataVersion;
+      if (dv.getVersion) return dv.getVersion(nextData as TRow[]);
+      return dv.version;
+    })();
+
+    // R2 fix: Compare resolved tokens. The resolved token is "unchanged" when:
+    // - Both tokens are undefined (no dataVersion configured)
+    // - Both tokens are the same value (Object.is for strict equality)
+    // The resolved token "changed" when:
+    // - One is defined and the other is undefined
+    // - Both are defined but have different values
+    const dataVersionChanged = !Object.is(resolvedPrevToken, resolvedNextToken);
+
+    // Update the published token tracker after resolving the change
+    if (dataVersionChanged) {
+      this._publishedDataVersion = resolvedNextToken;
+    }
 
     // Notify listeners:
     // - Always notify on first setOptions call (to initialize useSyncExternalStore)
@@ -270,6 +302,13 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
   /** @internal Previous data version for change detection. */
   private _prevDataVersion?: string | number;
+
+  /**
+   * R2 fix: Tracks the previously published resolved dataVersion token.
+   * Uses DATA_VERSION_UNSET sentinel to distinguish "never published" from
+   * "published as undefined".
+   */
+  private _publishedDataVersion: string | number | undefined | DataVersionUnset = undefined;
 
   /** @internal Write the data source state. Used by the React hook. */
   __setDataSourceState(state: DataSourceState<TRow>): void {

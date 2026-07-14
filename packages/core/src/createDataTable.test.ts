@@ -825,6 +825,266 @@ describe('createDataTable', () => {
     });
   });
 
+  // ─── R2: direct-table version notification ─────────────────────────────────
+  describe('R2: direct-table version notification', () => {
+    it('notifies on dataVersion token change in setOptions (A -> B)', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Set initial dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // Change version token (same policy reference, different value)
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT notify when dataVersion token is unchanged (same token value)', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Set initial dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // Same token value, different policy reference
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('handles same-reference mutable policy transitions A -> B -> UNSET', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // A: Set dataVersion to static token 'v1'
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // A -> B: Change to 'v2'
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // B -> UNSET: Remove dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        // dataVersion not set
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // UNSET -> A: Restore dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('notifies exactly once per real token transition', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Set initial dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // Multiple same-token calls should only notify once total
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+
+      // Only ONE notification for the transition, not three
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('notifies when dataVersion policy changes even if resolved tokens might match', () => {
+      // This tests that changing the dataVersion policy triggers notification.
+      // The current implementation compares option objects, so different policy
+      // references always notify. The fix should compare resolved tokens.
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // First policy: static version
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // Change to different policy (static version)
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+
+      // Should notify because policy changed (resolved token changed)
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('changed data reference recomputes even when values are deeply equal', () => {
+      const getVersion = vi.fn((data: Person[]) => data.length);
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: { getVersion },
+      });
+
+      // Get initial row model
+      const initialModel = table.getRowModel();
+      expect(initialModel).toHaveLength(2);
+
+      // Same values, new reference - should recompute
+      const newData = [
+        { id: '1', name: 'Alice', age: 30 },
+        { id: '2', name: 'Bob', age: 25 },
+      ];
+      table.setOptions({
+        ...baseOptions(),
+        data: newData,
+        dataVersion: { getVersion },
+      });
+
+      // getVersion should be called again with new data reference
+      expect(getVersion).toHaveBeenCalled();
+
+      // Row model should reflect new data
+      const newModel = table.getRowModel();
+      expect(newModel[0]?.original).toBe(newData[0]);
+    });
+  });
+
+  // ─── R2: __setDataSourceState version tracking ───────────────────────────────
+  describe('R2: __setDataSourceState version tracking', () => {
+    it('publishes notification when result dataVersion transitions to UNSET', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Simulate: source returns a result with dataVersion 'v1'
+      table.__setDataSourceState({
+        status: 'success',
+        data: [{ id: '1', name: 'Alice', age: 30 }],
+        refetch: vi.fn(),
+        dataVersion: 'v1',
+      });
+      listener.mockClear();
+
+      // Simulate: source returns a result WITHOUT dataVersion (UNSET)
+      // This should notify because the published version changed
+      table.__setDataSourceState({
+        status: 'success',
+        data: [{ id: '1', name: 'Alice', age: 30 }],
+        refetch: vi.fn(),
+        // no dataVersion field
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT notify when result dataVersion is unchanged', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Use the same data reference for both calls
+      const data = [{ id: '1', name: 'Alice', age: 30 }];
+
+      // Simulate: source returns a result with dataVersion 'v1'
+      table.__setDataSourceState({
+        status: 'success',
+        data,
+        refetch: vi.fn(),
+        dataVersion: 'v1',
+      });
+      listener.mockClear();
+
+      // Simulate: source returns another result with same dataVersion 'v1' (same reference)
+      table.__setDataSourceState({
+        status: 'success',
+        data, // Same reference!
+        refetch: vi.fn(),
+        dataVersion: 'v1',
+      });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('tracks previously published token distinct from configured option token', () => {
+      // This tests that the published token is tracked separately from the
+      // dataVersion option. When a result has dataVersion: undefined but
+      // options have dataVersion configured, we should track result's undefined.
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Simulate: source returns result with no dataVersion (undefined)
+      // (even though table has configured version 'v1')
+      table.__setDataSourceState({
+        status: 'success',
+        data: [{ id: '1', name: 'Alice', age: 30 }],
+        refetch: vi.fn(),
+        // dataVersion intentionally omitted to test transition to UNSET
+      });
+      listener.mockClear();
+
+      // Now configure a different version via setOptions
+      // This should notify because configured version changed from 'v1'
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
   // ─── R2: Data version identity ──────────────────────────────────────────────
   describe('R2: getDataVersion returns version token', () => {
     it('returns undefined when dataVersion is not configured', () => {
