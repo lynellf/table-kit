@@ -223,6 +223,7 @@ describe('DataGrid', () => {
     await waitFor(() => expect(requests).toHaveLength(1));
     expect(screen.getByRole('grid').getAttribute('aria-busy')).toBe('true');
     expect(document.querySelectorAll('[data-placeholder="true"]')).toHaveLength(10);
+    expect(screen.getByText('Loading rows…')).toBeTruthy();
     expect(screen.getByLabelText('Pagination')).toBeTruthy();
     expect(requests[0]?.query).toEqual({
       filters: [],

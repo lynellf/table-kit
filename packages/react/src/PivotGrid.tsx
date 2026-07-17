@@ -114,8 +114,6 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
     const leaf = leafColumns[item.index];
     return leaf ? [{ leaf, ...item }] : [];
   });
-  const firstLeafIndex = columnWindow.items[0]?.index ?? 0;
-  const lastLeafIndex = columnWindow.items.at(-1)?.index ?? -1;
   const leafStarts = leafColumns.reduce<number[]>((starts, leaf, index) => {
     void leaf;
     starts.push(index === 0 ? 0 : (starts[index - 1] ?? 0) + (leafColumns[index - 1]?.size ?? 0));
@@ -222,7 +220,10 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
                   const startIndex = leafIndex;
                   const endIndex = leafIndex + colSpan - 1;
                   leafIndex += colSpan;
-                  if (endIndex < firstLeafIndex || startIndex > lastLeafIndex) return [];
+                  const intersectsRenderedLeaf = columnWindow.items.some(
+                    ({ index }) => index >= startIndex && index <= endIndex,
+                  );
+                  if (!intersectsRenderedLeaf) return [];
                   const start = leafStarts[startIndex] ?? 0;
                   const end = (leafStarts[endIndex] ?? start) + (leafColumns[endIndex]?.size ?? 0);
                   return [

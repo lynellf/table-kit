@@ -217,6 +217,10 @@ describe('PivotGrid', () => {
     expect(document.querySelectorAll('.tk-pivot-row').length).toBeLessThanOrEqual(9);
     expect(screen.getAllByRole('columnheader').length).toBeLessThanOrEqual(9);
 
+    const firstCell = document.querySelector<HTMLElement>('[data-pivot-cell-id]');
+    firstCell?.focus();
+    await waitFor(() => expect(firstCell?.getAttribute('tabindex')).toBe('0'));
+
     const treegrid = screen.getByRole('treegrid');
     Object.defineProperty(treegrid, 'scrollTop', { configurable: true, value: 500 });
     Object.defineProperty(treegrid, 'scrollLeft', { configurable: true, value: 2_000 });
@@ -224,6 +228,7 @@ describe('PivotGrid', () => {
     await waitFor(() =>
       expect(document.querySelectorAll('.tk-pivot-row').length).toBeLessThanOrEqual(12),
     );
+    expect(firstCell?.isConnected).toBe(true);
     expect(screen.getAllByRole('columnheader').length).toBeLessThanOrEqual(9);
   });
 });

@@ -429,7 +429,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
               </div>
             );
           })}
-          {status === 'loading' && rows.length === 0 && (
+          {status === 'loading' && data.length === 0 && (
             <div role="status" className="tk-grid-state">
               {loadingContent}
             </div>
