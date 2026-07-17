@@ -23,6 +23,7 @@ import type {
   ColumnSizingState,
   DataTableState,
   PaginationState,
+  RowSelectionState,
   SortItem,
   Updater,
 } from './types';
@@ -48,7 +49,8 @@ type SliceChangeKey =
   | 'columnPinning'
   | 'columnSizing'
   | 'columnSizingInfo'
-  | 'focusedCell';
+  | 'focusedCell'
+  | 'rowSelection';
 
 export type SliceCallbacks = {
   [K in SliceChangeKey]?: (updater: Updater<DataTableState[K]>) => void;
@@ -69,6 +71,7 @@ export interface SliceDispatchers {
   setColumnSizing(updater: Updater<ColumnSizingState>): void;
   setColumnSizingInfo(updater: Updater<ColumnResizeSession | null>): void;
   setFocusedCell(updater: Updater<CellPosition | null>): void;
+  setRowSelection(updater: Updater<RowSelectionState>): void;
 }
 
 /**

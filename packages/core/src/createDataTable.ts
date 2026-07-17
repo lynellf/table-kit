@@ -62,6 +62,7 @@ import type {
   PaginationState,
   Row,
   Row as RowInterface,
+  RowSelectionState,
 } from './types';
 import { createColumnVirtualizer } from './virtualization/columnVirtualizer';
 import { createRowVirtualizer } from './virtualization/rowVirtualizer';
@@ -87,7 +88,8 @@ type SliceChangeKey =
   | 'columnPinning'
   | 'columnSizing'
   | 'columnSizingInfo'
-  | 'focusedCell';
+  | 'focusedCell'
+  | 'rowSelection';
 
 /**
  * Implementation class. Public surface is the `DataTableInstance<TRow>`
@@ -967,7 +969,7 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
           const next = toggleSortItem(this.state.sorting, id, {
             append: append ?? false,
           });
-          this.applyChange('sorting', next);
+          this.setSorting(next);
         },
         getColumnCount: () => this.getVisibleColumns().length,
         getRowCount: () => this.getRowCount(),
@@ -1097,6 +1099,7 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       columnSizing: 'onColumnSizingChange',
       columnSizingInfo: 'onColumnSizingInfoChange',
       focusedCell: 'onFocusedCellChange',
+      rowSelection: 'onRowSelectionChange',
     };
     const o = this.options as unknown as Record<string, unknown>;
     return o[CB[slice as SliceChangeKey]] as ((updater: unknown) => void) | undefined;
@@ -1119,6 +1122,7 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
                 'columnSizing',
                 'columnSizingInfo',
                 'focusedCell',
+                'rowSelection',
               ]
             : (Object.keys(this.options.state as object) as Array<keyof DataTableState>),
         )
@@ -1210,6 +1214,28 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   ): void => {
     this.applyChange('focusedCell', updater);
   };
+  setRowSelection = (
+    updater: RowSelectionState | ((old: RowSelectionState) => RowSelectionState),
+  ): void => {
+    this.applyChange('rowSelection', updater);
+  };
+  toggleRowSelected = (rowId: string, mode: 'single' | 'multiple' = 'multiple'): void => {
+    this.setRowSelection((current) => {
+      if (current[rowId]) {
+        const next = { ...current };
+        delete next[rowId];
+        return next;
+      }
+      if (mode === 'single') return { [rowId]: true };
+      return { ...current, [rowId]: true };
+    });
+  };
+  getSelectedRowIds = (): string[] => Object.keys(this.state.rowSelection);
+  getSelectedRows = (): TRow[] => {
+    const rows = this.dataSourceState.data ?? this.options.data;
+    const getRowId = this.options.getRowId ?? defaultGetRowId;
+    return rows.filter((row, index) => this.state.rowSelection[getRowId(row, index)] === true);
+  };
 
   // ─── State reset (Phase 1 F0.1) ─────────────────────────────────────────────
 
@@ -1230,6 +1256,7 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       'columnSizing',
       'columnSizingInfo',
       'focusedCell',
+      'rowSelection',
     ];
 
     const prev = this.state;

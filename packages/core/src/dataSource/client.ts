@@ -114,6 +114,7 @@ export const createClientDataSource = <TRow>(
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       };
 
       let result: TRow[] = rows;

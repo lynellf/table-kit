@@ -31,6 +31,7 @@ describe('buildMemoKey', () => {
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       },
       manualSorting: false,
       manualFiltering: false,
@@ -56,6 +57,7 @@ describe('memoKeysEqual', () => {
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       },
       manualSorting: false,
       manualFiltering: false,
@@ -79,6 +81,7 @@ describe('memoKeysEqual', () => {
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       },
       manualSorting: false,
       manualFiltering: false,
@@ -101,6 +104,7 @@ describe('memoKeysEqual', () => {
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       },
       manualSorting: false,
       manualFiltering: false,
@@ -119,6 +123,7 @@ describe('memoKeysEqual', () => {
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       },
       manualSorting: false,
       manualFiltering: false,
@@ -143,6 +148,7 @@ describe('memoKeysEqual', () => {
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       },
       dataVersion: 42,
       manualSorting: false,
@@ -168,6 +174,7 @@ describe('memoKeysEqual', () => {
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       },
       dataVersion: 1,
       manualSorting: false,
@@ -187,6 +194,7 @@ describe('memoKeysEqual', () => {
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       },
       dataVersion: 2, // different version
       manualSorting: false,
@@ -212,6 +220,7 @@ describe('memoKeysEqual', () => {
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       },
       // No dataVersion — undefined on both
       manualSorting: false,
@@ -236,6 +245,7 @@ describe('RowModelCache', () => {
       columnSizing: {},
       columnSizingInfo: null,
       focusedCell: null,
+      rowSelection: {},
     };
 
     // Simulate building rows
@@ -261,6 +271,7 @@ describe('RowModelCache', () => {
       columnSizing: {},
       columnSizingInfo: null,
       focusedCell: null,
+      rowSelection: {},
     };
 
     const rows: Row<Person>[] = [];

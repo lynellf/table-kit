@@ -61,7 +61,7 @@ export interface UseDataTableResult<TRow> {
    * M6 phase 2: assign this ref to the root grid element to enable Tab behavior.
    * Consumers typically spread it into their grid div: <div {...table.getGridProps()} ref={gridRef} />
    */
-  gridRef: React.RefObject<HTMLDivElement | null>;
+  gridRef: React.RefObject<HTMLDivElement>;
 }
 
 /**

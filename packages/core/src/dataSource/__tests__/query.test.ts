@@ -25,6 +25,7 @@ describe('buildRowsQuery', () => {
     columnSizing: {},
     columnSizingInfo: null,
     focusedCell: null,
+    rowSelection: {},
   };
 
   const baseColumns: ColumnDef<Record<string, unknown>, unknown>[] = [

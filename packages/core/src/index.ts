@@ -120,6 +120,7 @@ export type {
   ColumnSizingState,
   ColumnResizeSession,
   CellPosition,
+  RowSelectionState,
   DataTableState,
   SortingFn,
   FilterFn,

@@ -10,6 +10,16 @@
 
 export type { ReactElement } from 'react';
 
+export { DataGrid } from './DataGrid';
+export type {
+  DataGridCellEvent,
+  DataGridHandle,
+  DataGridProps,
+  DataGridRowEvent,
+  RowSelectionMode,
+  RowSelectionState,
+} from './DataGrid';
+
 // ─── Virtualization hooks (M2 Phase 4) ─────────────────────────────────────
 export { useScrollAdapter } from './useScrollAdapter';
 export { useSizeObserver } from './useSizeObserver';

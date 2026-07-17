@@ -1247,4 +1247,36 @@ describe('createDataTable', () => {
       expect(table.getDataVersion()).toBe('got 2 rows');
     });
   });
+
+  describe('row selection', () => {
+    it('keeps stable row ids selected across query operations and returns loaded rows', () => {
+      const table = createDataTable({ ...baseOptions(), getRowId: (row) => row.id });
+
+      table.toggleRowSelected('1', 'multiple');
+      table.setColumnFilters([{ id: 'name', value: 'Bob' }]);
+      table.setSorting([{ id: 'name', desc: true }]);
+
+      expect(table.getState().rowSelection).toEqual({ '1': true });
+      expect(table.getSelectedRowIds()).toEqual(['1']);
+      expect(table.getSelectedRows().map((row) => row.id)).toEqual(['1']);
+
+      table.toggleRowSelected('2', 'single');
+      expect(table.getSelectedRowIds()).toEqual(['2']);
+    });
+
+    it('dispatches controlled selection changes without mutating local state', () => {
+      const onRowSelectionChange = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        getRowId: (row) => row.id,
+        state: { rowSelection: { '1': true } },
+        onRowSelectionChange,
+      });
+
+      table.toggleRowSelected('2', 'multiple');
+
+      expect(table.getState().rowSelection).toEqual({ '1': true });
+      expect(onRowSelectionChange).toHaveBeenCalledOnce();
+    });
+  });
 });

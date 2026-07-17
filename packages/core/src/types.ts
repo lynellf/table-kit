@@ -73,6 +73,9 @@ export interface CellPosition {
   columnId: string;
 }
 
+/** Stable row IDs currently selected by the consumer. */
+export type RowSelectionState = Record<string, true>;
+
 /**
  * DataTable state model.
  *
@@ -90,6 +93,7 @@ export interface DataTableState {
   columnSizing: ColumnSizingState;
   columnSizingInfo: ColumnResizeSession | null;
   focusedCell: CellPosition | null;
+  rowSelection: RowSelectionState;
 }
 
 /** Default starting values for every slice when the consumer passes no `initialState`. */
@@ -103,6 +107,7 @@ export const DEFAULT_STATE: DataTableState = {
   columnSizing: {},
   columnSizingInfo: null,
   focusedCell: null,
+  rowSelection: {},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,6 +204,7 @@ export interface DataTableOptions<TRow> {
   onColumnSizingChange?: SliceChange<ColumnSizingState>;
   onColumnSizingInfoChange?: SliceChange<ColumnResizeSession | null>;
   onFocusedCellChange?: SliceChange<CellPosition | null>;
+  onRowSelectionChange?: SliceChange<RowSelectionState>;
   onStateChange?: SliceChange<DataTableState>;
   // ─────── Feature flags (M1+ behavior) ───────
   manualSorting?: boolean;
@@ -396,6 +402,13 @@ export interface DataTableInstance<TRow> {
   setFocusedCell(
     updater: CellPosition | null | ((old: CellPosition | null) => CellPosition | null),
   ): void;
+  setRowSelection(
+    updater: RowSelectionState | ((old: RowSelectionState) => RowSelectionState),
+  ): void;
+  toggleRowSelected(rowId: string, mode?: 'single' | 'multiple'): void;
+  getSelectedRowIds(): string[];
+  /** Return selected rows that are present in the currently loaded data only. */
+  getSelectedRows(): TRow[];
 
   // ─── Column ordering (M1) ─────────────────────────────────────────────
   moveColumn(id: string, to: number | 'left' | 'right' | 'center' | false): void;

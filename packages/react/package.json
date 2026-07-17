@@ -15,10 +15,11 @@
     "./validate": {
       "types": "./dist/validate.d.ts",
       "import": "./dist/validate.es.js"
-    }
+    },
+    "./styles.css": "./dist/style.css"
   },
   "files": ["dist", "docs"],
-  "sideEffects": false,
+  "sideEffects": ["**/*.css"],
   "license": "MIT",
   "repository": {
     "type": "git",
