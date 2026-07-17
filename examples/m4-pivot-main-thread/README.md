@@ -9,6 +9,11 @@ pnpm --filter m4-pivot-main-thread-example dev
 # → http://localhost:5174
 ```
 
+Open `http://localhost:5174/?functional-parity` for the deterministic public
+component host. It renders client and delayed-server `DataGrid` scenarios plus
+client and server `PivotGrid` scenarios. The host is covered by
+`e2e/functional-parity.spec.ts`.
+
 ## Build
 
 ```bash

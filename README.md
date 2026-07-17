@@ -41,6 +41,65 @@ table.subscribe(() => { /* re-render */ });
 
 See the [v1.0 API contract](https://github.com/lynellf/table-kit/tree/main/docs/m6-hardening/api-freeze.md) for the full export surface.
 
+## React DataGrid and PivotGrid
+
+`@lynellf/tablekit-react` includes rendered, virtualized components for the
+common table and pivot workflows. Import the default stylesheet once in your
+application:
+
+```tsx
+import { DataGrid, PivotGrid } from '@lynellf/tablekit-react';
+import '@lynellf/tablekit-react/styles.css';
+
+export function Tables() {
+  return (
+    <>
+      <DataGrid
+        rows={people}
+        columns={personColumns}
+        getRowId={(row) => row.id}
+        rowSelectionMode="multiple"
+        height={480}
+      />
+      <PivotGrid
+        data={sales}
+        pivot={{
+          rows: ['region', 'quarter'],
+          columns: ['year'],
+          measures: [{ id: 'sales', field: 'sales', aggregator: 'sum' }],
+        }}
+        getRowId={(row) => row.id}
+        height={480}
+      />
+    </>
+  );
+}
+```
+
+`DataGrid` accepts either `rows` for client operations or an offset-capable
+`DataSource` for server filtering, sorting, and pagination. `PivotGrid` uses the
+main-thread aggregation engine by default and accepts an `AggregationEngine`
+for server root and child requests.
+
+| Workflow | DataGrid | PivotGrid |
+| --- | --- | --- |
+| Client filter/sort/page | Supported | Pre-aggregation filters supported |
+| Server execution | Offset `DataSource` | Root and child `AggregationEngine` requests |
+| Virtualization | Fixed-height rows and columns | Fixed-height rows and columns |
+| Selection and events | Single/multiple rows; row/cell click and double-click | Expand/collapse row groups |
+| Status and accessibility | Loading/empty/error, keyboard focus, grid ARIA | Root/child status, retry, keyboard focus, treegrid ARIA |
+
+The deterministic browser host contains client and server scenarios for both
+components at [`examples/m4-pivot-main-thread/`](./examples/m4-pivot-main-thread/)
+using `?functional-parity`.
+
+The rendered components intentionally do not promise Webix or AG Grid API,
+theme, or DOM compatibility. Variable-height rows, server-wide select-all,
+shift-range selection, per-level pivot subtotals, formulas, field-builder UI,
+editing, range selection, paste, charts, and frozen rows are outside the MVP.
+Cursor pagination remains a headless API and is not part of `DataGrid` server
+mode acceptance.
+
 ## Server modes
 
 The library supports server-side pagination, sorting, and filtering via the `DataSource` interface and `useDataSource` hook. See [`docs/m3-server-modes/api-freeze.md`](./docs/m3-server-modes/api-freeze.md) for the API surface.

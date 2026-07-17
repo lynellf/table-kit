@@ -86,7 +86,26 @@ describe('Strict Mode data source', () => {
   });
 
   it('B7: Strict Mode effect replay reattaches to same request (one call)', async () => {
-    const mockSource = createMockDataSource('source1', { rows: simpleData, totalRowCount: 2 });
+    const mockSource: DataSource<Person> = {
+      capabilities: { sort: 'server', filter: 'server', paginate: 'server' },
+      getRows: (query, { signal }) => {
+        globalCallLog.push({ sourceId: 'source1', query });
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(
+            () => resolve({ rows: simpleData, totalRowCount: simpleData.length }),
+            20,
+          );
+          signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer);
+              reject(new DOMException('Aborted', 'AbortError'));
+            },
+            { once: true },
+          );
+        });
+      },
+    };
     const callback = vi.fn();
 
     function TestComponent() {
@@ -98,7 +117,12 @@ describe('Strict Mode data source', () => {
       });
 
       callback(result.dataSourceState.status);
-      return <div>{result.dataSourceState.status}</div>;
+      return (
+        <div>
+          <span data-testid="strict-status">{result.dataSourceState.status}</span>
+          <span data-testid="strict-length">{result.dataSourceState.data?.length ?? 'null'}</span>
+        </div>
+      );
     }
 
     // Render with StrictMode - React will mount, unmount, remount
@@ -112,6 +136,11 @@ describe('Strict Mode data source', () => {
     // The hook should only make one actual getRows call
     await waitFor(() => {
       expect(globalCallLog.length).toBe(1);
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="strict-status"]')?.textContent).toBe('success');
+      expect(document.querySelector('[data-testid="strict-length"]')?.textContent).toBe('2');
     });
 
     // The status callback should be called with 'loading' then 'success'

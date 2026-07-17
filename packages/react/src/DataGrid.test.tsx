@@ -83,12 +83,16 @@ describe('DataGrid', () => {
   });
 
   it('applies client filter, sort, and pagination and resets query operations to page one', async () => {
+    const ref = createRef<DataGridHandle<Person>>();
     render(
       <DataGrid
+        ref={ref}
         rows={people}
         columns={columns}
         getRowId={(row) => row.id}
         initialState={{ pagination: { pageIndex: 2, pageSize: 5 } }}
+        rowSelectionMode="multiple"
+        defaultRowSelection={{ '11': true }}
       />,
     );
 
@@ -102,6 +106,16 @@ describe('DataGrid', () => {
     });
     await waitFor(() => expect(screen.getByText('Page 1 of 2')).toBeTruthy());
     expect(await screen.findByText('Person 20')).toBeTruthy();
+    expect(ref.current?.getSelectedRowIds()).toEqual(['11']);
+    expect(ref.current?.getSelectedRows()).toEqual([people[10]]);
+  });
+
+  it('renders empty state inside the persistent grid and pagination layout', () => {
+    render(<DataGrid rows={[]} columns={columns} getRowId={(row) => row.id} />);
+
+    expect(screen.getByRole('grid')).toBeTruthy();
+    expect(screen.getByText('No rows to display.')).toBeTruthy();
+    expect(screen.getByLabelText('Pagination')).toBeTruthy();
   });
 
   it('bounds row and column DOM while retaining the logically focused cell', async () => {
@@ -207,6 +221,9 @@ describe('DataGrid', () => {
     );
 
     await waitFor(() => expect(requests).toHaveLength(1));
+    expect(screen.getByRole('grid').getAttribute('aria-busy')).toBe('true');
+    expect(document.querySelectorAll('[data-placeholder="true"]')).toHaveLength(10);
+    expect(screen.getByLabelText('Pagination')).toBeTruthy();
     expect(requests[0]?.query).toEqual({
       filters: [],
       sorting: [],

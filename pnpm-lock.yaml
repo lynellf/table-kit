@@ -140,16 +140,16 @@ importers:
   packages/pivot:
     dependencies:
       '@lynellf/tablekit-core':
-        specifier: workspace:*
+        specifier: ^2.0.0
         version: link:../core
 
   packages/react:
     dependencies:
       '@lynellf/tablekit-core':
-        specifier: workspace:*
+        specifier: ^2.0.0
         version: link:../core
       '@lynellf/tablekit-pivot':
-        specifier: workspace:*
+        specifier: ^2.0.0
         version: link:../pivot
     devDependencies:
       '@testing-library/dom':
@@ -174,7 +174,7 @@ importers:
   packages/worker:
     dependencies:
       '@lynellf/tablekit-pivot':
-        specifier: workspace:*
+        specifier: ^2.0.0
         version: link:../pivot
 
 packages:

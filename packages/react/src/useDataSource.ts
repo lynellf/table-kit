@@ -285,6 +285,26 @@ export const useDataSource = <TRow>(
   // source identity, all capability fields/strategy, scalar pagination,
   // canonical sort/filter, cursor, outgoing token, and nonce.
   useEffect(() => {
+    // Every committed effect owns a generation, including Strict Mode replays.
+    // Advancing it here invalidates an abort queued by the immediately preceding
+    // cleanup when the replay reattaches to the same pending request.
+    cleanupGenerationRef.current += 1;
+
+    const releaseEntry = (entry: InFlightEntry<TRow>) => {
+      processingRef.current = false;
+      const releaseGeneration = ++cleanupGenerationRef.current;
+      queueMicrotask(() => {
+        if (
+          inFlightRef.current === entry &&
+          entry.status === 'pending' &&
+          cleanupGenerationRef.current === releaseGeneration
+        ) {
+          entry.controller.abort();
+          entry.status = 'aborted';
+        }
+      });
+    };
+
     // R3 fix: Handle null source by setting idle state and aborting in-flight requests
     if (!sourceRef.current) {
       // Abort any in-flight request
@@ -465,8 +485,9 @@ export const useDataSource = <TRow>(
     // If the same key is already in-flight and not resolved/rejected, reattach.
     const existing = inFlightRef.current;
     if (existing && existing.key === queryKey && existing.status === 'pending') {
-      // Reattachment: don't abort, don't start new request, just keep the entry
-      return;
+      // Reattachment: don't abort or start a new request. The replay still owns
+      // a cleanup lease so a later real unmount aborts a pending request.
+      return () => releaseEntry(existing);
     }
 
     // R3 fix: Abort and retire any previous in-flight entry for a different key
@@ -632,31 +653,12 @@ export const useDataSource = <TRow>(
 
     // Cleanup: abort on unmount, schedule microtask release for Strict Mode replay
     return () => {
-      // Clear processing guard on cleanup
-      processingRef.current = false;
-      // R3 fix: Use cleanup generation to cancel stale microtasks.
-      // Increment the generation so any pending microtask from a previous cleanup
-      // will see it's no longer current and skip abort.
-      const myGeneration = ++cleanupGenerationRef.current;
       const entry = inFlightRef.current;
       if (entry && entry.key === queryKey) {
-        // R3 fix: Schedule microtask with generation check.
-        // If Strict Mode replays the effect before this microtask runs, the new
-        // effect's reattachment check will find the pending entry and return early.
-        // This microtask will then see the generation mismatch and skip abort.
-        queueMicrotask(() => {
-          // Only abort if: same entry, still pending, and still this generation
-          if (
-            inFlightRef.current === entry &&
-            entry.status === 'pending' &&
-            cleanupGenerationRef.current === myGeneration
-          ) {
-            controller.abort();
-            entry.status = 'aborted';
-          }
-        });
+        releaseEntry(entry);
       } else {
         // Different key or no entry, abort immediately
+        processingRef.current = false;
         controller.abort();
       }
     };

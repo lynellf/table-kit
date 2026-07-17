@@ -165,6 +165,28 @@ describe('PivotGrid', () => {
     );
   });
 
+  it('renders a root error in the treegrid layout and retries the root query', async () => {
+    let attempt = 0;
+    const engine: AggregationEngine<Sale> = {
+      compute: vi.fn(async () => {
+        attempt += 1;
+        if (attempt === 1) throw new Error('Root failed');
+        return createServerResult();
+      }),
+    };
+
+    render(<PivotGrid data={sales} pivot={config} engine={engine} getRowId={(row) => row.id} />);
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Unable to aggregate rows: Root failedRetry',
+    );
+    expect(screen.getByRole('treegrid')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('row', { name: /West/ })).toBeTruthy();
+    expect(engine.compute).toHaveBeenCalledTimes(2);
+  });
+
   it('bounds row and column DOM by the viewport and overscan', async () => {
     const wideData = Array.from({ length: 60 }, (_, index) => ({
       id: String(index),
