@@ -1,5 +1,7 @@
 # Table Kit 2.0 parity implementation plan
 
+> Historical notice: this phased plan is retained for context only. Active implementation routing is superseded by [`docs/table-kit-functional-parity-spec.md`](../table-kit-functional-parity-spec.md).
+
 **Status:** Revised implementation package for review
 **Source specification:** `docs/table-kit-2.0-parity-assessment-and-spec-v2.md` (revision 2)
 **Audience:** implementers, phase reviewers, release owner
