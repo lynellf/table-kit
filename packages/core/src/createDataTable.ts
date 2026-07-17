@@ -1143,6 +1143,9 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       | ((old: DataTableState['sorting']) => DataTableState['sorting']),
   ): void => {
     this.applyChange('sorting', updater);
+    // Filtering and sorting both change the logical result order, so page
+    // offsets must restart from the first page unless explicitly disabled.
+    this.resetPaginationOnQueryChange();
   };
   setColumnFilters = (
     updater: ColumnFilterItem[] | ((old: ColumnFilterItem[]) => ColumnFilterItem[]),
@@ -1150,17 +1153,17 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     this.applyChange('columnFilters', updater);
     // autoResetPageIndex (default true): reset pageIndex to 0 on filter change.
     // Route through the controlled-slice-aware method.
-    this.resetPaginationOnFilterChange();
+    this.resetPaginationOnQueryChange();
     // Announce filter result count.
     this.announce(`Filters applied. ${this.getFullRowCount()} rows.`);
   };
 
   /**
-   * autoResetPageIndex logic. When pagination is uncontrolled, apply the reset
+   * autoResetPageIndex logic for filter/sort changes. When pagination is uncontrolled, apply the reset
    * locally (fires onStateChange). When pagination is controlled, invoke the
    * slice callback only (consumer owns the slice).
    */
-  private resetPaginationOnFilterChange(): void {
+  private resetPaginationOnQueryChange(): void {
     if (this.options.autoResetPageIndex === false) return;
     const prev = this.state;
     const next: DataTableState = {

@@ -315,6 +315,19 @@ describe('createDataTable', () => {
     });
   });
 
+  describe('query changes reset pagination', () => {
+    it('resets pageIndex to zero when sorting changes', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: { pagination: { pageIndex: 3, pageSize: 25 } },
+      });
+
+      table.setSorting([{ id: 'age', desc: false }]);
+
+      expect(table.getState().pagination).toEqual({ pageIndex: 0, pageSize: 25 });
+    });
+  });
+
   describe('controlled-slice short-circuit on onStateChange', () => {
     it('does not fire onStateChange when no controlled slice changed', () => {
       const onStateChange = vi.fn();
