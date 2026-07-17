@@ -1,6 +1,11 @@
 import type { PivotColumnNode, PivotLeafColumn, PivotRowNode } from '@lynellf/tablekit-pivot';
 import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useState } from 'react';
 import type { PivotGridProps, PivotGridValueContext } from './PivotGrid.types';
+import {
+  type PivotPinnedSide,
+  createPivotColumnRegions,
+  getPivotNodeLeafIds,
+} from './pivotColumnLayout';
 import { type UsePivotTableOptions, usePivotTable } from './usePivotTable';
 import { getVirtualWindow } from './virtualWindow';
 import './styles.css';
@@ -15,6 +20,22 @@ const HEADER_ROW_HEIGHT = 32;
 
 type PivotCssProperties = CSSProperties & Record<`--tk-${string}`, string>;
 type HeaderEntry = { node: PivotColumnNode | PivotLeafColumn; colSpan: number };
+
+interface RenderedPivotLeaf<TRow> {
+  leaf: PivotLeafColumn<TRow>;
+  pinned: PivotPinnedSide;
+  pinnedOffset: number;
+  start: number;
+  size: number;
+}
+
+interface RenderedPivotHeader {
+  node: PivotColumnNode | PivotLeafColumn;
+  pinned: PivotPinnedSide;
+  pinnedOffset: number;
+  start: number;
+  size: number;
+}
 
 const renderSlot = (slot: unknown, context: unknown, fallback: ReactNode): ReactNode => {
   if (typeof slot === 'function') return (slot as (value: unknown) => ReactNode)(context);
@@ -37,6 +58,7 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
     onPivotChange,
     onExpandedChange,
     onPivotSortingChange,
+    onColumnPinningChange,
     onFocusedCellChange,
     onStateChange,
     announcer,
@@ -67,6 +89,7 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
     ...(onPivotChange ? { onPivotChange } : {}),
     ...(onExpandedChange ? { onExpandedChange } : {}),
     ...(onPivotSortingChange ? { onPivotSortingChange } : {}),
+    ...(onColumnPinningChange ? { onColumnPinningChange } : {}),
     ...(onFocusedCellChange ? { onFocusedCellChange } : {}),
     ...(onStateChange ? { onStateChange } : {}),
     ...(announcer ? { announcer } : {}),
@@ -77,6 +100,8 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
   const result = pivot.getResult();
   const rows = pivot.getVisibleRows();
   const leafColumns = pivot.getLeafColumns();
+  const columnRegions = createPivotColumnRegions(leafColumns, state.columnPinning);
+  const orderedLeaves = columnRegions.ordered;
   const engineHeaderRows = pivot.getHeaderRows();
   const hasLeafHeaderRow = engineHeaderRows.some((row) =>
     row.some(({ node }) => 'measureId' in node),
@@ -84,10 +109,10 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
   const needsMeasureHeaderRow =
     !hasLeafHeaderRow && (state.pivot.measures.length > 1 || engineHeaderRows.length === 0);
   const headerRows: HeaderEntry[][] = needsMeasureHeaderRow
-    ? [...engineHeaderRows, leafColumns.map((node) => ({ node, colSpan: 1 }))]
+    ? [...engineHeaderRows, orderedLeaves.map((node) => ({ node, colSpan: 1 }))]
     : engineHeaderRows;
   const headerHeight = Math.max(1, headerRows.length) * HEADER_ROW_HEIGHT;
-  const showGrandTotal = state.pivot.totals?.grandTotalRow !== false && leafColumns.length > 0;
+  const showGrandTotal = state.pivot.totals?.grandTotalRow !== false && orderedLeaves.length > 0;
 
   const [viewport, setViewport] = useState({ top: 0, left: 0, height, width });
   const focusedRowIndex = state.focusedCell
@@ -100,26 +125,114 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
     overscan: overscanRows,
     ...(focusedRowIndex !== undefined ? { keepIndex: focusedRowIndex } : {}),
   });
-  const focusedColumnIndex = state.focusedCell
-    ? leafColumns.findIndex((leaf) => leaf.id === state.focusedCell?.columnId)
+  const leftWidth = columnRegions.left.reduce((total, leaf) => total + leaf.size, 0);
+  const rightWidth = columnRegions.right.reduce((total, leaf) => total + leaf.size, 0);
+  const focusedCenterColumnIndex = state.focusedCell
+    ? columnRegions.center.findIndex((leaf) => leaf.id === state.focusedCell?.columnId)
     : undefined;
   const columnWindow = getVirtualWindow({
-    sizes: leafColumns.map((leaf) => leaf.size),
-    scrollOffset: Math.max(0, viewport.left - rowHeaderWidth),
-    viewportSize: Math.max(0, viewport.width - rowHeaderWidth),
+    sizes: columnRegions.center.map((leaf) => leaf.size),
+    scrollOffset: viewport.left,
+    viewportSize: Math.max(0, viewport.width - rowHeaderWidth - leftWidth - rightWidth),
     overscan: overscanColumns,
-    ...(focusedColumnIndex !== undefined ? { keepIndex: focusedColumnIndex } : {}),
+    ...(focusedCenterColumnIndex !== undefined && focusedCenterColumnIndex >= 0
+      ? { keepIndex: focusedCenterColumnIndex }
+      : {}),
   });
-  const renderedLeaves = columnWindow.items.flatMap((item) => {
-    const leaf = leafColumns[item.index];
-    return leaf ? [{ leaf, ...item }] : [];
+  const centerStart = rowHeaderWidth + leftWidth;
+  const rightStart = centerStart + columnWindow.totalSize;
+  let leftOffset = 0;
+  const renderedLeftLeaves: Array<RenderedPivotLeaf<TRow>> = columnRegions.left.map((leaf) => {
+    const rendered = {
+      leaf: { ...leaf, pinnedOffset: leftOffset },
+      pinned: 'left' as const,
+      pinnedOffset: leftOffset,
+      start: rowHeaderWidth + leftOffset,
+      size: leaf.size,
+    };
+    leftOffset += leaf.size;
+    return rendered;
   });
-  const leafStarts = leafColumns.reduce<number[]>((starts, leaf, index) => {
-    void leaf;
-    starts.push(index === 0 ? 0 : (starts[index - 1] ?? 0) + (leafColumns[index - 1]?.size ?? 0));
-    return starts;
-  }, []);
-  const contentWidth = rowHeaderWidth + columnWindow.totalSize;
+  let centerNaturalOffset = 0;
+  const allCenterLeafLayouts: Array<RenderedPivotLeaf<TRow>> = columnRegions.center.map((leaf) => {
+    const rendered = {
+      leaf,
+      pinned: false as const,
+      pinnedOffset: 0,
+      start: centerStart + centerNaturalOffset,
+      size: leaf.size,
+    };
+    centerNaturalOffset += leaf.size;
+    return rendered;
+  });
+  const renderedCenterLeaves: Array<RenderedPivotLeaf<TRow>> = columnWindow.items.flatMap(
+    ({ index }) => {
+      const rendered = allCenterLeafLayouts[index];
+      return rendered ? [rendered] : [];
+    },
+  );
+  const rightPinnedOffsets = new Map<string, number>();
+  let rightOffset = 0;
+  for (let index = columnRegions.right.length - 1; index >= 0; index -= 1) {
+    const leaf = columnRegions.right[index];
+    if (!leaf) continue;
+    rightPinnedOffsets.set(leaf.id, rightOffset);
+    rightOffset += leaf.size;
+  }
+  let rightNaturalOffset = 0;
+  const renderedRightLeaves: Array<RenderedPivotLeaf<TRow>> = columnRegions.right.map((leaf) => {
+    const pinnedOffset = rightPinnedOffsets.get(leaf.id) ?? 0;
+    const rendered = {
+      leaf: { ...leaf, pinnedOffset },
+      pinned: 'right' as const,
+      pinnedOffset,
+      start: rightStart + rightNaturalOffset,
+      size: leaf.size,
+    };
+    rightNaturalOffset += leaf.size;
+    return rendered;
+  });
+  const renderedLeaves = [...renderedLeftLeaves, ...renderedCenterLeaves, ...renderedRightLeaves];
+  const allLeafLayouts = [...renderedLeftLeaves, ...allCenterLeafLayouts, ...renderedRightLeaves];
+  const contentWidth = rightStart + rightWidth;
+  const leafLayoutById = new Map(allLeafLayouts.map((rendered) => [rendered.leaf.id, rendered]));
+  const renderedCenterLeafIds = new Set(renderedCenterLeaves.map(({ leaf }) => leaf.id));
+  const getRenderedLeft = (rendered: {
+    pinned: PivotPinnedSide;
+    pinnedOffset: number;
+    start: number;
+    size: number;
+  }): number => {
+    if (rendered.pinned === 'left') {
+      return viewport.left + rowHeaderWidth + rendered.pinnedOffset;
+    }
+    if (rendered.pinned === 'right') {
+      return Math.min(
+        rendered.start,
+        viewport.left + viewport.width - rendered.pinnedOffset - rendered.size,
+      );
+    }
+    return rendered.start;
+  };
+  const getRenderedHeaders = (headerRow: HeaderEntry[]): RenderedPivotHeader[] =>
+    headerRow
+      .flatMap(({ node }) => {
+        const nodeLeafIds = getPivotNodeLeafIds(node);
+        const nodeLeaves = nodeLeafIds.flatMap((id) => {
+          const rendered = leafLayoutById.get(id);
+          return rendered ? [rendered] : [];
+        });
+        if (nodeLeaves.length === 0) return [];
+        const pinned = nodeLeaves[0]?.pinned ?? false;
+        if (pinned === false && !nodeLeafIds.some((id) => renderedCenterLeafIds.has(id))) return [];
+        const start = Math.min(...nodeLeaves.map((leaf) => leaf.start));
+        const end = Math.max(...nodeLeaves.map((leaf) => leaf.start + leaf.size));
+        const size = end - start;
+        const pinnedOffset =
+          pinned === 'left' ? start - rowHeaderWidth : pinned === 'right' ? contentWidth - end : 0;
+        return [{ node, pinned, pinnedOffset, start, size }];
+      })
+      .sort((a, b) => a.start - b.start);
   const bodyHeight = rowWindow.totalSize + (showGrandTotal ? rowHeight : 0);
   const status = pivot.getStatus();
   const rootError = pivot.getError();
@@ -139,7 +252,7 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
     if (!focused || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key))
       return;
     const rowIndex = rows.findIndex((row) => row.key === focused.rowId);
-    const columnIndex = leafColumns.findIndex((leaf) => leaf.id === focused.columnId);
+    const columnIndex = orderedLeaves.findIndex((leaf) => leaf.id === focused.columnId);
     if (rowIndex < 0 || columnIndex < 0) return;
     const nextRowIndex = Math.max(
       0,
@@ -151,12 +264,12 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
     const nextColumnIndex = Math.max(
       0,
       Math.min(
-        leafColumns.length - 1,
+        orderedLeaves.length - 1,
         columnIndex + (event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0),
       ),
     );
     const nextRow = rows[nextRowIndex];
-    const nextLeaf = leafColumns[nextColumnIndex];
+    const nextLeaf = orderedLeaves[nextColumnIndex];
     if (!nextRow || !nextLeaf) return;
     event.preventDefault();
     pivot.setFocusedCell({ rowId: nextRow.key, columnId: nextLeaf.id });
@@ -202,44 +315,37 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
           <div
             role="columnheader"
             className="tk-pivot-corner"
-            style={{ left: 0, width: rowHeaderWidth }}
+            data-pinned="left"
+            style={{ left: viewport.left, width: rowHeaderWidth }}
           >
             Rows
           </div>
-          {headerRows.map((headerRow, rowIndex) => {
-            let leafIndex = 0;
-            return (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: hierarchy depth is stable
-                key={rowIndex}
-                role="row"
-                className="tk-pivot-header-row"
-                style={{ top: rowIndex * HEADER_ROW_HEIGHT, height: HEADER_ROW_HEIGHT }}
-              >
-                {headerRow.flatMap(({ node, colSpan }) => {
-                  const startIndex = leafIndex;
-                  const endIndex = leafIndex + colSpan - 1;
-                  leafIndex += colSpan;
-                  const intersectsRenderedLeaf = columnWindow.items.some(
-                    ({ index }) => index >= startIndex && index <= endIndex,
-                  );
-                  if (!intersectsRenderedLeaf) return [];
-                  const start = leafStarts[startIndex] ?? 0;
-                  const end = (leafStarts[endIndex] ?? start) + (leafColumns[endIndex]?.size ?? 0);
-                  return [
-                    <div
-                      key={`${rowIndex}:${node.id}`}
-                      {...pivot.getHeaderProps(node)}
-                      className="tk-pivot-column-header"
-                      style={{ left: rowHeaderWidth + start, width: end - start }}
-                    >
-                      {renderSlot(labelOf(node), { node, pivot }, String(labelOf(node) ?? ''))}
-                    </div>,
-                  ];
-                })}
-              </div>
-            );
-          })}
+          {headerRows.map((headerRow, rowIndex) => (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: hierarchy depth is stable
+              key={rowIndex}
+              role="row"
+              className="tk-pivot-header-row"
+              style={{ top: rowIndex * HEADER_ROW_HEIGHT, height: HEADER_ROW_HEIGHT }}
+            >
+              {getRenderedHeaders(headerRow).map((renderedHeader) => {
+                const { node, pinned, size } = renderedHeader;
+                return (
+                  <div
+                    key={`${rowIndex}:${node.id}`}
+                    {...pivot.getHeaderProps(node)}
+                    className={['tk-pivot-column-header', pinned && `tk-pivot-pinned-${pinned}`]
+                      .filter(Boolean)
+                      .join(' ')}
+                    data-pinned={pinned || undefined}
+                    style={{ left: getRenderedLeft(renderedHeader), width: size }}
+                  >
+                    {renderSlot(labelOf(node), { node, pivot }, String(labelOf(node) ?? ''))}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
 
         <div
@@ -260,7 +366,12 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
                 <div
                   {...pivot.getRowHeaderProps(row)}
                   className="tk-pivot-row-header"
-                  style={{ left: 0, width: rowHeaderWidth, paddingLeft: 8 + row.level * 16 }}
+                  data-pinned="left"
+                  style={{
+                    left: viewport.left,
+                    width: rowHeaderWidth,
+                    paddingLeft: 8 + row.level * 16,
+                  }}
                 >
                   {row.hasChildren && (
                     <button type="button" {...pivot.getToggleExpandedProps(row)}>
@@ -282,17 +393,22 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
                     </span>
                   )}
                 </div>
-                {renderedLeaves.map(({ leaf, start: columnStart, size }) => {
+                {renderedLeaves.map((renderedLeaf) => {
+                  const { leaf, pinned, size } = renderedLeaf;
                   const focused =
                     state.focusedCell?.rowId === row.key && state.focusedCell.columnId === leaf.id;
                   return (
                     <div
                       key={leaf.id}
                       role="gridcell"
-                      className="tk-pivot-cell"
+                      className={['tk-pivot-cell', pinned && `tk-pivot-pinned-${pinned}`]
+                        .filter(Boolean)
+                        .join(' ')}
+                      data-column-id={leaf.id}
+                      data-pinned={pinned || undefined}
                       data-pivot-cell-id={`${row.key}:${leaf.id}`}
                       tabIndex={focused ? 0 : -1}
-                      style={{ left: rowHeaderWidth + columnStart, width: size }}
+                      style={{ left: getRenderedLeft(renderedLeaf), width: size }}
                       onFocus={() => pivot.setFocusedCell({ rowId: row.key, columnId: leaf.id })}
                       onClick={(event) => event.currentTarget.focus()}
                       onKeyDown={() => {}}
@@ -315,18 +431,31 @@ export function PivotGrid<TRow>(props: PivotGridProps<TRow>) {
               <div
                 role="rowheader"
                 className="tk-pivot-row-header"
-                style={{ left: 0, width: rowHeaderWidth }}
+                data-pinned="left"
+                style={{ left: viewport.left, width: rowHeaderWidth }}
               >
                 Grand total
               </div>
-              {renderedLeaves.map(({ leaf, start, size }) => (
+              {renderedLeaves.map((renderedLeaf) => (
                 <div
-                  key={leaf.id}
+                  key={renderedLeaf.leaf.id}
                   role="gridcell"
-                  className="tk-pivot-cell"
-                  style={{ left: rowHeaderWidth + start, width: size }}
+                  className={[
+                    'tk-pivot-cell',
+                    renderedLeaf.pinned && `tk-pivot-pinned-${renderedLeaf.pinned}`,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  data-column-id={renderedLeaf.leaf.id}
+                  data-pinned={renderedLeaf.pinned || undefined}
+                  style={{ left: getRenderedLeft(renderedLeaf), width: renderedLeaf.size }}
                 >
-                  {renderCellValue(result.grandTotals[leaf.id], null, leaf, true)}
+                  {renderCellValue(
+                    result.grandTotals[renderedLeaf.leaf.id],
+                    null,
+                    renderedLeaf.leaf,
+                    true,
+                  )}
                 </div>
               ))}
             </div>

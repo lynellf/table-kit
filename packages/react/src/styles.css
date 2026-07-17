@@ -175,6 +175,31 @@
   gap: 6px;
 }
 
+.tk-pivot-corner,
+.tk-pivot-row-header,
+.tk-pivot-pinned-left,
+.tk-pivot-pinned-right {
+  z-index: 2;
+  background: var(--tk-row-background);
+}
+
+.tk-pivot-corner,
+.tk-pivot-column-header.tk-pivot-pinned-left,
+.tk-pivot-column-header.tk-pivot-pinned-right,
+.tk-pivot-grand-total .tk-pivot-row-header,
+.tk-pivot-grand-total .tk-pivot-pinned-left,
+.tk-pivot-grand-total .tk-pivot-pinned-right {
+  background: var(--tk-header-background);
+}
+
+.tk-pivot-pinned-left {
+  box-shadow: 1px 0 0 var(--tk-border-color);
+}
+
+.tk-pivot-pinned-right {
+  box-shadow: -1px 0 0 var(--tk-border-color);
+}
+
 .tk-pivot-row-header button {
   flex: none;
 }

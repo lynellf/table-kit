@@ -1,4 +1,10 @@
-import type { Announcer, CellPosition, SliceChange, TabBehavior } from '@lynellf/tablekit-core';
+import type {
+  Announcer,
+  CellPosition,
+  ColumnPinningState,
+  SliceChange,
+  TabBehavior,
+} from '@lynellf/tablekit-core';
 import type { DataVersion } from '@lynellf/tablekit-core/dataSource';
 import type {
   AggregationEngine,
@@ -30,6 +36,7 @@ export interface PivotGridProps<TRow> {
   onPivotChange?: SliceChange<PivotConfig<TRow>>;
   onExpandedChange?: SliceChange<PivotExpansionState>;
   onPivotSortingChange?: SliceChange<PivotSortingState>;
+  onColumnPinningChange?: SliceChange<ColumnPinningState>;
   onFocusedCellChange?: SliceChange<CellPosition | null>;
   onStateChange?: SliceChange<PivotTableState>;
   announcer?: Announcer;

@@ -231,4 +231,99 @@ describe('PivotGrid', () => {
     expect(firstCell?.isConnected).toBe(true);
     expect(screen.getAllByRole('columnheader').length).toBeLessThanOrEqual(9);
   });
+
+  it('freezes generated column groups atomically around a center-only virtual window', async () => {
+    const wideData = Array.from({ length: 30 }, (_, index) => ({
+      id: String(index),
+      region: `Region ${String(index).padStart(2, '0')}`,
+      quarter: 'Q1',
+      year: 2000 + index,
+      sales: index,
+    }));
+    render(
+      <PivotGrid
+        data={wideData}
+        pivot={{
+          rows: ['region'],
+          columns: ['year'],
+          measures: [
+            { id: 'sales', field: 'sales', aggregator: 'sum', label: 'Sales' },
+            { id: 'average', field: 'sales', aggregator: 'avg', label: 'Average' },
+          ],
+        }}
+        initialState={{
+          columnPinning: {
+            left: ['[2005]::sales'],
+            right: ['[2001]::sales'],
+          },
+        }}
+        getRowId={(row) => row.id}
+        height={140}
+        width={900}
+        rowHeight={20}
+        rowHeaderWidth={120}
+        overscanRows={1}
+        overscanColumns={1}
+      />,
+    );
+
+    const treegrid = screen.getByRole('treegrid');
+    const rowHeader = document.querySelector<HTMLElement>('.tk-pivot-row-header');
+    const leftGroupHeader = screen.getByRole('columnheader', { name: '2005' });
+    const rightGroupHeader = screen.getByRole('columnheader', { name: '2001' });
+    const promotedLeftCell = document.querySelector<HTMLElement>(
+      '[data-pivot-cell-id][data-column-id="[2005]::average"]',
+    );
+    const promotedRightCell = document.querySelector<HTMLElement>(
+      '[data-pivot-cell-id][data-column-id="[2001]::average"]',
+    );
+
+    expect(rowHeader?.style.left).toBe('0px');
+    expect(leftGroupHeader.dataset.pinned).toBe('left');
+    expect(leftGroupHeader.style.left).toBe('120px');
+    expect(rightGroupHeader.dataset.pinned).toBe('right');
+    expect(rightGroupHeader.style.left).toBe('500px');
+    expect(promotedLeftCell?.dataset.pinned).toBe('left');
+    expect(promotedRightCell?.dataset.pinned).toBe('right');
+
+    const firstLeftCell = document.querySelector<HTMLElement>(
+      '[data-pivot-cell-id][data-column-id="[2005]::sales"]',
+    );
+    firstLeftCell?.focus();
+    fireEvent.keyDown(treegrid, { key: 'ArrowRight' });
+    await waitFor(() => expect(document.activeElement?.dataset.columnId).toBe('[2005]::average'));
+
+    Object.defineProperty(treegrid, 'scrollLeft', { configurable: true, value: 1_500 });
+    fireEvent.scroll(treegrid);
+
+    expect(rowHeader?.style.left).toBe('1500px');
+    expect(leftGroupHeader.style.left).toBe('1620px');
+    expect(rightGroupHeader.style.left).toBe('2000px');
+    expect(screen.getAllByRole('columnheader', { name: '2005' })).toHaveLength(1);
+    expect(screen.getAllByRole('columnheader', { name: '2001' })).toHaveLength(1);
+    expect(
+      Array.from(document.querySelectorAll<HTMLElement>('[data-pivot-cell-id]')).filter(
+        (cell) => cell.dataset.pivotCellId === '["Region 00"]:[2005]::average',
+      ),
+    ).toHaveLength(1);
+    expect(screen.getAllByRole('columnheader').length).toBeLessThanOrEqual(20);
+  });
+
+  it('rejects opposite pinned sides within one generated column group', () => {
+    expect(() =>
+      render(
+        <PivotGrid
+          data={sales}
+          pivot={config}
+          getRowId={(row) => row.id}
+          initialState={{
+            columnPinning: {
+              left: ['[2024]::sales_sum'],
+              right: ['[2024]::sales_avg'],
+            },
+          }}
+        />,
+      ),
+    ).toThrowError('PivotGrid column group [2024] cannot be pinned to both left and right.');
+  });
 });
