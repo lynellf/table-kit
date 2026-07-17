@@ -18,6 +18,7 @@ workflows:
 | DataGrid  | Row/cell click and double-click handlers                       |
 | PivotGrid | Client and server aggregation                                  |
 | PivotGrid | Expandable row groups                                          |
+| Both      | Programmatic left/right frozen columns                          |
 | Both      | Loading, empty, error, keyboard-focus, and basic ARIA behavior |
 
 “Parity” means these workflows are available. It does not mean Webix/AG Grid
@@ -211,6 +212,42 @@ and column virtualization.
 Use `treegrid`, `row`, `columnheader`, `rowheader`, and `gridcell` roles.
 Expansion controls expose `aria-expanded`.
 
+### Frozen columns
+
+**FZ-1 — Public contract**
+
+Use the existing `columnPinning: { left, right }` state slice for both grids.
+`DataGrid` and `PivotGrid` expose the corresponding controlled-state callback.
+Do not add a competing `frozenColumns` prop or a pinning UI.
+
+**FZ-2 — Rendering geometry**
+
+Use one horizontal scroll viewport and render one DOM instance for each logical
+header or cell. Left- and right-pinned columns remain visible while the center
+region scrolls. The optional DataGrid selection column and the PivotGrid row
+header remain fixed at the left edge ahead of user-pinned columns.
+
+Pinned offsets must respond to column sizing, visibility, order, and pinning
+state changes. A pinned column is always mounted; virtualization applies only
+to center columns.
+
+**FZ-3 — Interaction and accessibility**
+
+Freezing must preserve logical keyboard order, focus retention, row/cell event
+identity, sorting, filtering, resize handles, and ARIA roles/counts. Frozen
+rendering must not create duplicate logical or focusable cells.
+
+**FZ-4 — Pivot generated groups**
+
+PivotGrid freezes generated columns atomically by top-level column group. If
+any generated leaf in a group appears in `columnPinning.left` or
+`columnPinning.right`, every leaf in that group uses that side so hierarchical
+headers never split across regions. Conflicting left/right membership within
+one group is invalid configuration and must throw a descriptive error.
+
+The generated grand-total column group remains right-pinned by default.
+Pin menus, drag-to-freeze interactions, and frozen rows remain out of scope.
+
 ## Design
 
 ```mermaid
@@ -374,6 +411,27 @@ pnpm test:e2e
 Use the existing packed-package checker to verify the new public exports. Extend
 it only as needed for `DataGrid` and `PivotGrid`.
 
+### Slice 6 — Frozen columns
+
+1. Render pinned DataGrid columns outside the center virtual window.
+2. Keep selection controls fixed ahead of left-pinned DataGrid columns.
+3. Render PivotGrid top-level generated groups atomically by pinned side.
+4. Keep PivotGrid row headers fixed ahead of left-pinned generated groups.
+5. Preserve one viewport and one DOM instance per logical header/cell.
+6. Add focused component and Playwright coverage.
+
+Acceptance:
+
+| ID | Behavior |
+| --- | --- |
+| FZ-A1 | DataGrid left/right columns remain fixed during horizontal scroll |
+| FZ-A2 | PivotGrid left/right generated groups remain fixed during horizontal scroll |
+| FZ-A3 | Only center columns are virtualized; pinned columns remain mounted |
+| FZ-A4 | Selection and row-header system columns remain fixed at the left edge |
+| FZ-A5 | Focus, keyboard order, events, sorting, filtering, resizing, and ARIA remain correct |
+| FZ-A6 | Pivot generated groups are atomic and conflicting sides fail descriptively |
+| FZ-A7 | Frozen rendering creates no duplicate logical or focusable cells |
+
 ## Implementation Report
 
 At completion, `docs/table-kit-functional-parity-implementation-report.md` must
@@ -387,7 +445,7 @@ contain:
 6. Baseline failures that predated the work.
 7. Known deviations and failed criteria.
 8. Browser example locations.
-9. Frozen-column stretch status.
+9. `FZ-A1`–`FZ-A7` status.
 10. Confirmation that no new planning hierarchy was created.
 
 A partial implementation is reviewable, but failed criteria must remain `FAIL`.
@@ -405,7 +463,6 @@ Sol reviews; Sol does not continue implementation.
 6. Inspect all four browser scenarios.
 7. Return:
    - `APPROVED`
-   - `APPROVED WITH DEFERRED STRETCH`
    - `REQUEST CHANGES`
 
 Each blocking finding must name an acceptance ID, affected files, observed
@@ -415,8 +472,7 @@ behavior, and the smallest correction. Do not require excluded vendor features.
 
 ### Frozen columns
 
-Stretch only. Use existing left/right pinning after all required criteria pass.
-It must not create duplicate logical/focusable cells.
+Required by `FZ-1`–`FZ-4` and `FZ-A1`–`FZ-A7`.
 
 ### Frozen rows
 
