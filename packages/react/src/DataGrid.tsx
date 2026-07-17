@@ -35,6 +35,14 @@ const SELECTION_COLUMN_WIDTH = 44;
 
 type GridCssProperties = CSSProperties & Record<`--tk-${string}`, string>;
 
+interface RenderedGridColumn<TRow> {
+  column: Column<TRow, unknown>;
+  pinned: 'left' | 'right' | false;
+  pinnedOffset: number;
+  start: number;
+  size: number;
+}
+
 const renderSlot = (slot: unknown, context: unknown, fallback: ReactNode): ReactNode => {
   if (typeof slot === 'function') {
     return (slot as (value: unknown) => ReactNode)(context);
@@ -168,7 +176,31 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
 
   const [viewport, setViewport] = useState({ top: 0, left: 0, height, width });
   const rows = table.getRowModel();
-  const visibleColumns = table.getVisibleColumns();
+  const selectionOffset = rowSelectionMode === 'none' ? 0 : SELECTION_COLUMN_WIDTH;
+  const visibleLeftById = new Map(
+    table
+      .getLeftLeafColumns()
+      .filter((column) => column.getIsVisible())
+      .map((column) => [column.id, column]),
+  );
+  const visibleRightById = new Map(
+    table
+      .getRightLeafColumns()
+      .filter((column) => column.getIsVisible())
+      .map((column) => [column.id, column]),
+  );
+  const leftColumns = tableState.columnPinning.left.flatMap((id) => {
+    const column = visibleLeftById.get(id);
+    return column ? [column] : [];
+  });
+  const centerColumns = table.getCenterLeafColumns().filter((column) => column.getIsVisible());
+  const rightColumns = tableState.columnPinning.right.flatMap((id) => {
+    const column = visibleRightById.get(id);
+    return column ? [column] : [];
+  });
+  const visibleColumns = [...leftColumns, ...centerColumns, ...rightColumns];
+  const leftWidth = leftColumns.reduce((total, column) => total + column.getSize(), 0);
+  const rightWidth = rightColumns.reduce((total, column) => total + column.getSize(), 0);
   const focusedRowIndex = tableState.focusedCell
     ? rows.findIndex((row) => row.id === tableState.focusedCell?.rowId)
     : undefined;
@@ -179,25 +211,88 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     overscan: overscanRows,
     ...(focusedRowIndex !== undefined ? { keepIndex: focusedRowIndex } : {}),
   });
-  const focusedColumnIndex = tableState.focusedCell
-    ? visibleColumns.findIndex((column) => column.id === tableState.focusedCell?.columnId)
+  const focusedCenterColumnIndex = tableState.focusedCell
+    ? centerColumns.findIndex((column) => column.id === tableState.focusedCell?.columnId)
     : undefined;
   const columnWindow = getVirtualWindow({
-    sizes: visibleColumns.map((column) => column.getSize()),
-    scrollOffset: Math.max(
-      0,
-      viewport.left - (rowSelectionMode === 'none' ? 0 : SELECTION_COLUMN_WIDTH),
-    ),
-    viewportSize: viewport.width,
+    sizes: centerColumns.map((column) => column.getSize()),
+    scrollOffset: viewport.left,
+    viewportSize: Math.max(0, viewport.width - selectionOffset - leftWidth - rightWidth),
     overscan: overscanColumns,
-    ...(focusedColumnIndex !== undefined ? { keepIndex: focusedColumnIndex } : {}),
+    ...(focusedCenterColumnIndex !== undefined && focusedCenterColumnIndex >= 0
+      ? { keepIndex: focusedCenterColumnIndex }
+      : {}),
   });
-  const renderedColumns = columnWindow.items.flatMap((item) => {
-    const column = visibleColumns[item.index];
-    return column ? [{ column, ...item }] : [];
+  const centerStart = selectionOffset + leftWidth;
+  const rightStart = centerStart + columnWindow.totalSize;
+  let leftOffset = 0;
+  const renderedLeftColumns: Array<RenderedGridColumn<TRow>> = leftColumns.map((column) => {
+    const size = column.getSize();
+    const rendered = {
+      column,
+      pinned: 'left' as const,
+      pinnedOffset: leftOffset,
+      start: selectionOffset + leftOffset,
+      size,
+    };
+    leftOffset += size;
+    return rendered;
   });
-  const selectionOffset = rowSelectionMode === 'none' ? 0 : SELECTION_COLUMN_WIDTH;
-  const contentWidth = selectionOffset + columnWindow.totalSize;
+  const renderedCenterColumns: Array<RenderedGridColumn<TRow>> = columnWindow.items.flatMap(
+    (item) => {
+      const column = centerColumns[item.index];
+      return column
+        ? [
+            {
+              column,
+              pinned: false as const,
+              pinnedOffset: 0,
+              start: centerStart + item.start,
+              size: item.size,
+            },
+          ]
+        : [];
+    },
+  );
+  const rightPinnedOffsets = new Map<string, number>();
+  let rightOffset = 0;
+  for (let index = rightColumns.length - 1; index >= 0; index -= 1) {
+    const column = rightColumns[index];
+    if (!column) continue;
+    rightPinnedOffsets.set(column.id, rightOffset);
+    rightOffset += column.getSize();
+  }
+  let rightNaturalOffset = 0;
+  const renderedRightColumns: Array<RenderedGridColumn<TRow>> = rightColumns.map((column) => {
+    const size = column.getSize();
+    const rendered = {
+      column,
+      pinned: 'right' as const,
+      pinnedOffset: rightPinnedOffsets.get(column.id) ?? 0,
+      start: rightStart + rightNaturalOffset,
+      size,
+    };
+    rightNaturalOffset += size;
+    return rendered;
+  });
+  const renderedColumns = [
+    ...renderedLeftColumns,
+    ...renderedCenterColumns,
+    ...renderedRightColumns,
+  ];
+  const contentWidth = rightStart + rightWidth;
+  const getRenderedColumnLeft = (column: (typeof renderedColumns)[number]): number => {
+    if (column.pinned === 'left') {
+      return viewport.left + selectionOffset + column.pinnedOffset;
+    }
+    if (column.pinned === 'right') {
+      return Math.min(
+        column.start,
+        viewport.left + viewport.width - column.pinnedOffset - column.size,
+      );
+    }
+    return column.start;
+  };
 
   const rootStyle: GridCssProperties = {
     '--tk-grid-height': `${height}px`,
@@ -299,9 +394,12 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
               role="columnheader"
               className="tk-grid-selection-header"
               aria-label="Row selection"
+              data-pinned="left"
+              style={{ left: viewport.left }}
             />
           )}
-          {renderedColumns.map(({ column, start, size }) => {
+          {renderedColumns.map((renderedColumn) => {
+            const { column, pinned, size } = renderedColumn;
             const sort = column.getIsSorted();
             const header = table
               .getHeaderGroups()[0]
@@ -311,9 +409,12 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
               <div
                 key={column.id}
                 role="columnheader"
-                className="tk-grid-column-header"
+                className={['tk-grid-column-header', pinned && `tk-grid-pinned-${pinned}`]
+                  .filter(Boolean)
+                  .join(' ')}
+                data-pinned={pinned || undefined}
                 aria-sort={sort === false ? undefined : sort === 'asc' ? 'ascending' : 'descending'}
-                style={{ left: selectionOffset + start, width: size }}
+                style={{ left: getRenderedColumnLeft(renderedColumn), width: size }}
               >
                 <div className="tk-grid-header-label">
                   {renderSlot(column.def.header, { column, table }, column.id)}
@@ -378,7 +479,12 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                 onDoubleClick={(event) => publishRowEvent(onRowDoubleClick, row, event)}
               >
                 {rowSelectionMode !== 'none' && (
-                  <div role="gridcell" className="tk-grid-selection-cell">
+                  <div
+                    role="gridcell"
+                    className="tk-grid-selection-cell"
+                    data-pinned="left"
+                    style={{ left: viewport.left }}
+                  >
                     <input
                       type={rowSelectionMode === 'single' ? 'radio' : 'checkbox'}
                       name={rowSelectionMode === 'single' ? 'tk-grid-selection' : undefined}
@@ -389,7 +495,8 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                     />
                   </div>
                 )}
-                {renderedColumns.map(({ column, start: columnStart, size }) => {
+                {renderedColumns.map((renderedColumn) => {
+                  const { column, pinned, size } = renderedColumn;
                   const cell = cells.get(column.id);
                   if (!cell) return null;
                   const focused =
@@ -403,10 +510,13 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                     <div
                       key={cell.id}
                       role="gridcell"
-                      className="tk-grid-cell"
+                      className={['tk-grid-cell', pinned && `tk-grid-pinned-${pinned}`]
+                        .filter(Boolean)
+                        .join(' ')}
+                      data-pinned={pinned || undefined}
                       data-cell-id={`${row.id}:${column.id}`}
                       tabIndex={focused || initialFocusable ? 0 : -1}
-                      style={{ left: selectionOffset + columnStart, width: size }}
+                      style={{ left: getRenderedColumnLeft(renderedColumn), width: size }}
                       onFocus={() => focusCell(row, column)}
                       onClick={(event) => publishCellEvent(onCellClick, cell, event)}
                       onDoubleClick={(event) => publishCellEvent(onCellDoubleClick, cell, event)}

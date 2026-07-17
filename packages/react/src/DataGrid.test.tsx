@@ -155,6 +155,62 @@ describe('DataGrid', () => {
     expect(screen.getAllByRole('columnheader').length).toBeLessThanOrEqual(7);
   });
 
+  it('freezes pinned columns around a center-only virtual window without duplicate cells', async () => {
+    const wideColumns = Array.from({ length: 30 }, (_, index) => ({
+      id: `column-${index}`,
+      accessor: (row: Person) => `${row.name}-${index}`,
+      header: `Column ${index}`,
+      size: 100,
+    }));
+    render(
+      <DataGrid
+        rows={people}
+        columns={wideColumns}
+        getRowId={(row) => row.id}
+        initialState={{
+          columnPinning: { left: ['column-5'], right: ['column-2'] },
+        }}
+        rowSelectionMode="multiple"
+        height={120}
+        width={360}
+        rowHeight={20}
+        overscanRows={1}
+        overscanColumns={1}
+      />,
+    );
+
+    const grid = screen.getByRole('grid');
+    const selectionHeader = screen.getByRole('columnheader', { name: 'Row selection' });
+    const leftHeader = screen.getByRole('columnheader', { name: 'Column 5' });
+    const rightHeader = screen.getByRole('columnheader', { name: 'Column 2' });
+
+    expect(selectionHeader.style.left).toBe('0px');
+    expect(leftHeader.dataset.pinned).toBe('left');
+    expect(leftHeader.style.left).toBe('44px');
+    expect(rightHeader.dataset.pinned).toBe('right');
+    expect(rightHeader.style.left).toBe('260px');
+    expect(screen.getAllByRole('columnheader').length).toBeLessThanOrEqual(7);
+
+    const firstLeftCell = screen.getByText('Person 01-5').closest<HTMLElement>('[role="gridcell"]');
+    firstLeftCell?.focus();
+    fireEvent.keyDown(grid, { key: 'ArrowRight' });
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('data-cell-id')).toBe('1:column-0'),
+    );
+
+    Object.defineProperty(grid, 'scrollLeft', { configurable: true, value: 1_500 });
+    fireEvent.scroll(grid);
+
+    expect(selectionHeader.style.left).toBe('1500px');
+    expect(leftHeader.style.left).toBe('1544px');
+    expect(rightHeader.style.left).toBe('1760px');
+    expect(screen.getAllByRole('columnheader', { name: 'Column 5' })).toHaveLength(1);
+    expect(screen.getAllByRole('columnheader', { name: 'Column 2' })).toHaveLength(1);
+    expect(document.querySelectorAll('[data-cell-id="1:column-5"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-cell-id="1:column-2"]')).toHaveLength(1);
+    expect(screen.getAllByRole('columnheader').length).toBeLessThanOrEqual(9);
+  });
+
   it('publishes cell and row event context in browser click and double-click order', () => {
     const order: string[] = [];
     const onCellClick = vi.fn(() => order.push('cell-click'));
