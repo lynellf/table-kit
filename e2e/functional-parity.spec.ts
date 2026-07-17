@@ -35,6 +35,92 @@ test.describe('Functional parity browser host', () => {
       .toBeLessThanOrEqual(12);
   });
 
+  test('freezes DataGrid columns and atomic PivotGrid groups in one scroll viewport', async ({
+    page,
+  }) => {
+    const clientGrid = page.getByTestId('client-data-grid');
+    const gridViewport = clientGrid.getByRole('grid');
+    const selectionHeader = clientGrid.getByRole('columnheader', { name: 'Row selection' });
+    const leftHeader = clientGrid.getByRole('columnheader', { name: 'Name' });
+    const rightHeader = clientGrid.getByRole('columnheader', { name: 'Detail 12' });
+    const leftGridCell = clientGrid.locator('[data-cell-id="1:name"]');
+    const rightGridCell = clientGrid.locator('[data-cell-id="1:detail-11"]');
+
+    await expect(leftHeader).toHaveAttribute('data-pinned', 'left');
+    await expect(rightHeader).toHaveAttribute('data-pinned', 'right');
+    const gridBoxesBefore = await Promise.all([
+      selectionHeader.boundingBox(),
+      leftHeader.boundingBox(),
+      rightHeader.boundingBox(),
+      leftGridCell.boundingBox(),
+      rightGridCell.boundingBox(),
+    ]);
+
+    await gridViewport.evaluate((element) => {
+      element.scrollLeft = 900;
+      element.dispatchEvent(new Event('scroll'));
+    });
+
+    const gridPinnedElements = [
+      selectionHeader,
+      leftHeader,
+      rightHeader,
+      leftGridCell,
+      rightGridCell,
+    ];
+    for (const [index, element] of gridPinnedElements.entries()) {
+      const before = gridBoxesBefore[index];
+      expect(before).not.toBeNull();
+      await expect
+        .poll(async () => Math.abs(((await element.boundingBox())?.x ?? 0) - (before?.x ?? 0)))
+        .toBeLessThan(1);
+    }
+    await expect(leftHeader).toHaveCount(1);
+    await expect(rightHeader).toHaveCount(1);
+    await expect(leftGridCell).toHaveCount(1);
+    await expect(rightGridCell).toHaveCount(1);
+
+    const clientPivot = page.getByTestId('client-pivot-grid');
+    const pivotViewport = clientPivot.getByRole('treegrid');
+    const pivotRowHeader = clientPivot.getByRole('rowheader', { name: 'West' });
+    const leftPivotHeader = clientPivot.getByRole('columnheader', { name: '2024' });
+    const rightPivotHeader = clientPivot.getByRole('columnheader', { name: '__total__' });
+    const promotedPivotCell = clientPivot
+      .locator('[data-pivot-cell-id][data-column-id="[2024]::sales_avg"]')
+      .first();
+
+    await expect(leftPivotHeader).toHaveAttribute('data-pinned', 'left');
+    await expect(rightPivotHeader).toHaveAttribute('data-pinned', 'right');
+    await expect(promotedPivotCell).toHaveAttribute('data-pinned', 'left');
+    const pivotBoxesBefore = await Promise.all([
+      pivotRowHeader.boundingBox(),
+      leftPivotHeader.boundingBox(),
+      rightPivotHeader.boundingBox(),
+      promotedPivotCell.boundingBox(),
+    ]);
+
+    await pivotViewport.evaluate((element) => {
+      element.scrollLeft = 200;
+      element.dispatchEvent(new Event('scroll'));
+    });
+
+    const pivotPinnedElements = [
+      pivotRowHeader,
+      leftPivotHeader,
+      rightPivotHeader,
+      promotedPivotCell,
+    ];
+    for (const [index, element] of pivotPinnedElements.entries()) {
+      const before = pivotBoxesBefore[index];
+      expect(before).not.toBeNull();
+      await expect
+        .poll(async () => Math.abs(((await element.boundingBox())?.x ?? 0) - (before?.x ?? 0)))
+        .toBeLessThan(1);
+    }
+    await expect(leftPivotHeader).toHaveCount(1);
+    await expect(rightPivotHeader).toHaveCount(1);
+  });
+
   test('preserves browser click ordering and rejects a stale server page', async ({ page }) => {
     const client = page.getByTestId('client-data-grid');
     await client.getByText('Person 001').dblclick();

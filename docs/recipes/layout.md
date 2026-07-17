@@ -1,7 +1,7 @@
 <!-- Historical: true -->
 # Layout Recipe — Virtualization + Sticky Pinning
 
-> Recipe — Last verified against v1.0.0 (`docs/m6-hardening/api-freeze.md`)
+> Recipe — Last verified against v2.0.0
 
 ## Problem
 
@@ -25,6 +25,9 @@ const VirtualizedGrid = ({ rows, columns }: { rows: Row[]; columns: typeof COLS 
   const { table, gridRef } = useDataTable<Row>({
     data: rows,
     columns,
+    initialState: {
+      columnPinning: { left: ['name'], right: ['status'] },
+    },
   });
 
   const visibleRows = table.getRowModel(); // apply your row virtualizer here
@@ -117,9 +120,9 @@ const VirtualizedGrid = ({ rows, columns }: { rows: Row[]; columns: typeof COLS 
 
 const ROW_HEIGHT = 40; // Must match your virtualizer's row height
 const COLS = [
-  { id: 'name', accessor: 'name', pinned: 'left' as const },
+  { id: 'name', accessor: 'name' },
   { id: 'email', accessor: 'email' },
-  { id: 'status', accessor: 'status', pinned: 'right' as const },
+  { id: 'status', accessor: 'status' },
 ];
 ```
 
@@ -163,6 +166,11 @@ Do not override z-index without understanding the scroll container hierarchy —
 
 5. **`getPinnedOffset()` returns pixels**. The prop getters expose `getPinnedOffset()` which returns the cumulative offset for the pinned column. Use this for `left`/`right` positioning — do not hardcode pixel values.
 
+6. **Rendered grids already own this geometry**. Prefer `DataGrid` or
+   `PivotGrid` when their default rendering fits. Pass `columnPinning` through
+   `initialState` or controlled `state`; do not create a second frozen-column
+   prop. PivotGrid promotes generated leaves to complete top-level groups.
+
 ## See also
 
 - Spec §6.3 (layout and scroll container)
@@ -172,7 +180,6 @@ Do not override z-index without understanding the scroll container hierarchy —
 
 ## Verified against
 
-- `@lynellf/tablekit-core@1.0.0`
-- `@lynellf/tablekit-react@1.0.0`
-- Spec: `docs/initial-spec.md` (v1.0)
-- API freeze: `docs/m6-hardening/api-freeze.md` (v1.0)
+- `@lynellf/tablekit-core@2.0.0`
+- `@lynellf/tablekit-react@2.0.0`
+- `docs/table-kit-functional-parity-spec.md`

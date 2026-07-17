@@ -221,6 +221,9 @@ export const FunctionalParityApp = () => {
             rows={people}
             columns={peopleColumns}
             getRowId={(row) => row.id}
+            initialState={{
+              columnPinning: { left: ['name'], right: ['detail-11'] },
+            }}
             rowSelectionMode="multiple"
             height={240}
             width={720}
@@ -263,9 +266,13 @@ export const FunctionalParityApp = () => {
               ],
             }}
             getRowId={(row) => row.id}
+            initialState={{
+              columnPinning: { left: ['[2024]::sales_sum'], right: [] },
+            }}
             height={240}
-            width={720}
+            width={560}
             rowHeight={32}
+            rowHeaderWidth={180}
           />
         </section>
 

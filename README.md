@@ -58,6 +58,7 @@ export function Tables() {
         rows={people}
         columns={personColumns}
         getRowId={(row) => row.id}
+        initialState={{ columnPinning: { left: ['name'], right: ['status'] } }}
         rowSelectionMode="multiple"
         height={480}
       />
@@ -69,6 +70,7 @@ export function Tables() {
           measures: [{ id: 'sales', field: 'sales', aggregator: 'sum' }],
         }}
         getRowId={(row) => row.id}
+        initialState={{ columnPinning: { left: ['[2024]::sales'], right: [] } }}
         height={480}
       />
     </>
@@ -81,11 +83,17 @@ export function Tables() {
 main-thread aggregation engine by default and accepts an `AggregationEngine`
 for server root and child requests.
 
+Both components use the existing `columnPinning` state slice. Pinned columns
+remain mounted while only center columns are virtualized. `PivotGrid` promotes
+any pinned generated leaf to its complete top-level column group so hierarchy
+headers remain contiguous; opposite sides within one group are rejected.
+
 | Workflow | DataGrid | PivotGrid |
 | --- | --- | --- |
 | Client filter/sort/page | Supported | Pre-aggregation filters supported |
 | Server execution | Offset `DataSource` | Root and child `AggregationEngine` requests |
 | Virtualization | Fixed-height rows and columns | Fixed-height rows and columns |
+| Frozen columns | Programmatic left/right pinning; selection stays fixed-left | Atomic top-level generated groups; row headers stay fixed-left; grand totals default right |
 | Selection and events | Single/multiple rows; row/cell click and double-click | Expand/collapse row groups |
 | Status and accessibility | Loading/empty/error, keyboard focus, grid ARIA | Root/child status, retry, keyboard focus, treegrid ARIA |
 
