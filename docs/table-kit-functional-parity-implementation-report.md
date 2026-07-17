@@ -13,7 +13,12 @@
   - `cb9b958` — add the functional `PivotGrid`
   - `5bf7b2a` — add browser integration proof and public documentation
   - `971ef51` — close visible-loading and sparse focus-retention review gaps
-- Final report state: this report is the only tracked change after `971ef51`;
+  - `e5e5693` — finalize functional-parity evidence
+  - `e31d870` — make frozen columns required parity scope
+  - `30fac1e` — freeze pinned DataGrid columns
+  - `7db6d60` — freeze generated PivotGrid column groups
+  - `f82b84a` — add real-browser frozen-column proof and documentation
+- Final report state: this report is the only tracked change after `f82b84a`;
   the user-provided `docs/table-kit-mvp-functional-parity-one-shot-spec.md`
   remains untracked and unchanged.
 
@@ -38,10 +43,14 @@ manifests so a frozen install restores the declared test tooling.
 - Added `DataGrid`, `DataGridProps`, `DataGridHandle`, `DataGridRowEvent`,
   `DataGridCellEvent`, `RowSelectionState`, and `RowSelectionMode` exports.
 - Added `PivotGrid`, `PivotGridProps`, and `PivotGridValueContext` exports.
+- Added `PivotGridProps.onColumnPinningChange`, matching the existing pivot
+  state callback contract already available to `DataGrid`.
 - Added the `@lynellf/tablekit-react/styles.css` package subpath and marked CSS
   as a side effect.
 - Added one shared fixed-geometry helper in
   `packages/react/src/virtualWindow.ts`.
+- Added internal generated-group resolution in
+  `packages/react/src/pivotColumnLayout.ts`.
 
 ### Required headless corrections
 
@@ -58,10 +67,16 @@ manifests so a frozen install restores the declared test tooling.
 
 - Added `packages/react/src/DataGrid.tsx`, `DataGrid.types.ts`, and focused tests.
 - Added `packages/react/src/PivotGrid.tsx`, `PivotGrid.types.ts`, and focused tests.
+- Rendered left/right DataGrid pin regions around a center-only virtual window;
+  the optional selection column remains fixed ahead of left-pinned columns.
+- Rendered PivotGrid pin regions atomically by top-level generated column group;
+  the row header remains fixed-left and the grand-total group remains
+  right-pinned by default.
 - Added four deterministic scenarios at
   `examples/m4-pivot-main-thread/src/FunctionalParityApp.tsx`.
 - Added `e2e/functional-parity.spec.ts` for real-browser focus, virtualization,
-  event ordering, stale server work, and client/server pivot expansion.
+  frozen-column geometry, event ordering, stale server work, and client/server
+  pivot expansion.
 - Extended the packed React consumer fixture and artifact checker for both
   component exports and the stylesheet subpath.
 - Updated the root and example READMEs with imports, a feature matrix, browser
@@ -104,19 +119,28 @@ manifests so a frozen install restores the declared test tooling.
 ## Commands and outcomes
 
 - `pnpm exec vitest run packages/react/src/DataGrid.test.tsx packages/react/src/PivotGrid.test.tsx packages/react/src/__integration__/strict-mode-data-source.test.tsx --maxWorkers=1 --no-file-parallelism`:
-  **PASS**, 3 files and 16 tests.
+  **PASS** before the frozen-column extension, 3 files and 16 tests.
+- `pnpm exec vitest run packages/react/src/DataGrid.test.tsx packages/react/src/PivotGrid.test.tsx --maxWorkers=1 --no-file-parallelism`:
+  **PASS**, 2 files and 13 tests including left/right geometry, center-only
+  virtualization, atomic Pivot groups, focus order, and duplicate-cell guards.
+- `pnpm exec vitest run packages/react/src --maxWorkers=1 --no-file-parallelism`:
+  **PASS**, 30 React-package files; 169 passed and 1 skipped.
 - `pnpm lint && pnpm typecheck && pnpm --filter m4-pivot-main-thread-example build`:
   **PASS**.
+- `pnpm exec playwright test functional-parity.spec.ts --config=playwright.config.ts`
+  from `e2e/`: **PASS**, 5 Chromium tests including frozen screen-coordinate
+  checks for DataGrid and PivotGrid.
 - `pnpm verify`: **PASS** on the final network-enabled run.
   - TypeScript project build: passed.
-  - Biome: 268 files checked, no fixes required.
-  - Vitest: 79 files passed; 794 tests passed and 1 skipped (795 total).
+  - Biome: 269 files checked, no fixes required.
+  - Vitest: 79 files passed; 797 tests passed and 1 skipped (798 total).
   - Core, pivot, React, worker, and all subpath builds: passed.
   - Packed artifacts: all four tarballs installed, compiled, and executed in
     isolated fixtures; 18 public entry points passed; no workspace/source/dist
     escapes; React remained external; docs/public-surface checks passed.
-- `pnpm test:e2e`: **PASS**, 20 Chromium tests including all four functional-
-  parity scenarios and the existing pivot/browser checks.
+- `pnpm test:e2e`: **PASS**, 21 Chromium tests including all four functional-
+  parity scenarios, frozen-column geometry, and the existing pivot/browser
+  checks.
 
 One earlier sandboxed final `pnpm verify` attempt reached the artifact fixture
 install and failed only because the sandbox could not resolve
@@ -134,21 +158,30 @@ access.
   documented default-stylesheet contract, and the browser host exercises the
   packed stylesheet subpath.
 - Versions remain `2.0.0`; no package was published.
+- Pin menus, drag-to-freeze interactions, and frozen rows remain intentionally
+  out of scope. Freezing is programmatic through `columnPinning`.
 
 ## Browser examples
 
 - Host: `examples/m4-pivot-main-thread/`
 - Route: `http://localhost:5174/?functional-parity` when running the example
   directly, or `http://localhost:5173/?functional-parity` under the E2E host.
-- Scenarios: client DataGrid, delayed offset-server DataGrid, client PivotGrid,
-  and delayed server PivotGrid with root/child requests.
+- Scenarios: client DataGrid with left/right pins, delayed offset-server
+  DataGrid, client PivotGrid with an atomic left group and default-right total
+  group, and delayed server PivotGrid with root/child requests.
 - Browser tests: `e2e/functional-parity.spec.ts`.
 
-## Frozen-column stretch status
+## Frozen-column acceptance
 
-**DEFERRED / NOT IMPLEMENTED.** Frozen columns were explicitly stretch-only.
-All required acceptance criteria pass without adding duplicate logical or
-focusable cells.
+| ID | Status | Evidence |
+| --- | --- | --- |
+| FZ-A1 | PASS | DataGrid component and Playwright tests verify left/right header and cell positions remain fixed through horizontal scroll. |
+| FZ-A2 | PASS | PivotGrid component and Playwright tests verify fixed generated groups, row headers, and the default-right total group. |
+| FZ-A3 | PASS | Both renderers feed only center columns to `getVirtualWindow`; pinned columns remain mounted before and after scroll. |
+| FZ-A4 | PASS | Tests verify the selection column and Pivot row headers remain at the left viewport edge ahead of user pins. |
+| FZ-A5 | PASS | Existing sorting, filtering, resize, event, focus, keyboard, and ARIA suites remain green; new tests verify pinned logical navigation. |
+| FZ-A6 | PASS | Pinning one generated Pivot leaf promotes its complete top-level group; opposite sides in one group throw a descriptive configuration error. |
+| FZ-A7 | PASS | Component and browser tests assert one header/cell instance per logical identity while pinned and center regions coexist. |
 
 ## Planning hierarchy confirmation
 
