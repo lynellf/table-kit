@@ -49,7 +49,7 @@ export interface UsePivotTableResult<TRow> {
   /**
    * M6 phase 2: assign this ref to the root grid element to enable Tab behavior.
    */
-  gridRef: React.RefObject<HTMLDivElement | null>;
+  gridRef: React.RefObject<HTMLDivElement>;
 }
 
 export const usePivotTable = <TRow>(

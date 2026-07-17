@@ -20,6 +20,9 @@ export type {
   RowSelectionState,
 } from './DataGrid';
 
+export { PivotGrid } from './PivotGrid';
+export type { PivotGridProps, PivotGridValueContext } from './PivotGrid';
+
 // ─── Virtualization hooks (M2 Phase 4) ─────────────────────────────────────
 export { useScrollAdapter } from './useScrollAdapter';
 export { useSizeObserver } from './useSizeObserver';

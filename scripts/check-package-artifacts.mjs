@@ -9,7 +9,16 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -240,9 +249,12 @@ for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
     console.log(`  ✓ ${fixtureName}: compiles from isolated install`);
   } catch (err) {
     const stderr = err.stderr || '';
+    const stdout = err.stdout || '';
     console.error(`${fixtureName}: tsc failed with:`);
-    console.error(stderr);
-    throw new Error(`${fixtureName}: fixture failed to compile from isolated install\n${stderr}`);
+    console.error(stderr || stdout);
+    throw new Error(
+      `${fixtureName}: fixture failed to compile from isolated install\n${stderr || stdout}`,
+    );
   }
 }
 
@@ -278,10 +290,12 @@ console.log('pivot runtime: OK');
     writeFileSync(
       testScript,
       `
-import { useDataTable } from '@lynellf/tablekit-react';
+import { DataGrid, PivotGrid, useDataTable } from '@lynellf/tablekit-react';
 import { buildQueryKey } from '@lynellf/tablekit-core/dataSource';
 console.log('react runtime: OK');
 console.log('  useDataTable type:', typeof useDataTable);
+console.log('  DataGrid type:', typeof DataGrid);
+console.log('  PivotGrid type:', typeof PivotGrid);
 console.log('  buildQueryKey type:', typeof buildQueryKey);
 `,
     );
@@ -442,9 +456,8 @@ for (const fixtureName of ['core', 'react', 'pivot', 'worker']) {
     }
 
     // Verify it's not a symlink to workspace
-    const stat = execFileSync('stat', ['-c', '%F', pkgPath], { encoding: 'utf8' }).trim();
-    if (stat === 'symbolic link') {
-      const linkTarget = execFileSync('readlink', [pkgPath], { encoding: 'utf8' }).trim();
+    if (lstatSync(pkgPath).isSymbolicLink()) {
+      const linkTarget = readlinkSync(pkgPath);
       // Allow symlinks to tarballs (pnpm extraction) and temp pnpm store
       // Reject symlinks to workspace packages or repository source
       const isAllowedSymlink =

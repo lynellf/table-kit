@@ -337,6 +337,63 @@ describe('createPivotTable', () => {
     expect(pivot.getResult().rowRoot.children![0]!.children).toEqual(child);
   });
 
+  it('retries one failed child path without replacing unrelated rows', () => {
+    const result = createCustomResult('initial');
+    result.rowRoot.children = [
+      {
+        key: '["West"]',
+        path: ['West'],
+        level: 1,
+        label: 'West',
+        hasChildren: true,
+        childState: 'notLoaded',
+        values: {},
+        rowTotals: {},
+      },
+      {
+        key: '["East"]',
+        path: ['East'],
+        level: 1,
+        label: 'East',
+        hasChildren: false,
+        childState: 'loaded',
+        values: {},
+        rowTotals: {},
+      },
+    ];
+    let shouldFail = true;
+    const engine = {
+      compute: vi.fn(() => result),
+      computeChildren: vi.fn(() => {
+        if (shouldFail) throw new Error('West failed');
+        return [
+          {
+            key: '["West","Q1"]',
+            path: ['West', 'Q1'],
+            level: 2,
+            label: 'Q1',
+            hasChildren: false,
+            childState: 'loaded' as const,
+            values: {},
+            rowTotals: {},
+          },
+        ];
+      }),
+    };
+    const pivot = createPivotTable({ ...baseOpts(), engine });
+
+    pivot.toggleExpanded(['West']);
+    expect(pivot.getResult().rowRoot.children![0]!.childState).toBe('error');
+    expect(pivot.getResult().rowRoot.children![1]!.label).toBe('East');
+
+    shouldFail = false;
+    pivot.retryRow(['West']);
+
+    expect(engine.computeChildren).toHaveBeenCalledTimes(2);
+    expect(pivot.getResult().rowRoot.children![0]!.childState).toBe('loaded');
+    expect(pivot.getVisibleRows().map((row) => row.label)).toEqual(['West', 'Q1', 'East']);
+  });
+
   describe('column pinning', () => {
     it('R4: uncontrolled setColumnPinning mutates local state', () => {
       const p = createPivotTable(baseOpts());

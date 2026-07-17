@@ -410,6 +410,10 @@ export interface PivotTableInstance<TRow = unknown> {
   setPivot(updater: Updater<PivotConfig<TRow>>): void;
   setExpanded(updater: Updater<PivotExpansionState>): void;
   toggleExpanded(path: Array<FieldValue>): void;
+  /** Retry loading one expanded row path after an isolated child error. */
+  retryRow(path: Array<FieldValue>): void;
+  /** Re-run the latest root aggregation query. */
+  retry(): void;
   setPivotSorting(updater: Updater<PivotSortingState>): void;
   /** F0.3: Set column pinning state. */
   setColumnPinning(updater: Updater<ColumnPinningState>): void;

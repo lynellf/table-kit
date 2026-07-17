@@ -31,6 +31,12 @@
   border-bottom: 1px solid var(--tk-border-color);
 }
 
+.tk-pivot-header-row {
+  position: absolute;
+  left: 0;
+  width: 100%;
+}
+
 .tk-grid-column-header,
 .tk-grid-selection-header,
 .tk-pivot-column-header,
@@ -102,6 +108,11 @@
   background: var(--tk-selected-background);
 }
 
+.tk-pivot-grand-total {
+  font-weight: 600;
+  background: var(--tk-header-background);
+}
+
 .tk-grid-cell,
 .tk-grid-selection-cell,
 .tk-pivot-cell,
@@ -122,6 +133,16 @@
   z-index: 3;
   outline: 2px solid #2463eb;
   outline-offset: -2px;
+}
+
+.tk-pivot-row-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tk-pivot-row-header button {
+  flex: none;
 }
 
 .tk-grid-state,

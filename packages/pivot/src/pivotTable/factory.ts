@@ -856,6 +856,8 @@ export const createPivotTable = <TRow>(
     setPivot,
     setExpanded,
     toggleExpanded,
+    retryRow: requestChildren,
+    retry: requestCompute,
     setPivotSorting,
     // F0.3: Implemented previously inert pivot state slices.
     setColumnPinning,
@@ -883,7 +885,7 @@ export const createPivotTable = <TRow>(
       consumerProps?: Record<string, unknown>,
     ) => getHeaderProps(node, consumerProps),
     getToggleExpandedProps: (row: PivotRowNode<TRow>, consumerProps?: Record<string, unknown>) =>
-      makeToggleExpandedProps(row, consumerProps, toggleExpanded),
+      makeToggleExpandedProps(row, consumerProps, toggleExpanded, state.expanded[row.key] === true),
     getFooterProps: (consumerProps?: Record<string, unknown>): Record<string, unknown> | null =>
       getFooterProps(consumerProps, state, result),
     getTotalsColumnProps: (leaf: PivotLeafColumn<TRow>, consumerProps?: Record<string, unknown>) =>
