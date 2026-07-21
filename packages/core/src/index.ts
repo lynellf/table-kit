@@ -24,7 +24,7 @@
  *   - Full announcer polish + validator (M6)
  */
 
-export const VERSION = '0.2.0' as const;
+export const VERSION = '2.0.0' as const;
 
 // ─── Factory (M0) ──────────────────────────────────────────────────────────
 export { createDataTable, defaultGetRowId } from './createDataTable';
@@ -120,6 +120,7 @@ export type {
   ColumnSizingState,
   ColumnResizeSession,
   CellPosition,
+  RowSelectionState,
   DataTableState,
   SortingFn,
   FilterFn,
@@ -149,7 +150,17 @@ export type {
 // ─── DataSource types (M3 phase 1) ─────────────────────────────────────
 export type {
   MaybePromise,
+  PaginationStrategy,
   DataSourceCapabilities,
+  DataVersion,
+  DataVersionToken,
+  OffsetPagination,
+  CursorPagination,
+  PaginationWire,
+  CursorState,
+  CursorResult,
+  DataSourceStateWithCursor,
+  RowsResult,
   DataSourceStatus,
   DataSourceState,
   DataSource,
@@ -158,6 +169,7 @@ export type {
   BuildRowsQueryOptions,
   CreateClientDataSourceOptions,
 } from './dataSource/types';
+export { UNSET_VERSION_TOKEN } from './dataSource/types';
 
 // ─── DataSource runtime (M3 phase 2) ───────────────────────────────────
 export { createClientDataSource } from './dataSource/client';

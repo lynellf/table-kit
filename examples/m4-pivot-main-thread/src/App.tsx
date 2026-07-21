@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { DemoPanel } from './DemoPanel';
+import { FunctionalParityApp } from './FunctionalParityApp';
 import { PerfBadge } from './PerfBadge';
 import { type SalesRow, generateSales } from './fakeSales';
 
 const ROW_COUNTS = [1_000, 10_000, 50_000, 100_000];
 
-export const App = () => {
+const ReferenceApp = () => {
   const [rowCount, setRowCount] = useState(10_000);
   const data: SalesRow[] = useMemo(() => generateSales(rowCount), [rowCount]);
   const [computeTime, setComputeTime] = useState<number | null>(null);
@@ -87,3 +88,10 @@ export const App = () => {
     </div>
   );
 };
+
+export const App = () =>
+  new URLSearchParams(window.location.search).has('functional-parity') ? (
+    <FunctionalParityApp />
+  ) : (
+    <ReferenceApp />
+  );

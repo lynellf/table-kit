@@ -12,8 +12,13 @@ import { buildPivotQuery } from '../serialize/query';
 import type {
   AggregationEngine,
   Announcer,
+  CellPosition,
+  ColumnPinningState,
+  ColumnResizeSession,
+  ColumnSizingState,
   FieldRef,
   MaybePromise,
+  OnChangeFn,
   PivotColumnNode,
   PivotConfig,
   PivotExpansionState,
@@ -43,6 +48,17 @@ import {
 import { getVisibleRows } from './visibleRows';
 
 const noopAnnouncer: Announcer = { announce: () => {} };
+
+// R5-PIVOT-GLOBAL-006: Module-level global announcer for direct pivot consumers.
+// This mirrors the pattern in @lynellf/tablekit-core/announcer.
+// When ReactAnnouncer sets the global via setGlobalAnnouncer, direct pivot consumers
+// (without the React hook) also benefit from announcements.
+// Exported for test setup; consumers should use setGlobalPivotAnnouncer.
+let _globalPivotAnnouncer: Announcer = noopAnnouncer;
+export const setGlobalPivotAnnouncer = (a: Announcer): void => {
+  _globalPivotAnnouncer = a;
+};
+const getGlobalPivotAnnouncer = (): Announcer => _globalPivotAnnouncer;
 
 const isFieldRef = <TRow>(value: unknown): value is FieldRef<TRow> => {
   if (typeof value === 'string') return true;
@@ -135,38 +151,9 @@ const samePivotConfig = (left: PivotConfig<unknown>, right: PivotConfig<unknown>
   );
 };
 
-const sameValue = (
-  left: unknown,
-  right: unknown,
-  seen: Map<object, object> = new Map(),
-): boolean => {
-  if (Object.is(left, right)) return true;
-  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
-  const leftPrototype = Object.getPrototypeOf(left);
-  const rightPrototype = Object.getPrototypeOf(right);
-  if (leftPrototype !== rightPrototype) return false;
-  const mapped = seen.get(left);
-  if (mapped) return mapped === right;
-  seen.set(left, right);
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-    return left.every((value, index) => sameValue(value, right[index], seen));
-  }
-  if (leftPrototype !== Object.prototype && leftPrototype !== null) {
-    return false;
-  }
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length !== rightKeys.length) return false;
-  return leftKeys.every((key) => {
-    const equal =
-      Object.hasOwn(right, key) &&
-      sameValue(left[key as keyof typeof left], right[key as keyof typeof right], seen);
-    return equal;
-  });
-};
-
-const sameData = <TRow>(left: TRow[], right: TRow[]): boolean => sameValue(left, right);
+// R4-IDENTITY-008 fix: Removed recursive sameValue/sameData deep comparison.
+// Data identity is reference-based by default per spec. For mutable data with version
+// tokens, version token comparison will be added separately. No deep row equality.
 
 const emptyResult = <TRow>(): PivotResult<TRow> => ({
   columnRoot: { id: '[]', path: [], label: undefined, colSpan: 0, leaves: [] },
@@ -215,8 +202,8 @@ const removeNodeError = <TRow>(node: PivotRowNode<TRow>): PivotRowNode<TRow> => 
   return withoutError;
 };
 
-const dispatchCallback = <T>(callback: Updater<T> | undefined, updater: Updater<T>): void => {
-  (callback as ((value: Updater<T>) => void) | undefined)?.(updater);
+const dispatchCallback = <T>(callback: OnChangeFn<T> | undefined, updater: Updater<T>): void => {
+  callback?.(updater);
 };
 
 const normalizePivotUpdater = <TRow>(
@@ -232,7 +219,10 @@ export const createPivotTable = <TRow>(
 ): PivotTableInstance<TRow> => {
   let currentOptions = options;
   let engine: AggregationEngine<TRow> = options.engine ?? createMainThreadEngine<TRow>();
-  let announcer: Announcer = options.announcer ?? noopAnnouncer;
+  // R5-PIVOT-GLOBAL-006 fix: Use explicit instance announcer first, getGlobalPivotAnnouncer only
+  // when no instance announcer is supplied. This matches DataTable's announcer ownership
+  // contract and allows direct pivot consumers to rely on the permitted global fallback.
+  let announcer: Announcer = options.announcer ?? getGlobalPivotAnnouncer();
   let state: PivotTableState = {
     ...DEFAULT_PIVOT_STATE,
     ...(options.initialState ?? {}),
@@ -484,17 +474,190 @@ export const createPivotTable = <TRow>(
     requestCompute();
   };
 
+  // F0.3: Implement inert pivot state slices.
+  // These slices were declared in PivotTableState but lacked complete setters.
+
+  const setColumnPinning = (updater: Updater<ColumnPinningState>): void => {
+    // R4-CALLBACK-006 fix: Determine controlledness by own-property presence in options.state.
+    // - controlled+dedicated: dispatch raw updater only through dedicated callback
+    // - controlled+missing: do NOT mutate local state or synthesize whole-state updater
+    // - uncontrolled+dedicated: update local state AND notify dedicated callback with raw updater
+    // - uncontrolled+aggregate: update local state AND notify onStateChange
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'columnPinning');
+
+    if (isControlled) {
+      // Controlled slice: only dispatch to dedicated callback, do not mutate local state
+      if (currentOptions.onColumnPinningChange) {
+        dispatchCallback(currentOptions.onColumnPinningChange, updater);
+      }
+      // If no dedicated callback, silently do nothing (controlled consumer must provide callback)
+      return;
+    }
+
+    // Uncontrolled: apply locally
+    const previous = state.columnPinning;
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: ColumnPinningState) => ColumnPinningState)(previous)
+        : updater;
+    if (Object.is(previous, next)) return;
+
+    // R4 fix: Notify dedicated callback with the RAW updater (not the resolved value)
+    // so the observer receives functional-updater identity preservation.
+    if (currentOptions.onColumnPinningChange) {
+      dispatchCallback(currentOptions.onColumnPinningChange, updater);
+    }
+    // Always notify aggregate onStateChange for uncontrolled slices
+    commitLocalState({ ...state, columnPinning: next });
+  };
+
+  const setColumnSizing = (updater: Updater<ColumnSizingState>): void => {
+    // R4-CALLBACK-006 fix: Same controlledness logic as setColumnPinning.
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'columnSizing');
+
+    if (isControlled) {
+      if (currentOptions.onColumnSizingChange) {
+        dispatchCallback(currentOptions.onColumnSizingChange, updater);
+      }
+      return;
+    }
+
+    const previous = state.columnSizing;
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: ColumnSizingState) => ColumnSizingState)(previous)
+        : updater;
+    if (Object.is(previous, next)) return;
+
+    if (currentOptions.onColumnSizingChange) {
+      dispatchCallback(currentOptions.onColumnSizingChange, updater);
+    }
+    commitLocalState({ ...state, columnSizing: next });
+  };
+
+  const setColumnSizingInfo = (updater: Updater<ColumnResizeSession | null>): void => {
+    // R4-CALLBACK-006 fix: Same controlledness logic as setColumnPinning.
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'columnSizingInfo');
+
+    if (isControlled) {
+      if (currentOptions.onColumnSizingInfoChange) {
+        dispatchCallback(currentOptions.onColumnSizingInfoChange, updater);
+      }
+      return;
+    }
+
+    const previous = state.columnSizingInfo;
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: ColumnResizeSession | null) => ColumnResizeSession | null)(previous)
+        : updater;
+    if (Object.is(previous, next)) return;
+
+    // R4 fix: Notify dedicated callback with the RAW updater (not the resolved value)
+    if (currentOptions.onColumnSizingInfoChange) {
+      dispatchCallback(currentOptions.onColumnSizingInfoChange, updater);
+    }
+    commitLocalState({ ...state, columnSizingInfo: next });
+  };
+
+  // F0.3: Resize session command methods.
+  // These provide a higher-level API for resize interactions.
+
+  const startResize = (columnId: string, startSize: number): void => {
+    const session: ColumnResizeSession = {
+      columnId,
+      startSize,
+      delta: 0,
+      mode: 'onChange',
+    };
+    setColumnSizingInfo(session);
+  };
+
+  // R4 fix: In controlled mode, read the session from controlled options, not local state.
+  // This ensures commands work correctly when parent doesn't synchronously re-render.
+  const getEffectiveColumnSizingInfo = (): ColumnResizeSession | null | undefined => {
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'columnSizingInfo');
+    return isControlled ? currentOptions.state?.columnSizingInfo : state.columnSizingInfo;
+  };
+
+  const adjustResize = (delta: number): void => {
+    const session = getEffectiveColumnSizingInfo();
+    if (!session) return;
+    setColumnSizingInfo({
+      ...session,
+      delta,
+      mode: 'onChange',
+    });
+  };
+
+  const commitResize = (): void => {
+    const session = getEffectiveColumnSizingInfo();
+    if (!session) return;
+    const { columnId, startSize, delta } = session;
+    const newWidth = Math.max(0, startSize + delta);
+    // Update columnSizing with the new width
+    setColumnSizing((prev) => ({ ...prev, [columnId]: newWidth }));
+    // Clear the resize session
+    setColumnSizingInfo(null);
+  };
+
+  const cancelResize = (): void => {
+    const session = getEffectiveColumnSizingInfo();
+    if (!session) return;
+    setColumnSizingInfo(null);
+  };
+
+  const setFocusedCell = (updater: Updater<CellPosition | null>): void => {
+    // R4-CALLBACK-006 fix: Same controlledness logic as setColumnPinning.
+    const isControlled =
+      currentOptions.state &&
+      Object.prototype.hasOwnProperty.call(currentOptions.state, 'focusedCell');
+
+    if (isControlled) {
+      if (currentOptions.onFocusedCellChange) {
+        dispatchCallback(currentOptions.onFocusedCellChange, updater);
+      }
+      return;
+    }
+
+    const previous = state.focusedCell;
+    const next =
+      typeof updater === 'function'
+        ? (updater as (old: CellPosition | null) => CellPosition | null)(previous)
+        : updater;
+    if (Object.is(previous, next)) return;
+
+    if (currentOptions.onFocusedCellChange) {
+      dispatchCallback(currentOptions.onFocusedCellChange, updater);
+    }
+    commitLocalState({ ...state, focusedCell: next });
+  };
+
   const setOptions = (next: PivotTableOptions<TRow>): void => {
     if (disposed) return;
     const previousOptions = currentOptions;
     const previousState = state;
     const previousEngine = engine;
-    currentOptions = next;
-    announcer = next.announcer ?? noopAnnouncer;
 
+    // R5-PIVOT-GLOBAL-006 fix: Use instance announcer first, global as fallback.
+    announcer = next.announcer ?? getGlobalPivotAnnouncer();
+
+    // Determine the engine to use:
+    // - If next.options explicitly provides an engine, use it
+    // - Otherwise, preserve the engine from previousOptions if it had one
+    // - Otherwise, create a new default engine
+    const explicitEngine = next.engine;
+    const inheritedEngine = previousOptions.engine;
     const nextEngine =
-      next.engine ??
-      (previousOptions.engine === undefined ? engine : createMainThreadEngine<TRow>());
+      explicitEngine ?? (inheritedEngine !== undefined ? engine : createMainThreadEngine<TRow>());
     const engineChanged = nextEngine !== previousEngine;
     if (engineChanged) {
       activeController?.abort();
@@ -502,6 +665,11 @@ export const createPivotTable = <TRow>(
       previousEngine.dispose?.();
       engine = nextEngine;
     }
+
+    // Update currentOptions to include the resolved engine.
+    // This ensures subsequent setOptions calls that don't specify engine
+    // can inherit the existing engine rather than creating a new one.
+    currentOptions = explicitEngine ? next : { ...next, engine };
 
     const resolvedPivot = resolvePivot(next);
     const previousPivot = previousState.pivot as unknown as PivotConfig<TRow>;
@@ -537,11 +705,36 @@ export const createPivotTable = <TRow>(
     );
     if (stateChanged) state = nextState;
 
-    const dataChanged = !sameData(previousOptions.data, next.data);
+    // R4-IDENTITY-008 fix: Use reference comparison instead of deep equality.
+    // Same reference = no change; different reference = changed (triggers recompute).
+    const dataChanged = previousOptions.data !== next.data;
+    // R4-R7 fix: Resolve dataVersion token for proper comparison.
+    // Compare resolved tokens, not object references, to support getVersion patterns.
+    const resolveDataVersion = (dv: unknown, data: TRow[]): string | number | undefined => {
+      if (!dv) return undefined;
+      const version = dv as {
+        version?: string | number;
+        getVersion?: (data: TRow[]) => string | number;
+      };
+      if (version.getVersion) {
+        return version.getVersion(data);
+      }
+      return version.version;
+    };
+    const prevVersion = resolveDataVersion(previousOptions.dataVersion, previousOptions.data);
+    const nextVersion = resolveDataVersion(next.dataVersion, next.data);
+    const dataVersionChanged = prevVersion !== nextVersion && !Object.is(prevVersion, nextVersion);
     const pivotChanged = !Object.is(previousState.pivot, nextState.pivot);
     const expandedChanged = !Object.is(previousState.expanded, nextState.expanded);
     const sortingChanged = !Object.is(previousState.pivotSorting, nextState.pivotSorting);
-    if (engineChanged || dataChanged || pivotChanged || expandedChanged || sortingChanged) {
+    if (
+      engineChanged ||
+      dataChanged ||
+      dataVersionChanged ||
+      pivotChanged ||
+      expandedChanged ||
+      sortingChanged
+    ) {
       requestCompute();
     } else if (stateChanged) {
       emit();
@@ -570,11 +763,112 @@ export const createPivotTable = <TRow>(
     getError: () => error,
     getVisibleRows: () => getVisibleRows(result.rowRoot, state.expanded),
     getHeaderRows: () => getHeaderRows(result.columnRoot),
-    getLeafColumns: () => result.leafColumns,
+    getLeafColumns: () => {
+      // R4-LEAF-007: Apply columnSizing widths and derive effective pinning.
+      // 1. Consult state.columnPinning for explicit left/right membership
+      // 2. Total columns default to 'right' unless explicitly overridden
+      // 3. Add cumulative pinned offsets (0 for first pinned, sum of preceding widths)
+      // 4. No engine result mutation
+
+      const leftPinned = new Set(state.columnPinning.left);
+      const rightPinned = new Set(state.columnPinning.right);
+
+      // First pass: determine effective pinned side for each leaf
+      const leafPinnedSides = result.leafColumns.map((leaf) => {
+        // Explicit state pinning takes precedence for ordinary leaves
+        if (leftPinned.has(leaf.id)) return 'left' as const;
+        if (rightPinned.has(leaf.id)) return 'right' as const;
+        // Total columns default to 'right' unless explicitly set
+        if (leaf.isTotal) return leaf.pinned ?? 'right';
+        // Ordinary leaves with no explicit pinning remain unpinned
+        return leaf.pinned;
+      });
+
+      // Second pass: compute cumulative pinned offsets.
+      // For LEFT-pinned columns: offset is the sum of widths of all preceding
+      // left-pinned columns in leaf order (first left-pinned = 0, next = width of first, etc.)
+      //
+      // For RIGHT-pinned columns (R4 fix): offset is accumulated from the RIGHT EDGE
+      // in pin-array order. The rightmost column gets offset 0, the next rightmost
+      // gets the width of the rightmost, etc.
+      // We need to include ALL effective right-pinned leaves (including default-right totals).
+      const result2: Array<PivotLeafColumn<TRow>> = [];
+      let leftOffset = 0;
+
+      // Build ordered list of ALL effective right-pinned leaves.
+      // This includes: explicit state.columnPinning.right members + default-right total leaves.
+      // State pin-array order is preserved for explicit members.
+      const explicitRightIds = new Set(state.columnPinning.right);
+      const allRightPinned: string[] = [...state.columnPinning.right];
+      // Add default-right total leaves not already in the state pin array
+      for (let i = 0; i < result.leafColumns.length; i++) {
+        const leaf = result.leafColumns[i]!;
+        const pinned = leafPinnedSides[i];
+        if (pinned === 'right' && !explicitRightIds.has(leaf.id)) {
+          allRightPinned.push(leaf.id);
+        }
+      }
+
+      // Compute right offsets: iterate the combined list in REVERSE order (right edge first)
+      const rightOffsets = new Map<string, number>();
+      let rightAccumulator = 0;
+      // Process from LAST (rightmost) to FIRST
+      for (let i = allRightPinned.length - 1; i >= 0; i--) {
+        const colId = allRightPinned[i]!;
+        // Find the leaf width
+        const leaf = result.leafColumns.find((l) => l.id === colId);
+        const width = leaf ? (state.columnSizing[leaf.id] ?? leaf.size) : 0;
+        rightOffsets.set(colId, rightAccumulator);
+        rightAccumulator += width;
+      }
+
+      for (let i = 0; i < result.leafColumns.length; i++) {
+        const leaf = result.leafColumns[i]!;
+        const pinned = leafPinnedSides[i];
+        const width = state.columnSizing[leaf.id] ?? leaf.size;
+
+        // Use exact-optional-property semantics: only include pinned/pinnedOffset if defined
+        const result3: PivotLeafColumn<TRow> = {
+          id: leaf.id,
+          path: leaf.path,
+          measureId: leaf.measureId,
+          isTotal: leaf.isTotal,
+          size: width,
+          header: leaf.header,
+        };
+        if (pinned !== undefined) {
+          let pinnedOffset: number;
+          if (pinned === 'left') {
+            pinnedOffset = leftOffset;
+            leftOffset += width;
+          } else {
+            // R4 fix: Use the precomputed right-edge offset from pin-array order
+            pinnedOffset = rightOffsets.get(leaf.id) ?? 0;
+          }
+          result3.pinned = pinned;
+          result3.pinnedOffset = pinnedOffset;
+        }
+        result2.push(result3);
+      }
+
+      return result2;
+    },
     setPivot,
     setExpanded,
     toggleExpanded,
+    retryRow: requestChildren,
+    retry: requestCompute,
     setPivotSorting,
+    // F0.3: Implemented previously inert pivot state slices.
+    setColumnPinning,
+    setColumnSizing,
+    setColumnSizingInfo,
+    // F0.3: Resize session command methods.
+    startResize,
+    adjustResize,
+    commitResize,
+    cancelResize,
+    setFocusedCell,
     announce: (message: string, politeness?: 'polite' | 'assertive') =>
       announcer.announce(message, politeness),
     dispose,
@@ -591,7 +885,7 @@ export const createPivotTable = <TRow>(
       consumerProps?: Record<string, unknown>,
     ) => getHeaderProps(node, consumerProps),
     getToggleExpandedProps: (row: PivotRowNode<TRow>, consumerProps?: Record<string, unknown>) =>
-      makeToggleExpandedProps(row, consumerProps, toggleExpanded),
+      makeToggleExpandedProps(row, consumerProps, toggleExpanded, state.expanded[row.key] === true),
     getFooterProps: (consumerProps?: Record<string, unknown>): Record<string, unknown> | null =>
       getFooterProps(consumerProps, state, result),
     getTotalsColumnProps: (leaf: PivotLeafColumn<TRow>, consumerProps?: Record<string, unknown>) =>

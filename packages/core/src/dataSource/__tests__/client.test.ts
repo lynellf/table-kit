@@ -46,17 +46,32 @@ describe('createClientDataSource', () => {
   describe('capabilities', () => {
     it('defaults to all client capabilities', () => {
       const ds = createClientDataSource(rows, columns);
-      expect(ds.capabilities).toEqual({ sort: 'client', filter: 'client', paginate: 'client' });
+      expect(ds.capabilities).toEqual({
+        sort: 'client',
+        filter: 'client',
+        paginate: 'client',
+        pagination: 'offset',
+      });
     });
 
     it('accepts partial capabilities override', () => {
       const ds = createClientDataSource(rows, columns, { capabilities: { paginate: 'server' } });
-      expect(ds.capabilities).toEqual({ sort: 'client', filter: 'client', paginate: 'server' });
+      expect(ds.capabilities).toEqual({
+        sort: 'client',
+        filter: 'client',
+        paginate: 'server',
+        pagination: 'offset',
+      });
     });
 
     it('defaults unspecified capabilities to client', () => {
       const ds = createClientDataSource(rows, columns, { capabilities: { sort: 'server' } });
-      expect(ds.capabilities).toEqual({ sort: 'server', filter: 'client', paginate: 'client' });
+      expect(ds.capabilities).toEqual({
+        sort: 'server',
+        filter: 'client',
+        paginate: 'client',
+        pagination: 'offset',
+      });
     });
   });
 
@@ -120,7 +135,7 @@ describe('createClientDataSource', () => {
     it('applies pagination when paginate capability is client', () => {
       const ds = createClientDataSource(rows, columns);
       const result = ds.getRows(
-        { sorting: [], filters: [], pagination: { pageIndex: 0, pageSize: 2 } },
+        { sorting: [], filters: [], pagination: { type: 'offset', offset: 0, limit: 2 } },
         { signal: new AbortController().signal },
       ) as SyncResult;
       expect(result.rows).toHaveLength(2);
@@ -131,7 +146,7 @@ describe('createClientDataSource', () => {
     it('ignores pagination when paginate capability is server', () => {
       const ds = createClientDataSource(rows, columns, { capabilities: { paginate: 'server' } });
       const result = ds.getRows(
-        { sorting: [], filters: [], pagination: { pageIndex: 0, pageSize: 2 } },
+        { sorting: [], filters: [], pagination: { type: 'offset', offset: 0, limit: 2 } },
         { signal: new AbortController().signal },
       ) as SyncResult;
       expect(result.rows).toHaveLength(4); // all rows returned
@@ -146,7 +161,7 @@ describe('createClientDataSource', () => {
         {
           sorting: [{ id: 'sales', desc: false }],
           filters: [{ id: 'region', value: 'West' }],
-          pagination: { pageIndex: 0, pageSize: 10 },
+          pagination: { type: 'offset', offset: 0, limit: 10 },
         },
         { signal: new AbortController().signal },
       ) as SyncResult;
@@ -219,6 +234,99 @@ describe('createClientDataSource', () => {
         // The factory derives it from the capabilities pattern, not from a direct option.
       });
       expect(warn).toHaveBeenCalled(); // Mixed mode still warns by default
+    });
+  });
+
+  // ─── R2 Source DataVersion Boundary Tests ───────────────────────────────────
+
+  describe('R2: dataVersion in client source', () => {
+    it('R2: returns dataVersion in result when static version is provided', () => {
+      const ds = createClientDataSource(rows, columns, {
+        dataVersion: { version: 'static-123' },
+      });
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBe('static-123');
+    });
+
+    it('R2: returns dataVersion in result when getVersion function is provided', () => {
+      const getVersion = vi.fn(() => 'dynamic-456');
+      const ds = createClientDataSource(rows, columns, {
+        dataVersion: { getVersion },
+      });
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBe('dynamic-456');
+      expect(getVersion).toHaveBeenCalledWith(rows);
+    });
+
+    it('R2: getVersion is called on each getRows call (re-evaluation)', () => {
+      const getVersion = vi.fn(() => 'dynamic-456');
+      const ds = createClientDataSource(rows, columns, {
+        dataVersion: { getVersion },
+      });
+      const signal = new AbortController().signal;
+
+      // First call
+      ds.getRows({ sorting: [], filters: [] }, { signal });
+      expect(getVersion).toHaveBeenCalledTimes(1);
+
+      // Second call
+      ds.getRows({ sorting: [], filters: [] }, { signal });
+      expect(getVersion).toHaveBeenCalledTimes(2);
+
+      // Third call
+      ds.getRows({ sorting: [], filters: [] }, { signal });
+      expect(getVersion).toHaveBeenCalledTimes(3);
+    });
+
+    it('R2: getVersion receives current rows array for mutable data patterns', () => {
+      const mutableRows: Row[] = [{ id: '1', name: 'Alice', region: 'West', sales: 100 }];
+      const getVersion = vi.fn((data: Row[]) => `v${data.length}`);
+      const ds = createClientDataSource(mutableRows, columns, {
+        dataVersion: { getVersion },
+      });
+
+      ds.getRows({ sorting: [], filters: [] }, { signal: new AbortController().signal });
+      expect(getVersion).toHaveBeenLastCalledWith(mutableRows);
+    });
+
+    it('R2: does not include dataVersion in result when neither version nor getVersion is provided', () => {
+      const ds = createClientDataSource(rows, columns);
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBeUndefined();
+    });
+
+    it('R2: getVersion takes precedence over static version when both are provided', () => {
+      const getVersion = vi.fn(() => 'function-version');
+      const ds = createClientDataSource(rows, columns, {
+        dataVersion: { version: 'static-version', getVersion },
+      });
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBe('function-version');
+      expect(getVersion).toHaveBeenCalled();
+    });
+
+    it('R2: dataVersion is returned even when paginate=server (server mode)', () => {
+      const ds = createClientDataSource(rows, columns, {
+        capabilities: { paginate: 'server' },
+        dataVersion: { version: 42 },
+      });
+      const result = ds.getRows(
+        { sorting: [], filters: [] },
+        { signal: new AbortController().signal },
+      ) as { rows: Row[]; totalRowCount: number; dataVersion?: string | number };
+      expect(result.dataVersion).toBe(42);
     });
   });
 });

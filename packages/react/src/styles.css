@@ -1,0 +1,235 @@
+.tk-data-grid,
+.tk-pivot-grid {
+  --tk-border-color: #d8dee8;
+  --tk-header-background: #f6f8fb;
+  --tk-row-background: #fff;
+  --tk-row-hover-background: #f4f8ff;
+  --tk-selected-background: #e7f0ff;
+  --tk-text-color: #172033;
+  --tk-muted-color: #5f6b7a;
+  color: var(--tk-text-color);
+  font: 14px / 1.35 system-ui, sans-serif;
+}
+
+.tk-grid-viewport,
+.tk-pivot-viewport {
+  position: relative;
+  width: min(100%, var(--tk-grid-width));
+  height: var(--tk-grid-height);
+  overflow: auto;
+  border: 1px solid var(--tk-border-color);
+  background: var(--tk-row-background);
+}
+
+.tk-grid-header,
+.tk-pivot-header {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  height: 58px;
+  background: var(--tk-header-background);
+  border-bottom: 1px solid var(--tk-border-color);
+}
+
+.tk-pivot-header-row {
+  position: absolute;
+  left: 0;
+  width: 100%;
+}
+
+.tk-grid-column-header,
+.tk-grid-selection-header,
+.tk-pivot-column-header,
+.tk-pivot-corner {
+  position: absolute;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 6px 8px;
+  border-right: 1px solid var(--tk-border-color);
+  overflow: hidden;
+}
+
+.tk-grid-selection-header,
+.tk-grid-selection-cell {
+  left: 0;
+  width: 44px;
+}
+
+.tk-grid-selection-header,
+.tk-grid-selection-cell,
+.tk-grid-pinned-left,
+.tk-grid-pinned-right {
+  z-index: 2;
+  background: var(--tk-row-background);
+}
+
+.tk-grid-selection-header,
+.tk-grid-column-header.tk-grid-pinned-left,
+.tk-grid-column-header.tk-grid-pinned-right {
+  background: var(--tk-header-background);
+}
+
+.tk-grid-row:hover .tk-grid-selection-cell,
+.tk-grid-row:hover .tk-grid-pinned-left,
+.tk-grid-row:hover .tk-grid-pinned-right {
+  background: var(--tk-row-hover-background);
+}
+
+.tk-grid-row[aria-selected="true"] .tk-grid-selection-cell,
+.tk-grid-row[aria-selected="true"] .tk-grid-pinned-left,
+.tk-grid-row[aria-selected="true"] .tk-grid-pinned-right {
+  background: var(--tk-selected-background);
+}
+
+.tk-grid-pinned-left {
+  box-shadow: 1px 0 0 var(--tk-border-color);
+}
+
+.tk-grid-pinned-right {
+  box-shadow: -1px 0 0 var(--tk-border-color);
+}
+
+.tk-grid-header-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 22px;
+  font-weight: 600;
+}
+
+.tk-grid-sort-button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tk-grid-filter {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin-top: 4px;
+}
+
+.tk-grid-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.tk-grid-body,
+.tk-pivot-body {
+  position: relative;
+}
+
+.tk-grid-row,
+.tk-pivot-row {
+  position: absolute;
+  box-sizing: border-box;
+  background: var(--tk-row-background);
+  border-bottom: 1px solid var(--tk-border-color);
+}
+
+.tk-grid-row:hover {
+  background: var(--tk-row-hover-background);
+}
+
+.tk-grid-row[aria-selected="true"] {
+  background: var(--tk-selected-background);
+}
+
+.tk-pivot-grand-total {
+  font-weight: 600;
+  background: var(--tk-header-background);
+}
+
+.tk-grid-cell,
+.tk-grid-selection-cell,
+.tk-pivot-cell,
+.tk-pivot-row-header {
+  position: absolute;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 8px;
+  border-right: 1px solid var(--tk-border-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tk-grid-cell:focus,
+.tk-pivot-cell:focus,
+.tk-pivot-row-header:focus {
+  z-index: 3;
+  outline: 2px solid #2463eb;
+  outline-offset: -2px;
+}
+
+.tk-pivot-row-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tk-pivot-corner,
+.tk-pivot-row-header,
+.tk-pivot-pinned-left,
+.tk-pivot-pinned-right {
+  z-index: 2;
+  background: var(--tk-row-background);
+}
+
+.tk-pivot-corner,
+.tk-pivot-column-header.tk-pivot-pinned-left,
+.tk-pivot-column-header.tk-pivot-pinned-right,
+.tk-pivot-grand-total .tk-pivot-row-header,
+.tk-pivot-grand-total .tk-pivot-pinned-left,
+.tk-pivot-grand-total .tk-pivot-pinned-right {
+  background: var(--tk-header-background);
+}
+
+.tk-pivot-pinned-left {
+  box-shadow: 1px 0 0 var(--tk-border-color);
+}
+
+.tk-pivot-pinned-right {
+  box-shadow: -1px 0 0 var(--tk-border-color);
+}
+
+.tk-pivot-row-header button {
+  flex: none;
+}
+
+.tk-grid-state,
+.tk-pivot-state {
+  position: sticky;
+  left: 0;
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--tk-muted-color);
+}
+
+.tk-grid-footer {
+  display: flex;
+  width: min(100%, var(--tk-grid-width));
+  box-sizing: border-box;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--tk-border-color);
+  border-top: 0;
+}
+
+.tk-grid-footer label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}

@@ -19,8 +19,26 @@ import type {
 } from '@lynellf/tablekit-core';
 
 // Re-export core types for pivot package consumers
-export type { Updater } from '@lynellf/tablekit-core';
-export type { Announcer } from '@lynellf/tablekit-core';
+export type { Updater, Announcer } from '@lynellf/tablekit-core';
+export type {
+  CellPosition,
+  ColumnPinningState,
+  ColumnResizeSession,
+  ColumnSizingState,
+} from '@lynellf/tablekit-core';
+// Re-export DataVersion for pivot package consumers
+export type { DataVersion } from '@lynellf/tablekit-core/dataSource';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Callback types (Phase 1 F0.3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Callback function type for state change handlers.
+ * Accepts an Updater<T> (value or function) and returns void.
+ * This is the correct type for onChange handlers in React.
+ */
+export type OnChangeFn<T> = (updater: Updater<T>) => void;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Primitive aliases
@@ -309,6 +327,13 @@ export interface PivotLeafColumn<_TRow = unknown> {
   header: unknown;
   /** Optional pinned side (grand-total column defaults to 'right'). */
   pinned?: 'left' | 'right';
+  /**
+   * R4-LEAF-007: Cumulative offset from the pinned edge.
+   * - undefined: not pinned
+   * - 0: first leaf at the pinned edge
+   * - positive number: sum of widths of preceding pinned leaves at the same edge
+   */
+  pinnedOffset?: number;
 }
 
 /**
@@ -385,7 +410,27 @@ export interface PivotTableInstance<TRow = unknown> {
   setPivot(updater: Updater<PivotConfig<TRow>>): void;
   setExpanded(updater: Updater<PivotExpansionState>): void;
   toggleExpanded(path: Array<FieldValue>): void;
+  /** Retry loading one expanded row path after an isolated child error. */
+  retryRow(path: Array<FieldValue>): void;
+  /** Re-run the latest root aggregation query. */
+  retry(): void;
   setPivotSorting(updater: Updater<PivotSortingState>): void;
+  /** F0.3: Set column pinning state. */
+  setColumnPinning(updater: Updater<ColumnPinningState>): void;
+  /** F0.3: Set column sizing state. */
+  setColumnSizing(updater: Updater<ColumnSizingState>): void;
+  /** F0.3: Set column resize session state. */
+  setColumnSizingInfo(updater: Updater<ColumnResizeSession | null>): void;
+  /** F0.3: Start a resize session for the given column. */
+  startResize(columnId: string, startSize: number): void;
+  /** F0.3: Adjust the current resize session by the given delta. */
+  adjustResize(delta: number): void;
+  /** F0.3: Commit the current resize session and update columnSizing. */
+  commitResize(): void;
+  /** F0.3: Cancel the current resize session without updating columnSizing. */
+  cancelResize(): void;
+  /** F0.3: Set focused cell state. */
+  setFocusedCell(updater: Updater<CellPosition | null>): void;
   announce(message: string, politeness?: 'polite' | 'assertive'): void;
   /** Prop getter for the root treegrid element. */
   getGridProps(consumerProps?: Record<string, unknown>): Record<string, unknown>;
@@ -428,16 +473,37 @@ export interface PivotTableOptions<TRow = unknown> {
   pivot: PivotConfig<TRow> | ((opts: { data: TRow[] }) => PivotConfig<TRow>);
   initialState?: Partial<PivotTableState>;
   state?: Partial<PivotTableState>;
-  onPivotChange?: Updater<PivotConfig<TRow>>;
-  onExpandedChange?: Updater<PivotExpansionState>;
-  onPivotSortingChange?: Updater<PivotSortingState>;
-  onStateChange?: Updater<PivotTableState>;
+  /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
+  onPivotChange?: OnChangeFn<PivotConfig<TRow>>;
+  /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
+  onExpandedChange?: OnChangeFn<PivotExpansionState>;
+  /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
+  onPivotSortingChange?: OnChangeFn<PivotSortingState>;
+  /** R4 fix: Dedicated callback for column pinning changes. */
+  onColumnPinningChange?: OnChangeFn<ColumnPinningState>;
+  /** R4 fix: Dedicated callback for column sizing changes. */
+  onColumnSizingChange?: OnChangeFn<ColumnSizingState>;
+  /** R4 fix: Dedicated callback for column resize session changes. */
+  onColumnSizingInfoChange?: OnChangeFn<ColumnResizeSession | null>;
+  /** R4 fix: Dedicated callback for focused cell changes. */
+  onFocusedCellChange?: OnChangeFn<CellPosition | null>;
+  /** Phase 1 F0.3: Changed from Updater<T> to OnChangeFn<T>. */
+  onStateChange?: OnChangeFn<PivotTableState>;
   /** Aggregation engine. Default: `createMainThreadEngine()`. */
   engine?: AggregationEngine<TRow>;
   /** Announcer. Default: `getGlobalAnnouncer()` (set by ReactAnnouncer in M1). */
   announcer?: import('@lynellf/tablekit-core').Announcer;
   /** getRowId for the source dataset. Default: index-based dev fallback (warning in M4). */
   getRowId?: (row: TRow, index: number) => string;
+  /**
+   * R4-R7 fix: Data version token for mutable data identity.
+   * When the data array is mutated in-place (same reference), consumers can
+   * increment/publish a new version token to signal that the data changed.
+   * This triggers recomputation even when the data reference is unchanged.
+   * Supports both static version token and getVersion() function escape hatch
+   * to match the shared DataVersion<TRow> contract across core/client/hook boundaries.
+   */
+  dataVersion?: import('@lynellf/tablekit-core/dataSource').DataVersion<TRow>;
   /**
    * M6 phase 2: how Tab behaves inside the pivot grid.
    * - 'exit' (default, APG-conformant): Tab moves focus out of the grid.

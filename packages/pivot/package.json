@@ -1,6 +1,6 @@
 {
   "name": "@lynellf/tablekit-pivot",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": false,
   "description": "Framework-free PivotTable config, main-thread aggregation engine, and treegrid rendering primitives.",
   "type": "module",
@@ -52,6 +52,6 @@
     "bench": "vitest bench --run bench/main-thread.bench.ts"
   },
   "peerDependencies": {
-    "@lynellf/tablekit-core": "workspace:*"
+    "@lynellf/tablekit-core": "^2.0.0"
   }
 }

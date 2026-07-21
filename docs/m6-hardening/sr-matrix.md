@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # v1.0 Screen-Reader Manual Matrix
 
 > Release gate for a11y-affecting changes. Spec §13.

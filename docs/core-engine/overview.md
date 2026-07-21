@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # Core Engine — Plan Overview
 
 **Slug:** `core-engine`

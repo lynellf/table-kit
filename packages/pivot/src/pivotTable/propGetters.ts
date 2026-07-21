@@ -87,7 +87,7 @@ export const getBodyProps = <TRow>(
 export const getRowProps = <TRow>(
   row: PivotRowNode<TRow>,
   consumerProps: Record<string, unknown> | undefined,
-  _state: PivotTableState,
+  state: PivotTableState,
 ): Record<string, unknown> => {
   const props: Record<string, unknown> = {
     role: 'row',
@@ -97,7 +97,7 @@ export const getRowProps = <TRow>(
     'data-row-key': row.key as RowPathKey,
   };
   if (row.hasChildren) {
-    props['aria-expanded'] = row.childState === 'loaded' ? 'true' : 'false';
+    props['aria-expanded'] = state.expanded[row.key] === true ? 'true' : 'false';
     props['data-has-children'] = 'true';
   }
   if (row.childState === 'loading') {
@@ -153,12 +153,12 @@ export const getToggleExpandedProps = <TRow>(
   row: PivotRowNode<TRow>,
   consumerProps: Record<string, unknown> | undefined,
   toggle: (path: PivotRowNode['path']) => void,
+  expanded = row.childState === 'loaded',
 ): Record<string, unknown> => {
   const props: Record<string, unknown> = {
     role: 'button',
-    'aria-expanded': row.childState === 'loaded' ? 'true' : 'false',
-    'aria-label':
-      row.childState === 'loaded' ? `Collapse ${String(row.label)}` : `Expand ${String(row.label)}`,
+    'aria-expanded': expanded ? 'true' : 'false',
+    'aria-label': expanded ? `Collapse ${String(row.label)}` : `Expand ${String(row.label)}`,
     tabIndex: -1,
     onClick: (event: MouseEvent) => {
       if ((event as unknown as { defaultPrevented?: boolean }).defaultPrevented) return;

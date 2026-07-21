@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # Recipes
 
 Consumer-facing integration patterns for `@lynellf/tablekit-react`. Each recipe is a self-contained copy-paste snippet with pitfalls and links back to the spec.

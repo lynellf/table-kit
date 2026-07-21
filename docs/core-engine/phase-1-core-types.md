@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # Phase 1 — Core Types
 
 **Goal:** Land the complete public type surface for `@lynellf/tablekit-core`. No runtime behavior in this phase — only types and a small `utils.ts` of pure helpers consumed by later phases. Type tests pin the surface so unintentional breakage fails `pnpm typecheck`.

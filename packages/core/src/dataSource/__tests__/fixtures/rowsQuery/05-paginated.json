@@ -1,1 +1,1 @@
-{"sorting":[{"id":"name","desc":false}],"filters":[{"id":"region","value":"West","filterFn":"equalsString"}],"pagination":{"pageIndex":2,"pageSize":25}}
+{"sorting":[{"id":"name","desc":false}],"filters":[{"id":"region","value":"West","filterFn":"equalsString"}],"pagination":{"type":"offset","offset":50,"limit":25}}

@@ -46,10 +46,12 @@ export const createClientDataSource = <TRow>(
   columns: Array<ColumnDef<TRow, unknown>>,
   opts: CreateClientDataSourceOptions<TRow> = {},
 ): DataSource<TRow> => {
+  // R2 fix: Preserve pagination strategy from capabilities.
   const capabilities: DataSourceCapabilities = {
     sort: opts.capabilities?.sort ?? 'client',
     filter: opts.capabilities?.filter ?? 'client',
     paginate: opts.capabilities?.paginate ?? 'client',
+    pagination: opts.capabilities?.pagination ?? 'offset',
   };
 
   // One-shot dev warning on the mixed-mode trap (when paginate='server').
@@ -64,6 +66,21 @@ export const createClientDataSource = <TRow>(
     validateModeConfiguration(syntheticOptions);
   }
 
+  // R2-R7 fix: Store getVersion function for dynamic resolution.
+  // If getVersion is provided, we call it on each getRows to support mutable data.
+  // Otherwise use static version if provided.
+  const versionFn = opts.dataVersion?.getVersion;
+  const staticVersion = opts.dataVersion?.version;
+
+  // R2-R7 fix: Resolve version dynamically on each getRows call.
+  // This ensures mutable data with getVersion gets fresh tokens on each query.
+  const resolveVersion = (): string | number | undefined => {
+    if (versionFn) {
+      return versionFn(rows);
+    }
+    return staticVersion;
+  };
+
   return {
     capabilities,
     getRows: (
@@ -72,16 +89,32 @@ export const createClientDataSource = <TRow>(
       _ctx: { signal: AbortSignal },
     ): { rows: TRow[]; totalRowCount: number } => {
       // Build column instances from defs.
+      // v2.0.0: pagination is now PaginationWire discriminated union.
+      // For offset strategy: convert offset/limit to pageIndex/pageSize.
+      // For cursor strategy: client-side pagination doesn't apply; use default.
+      const paginationState = (() => {
+        if (!q.pagination) return { pageIndex: 0, pageSize: 25 };
+        if (q.pagination.type === 'offset') {
+          return {
+            pageIndex: Math.floor(q.pagination.offset / q.pagination.limit),
+            pageSize: q.pagination.limit,
+          };
+        }
+        // Cursor strategy: client-side pagination doesn't apply
+        return { pageIndex: 0, pageSize: 25 };
+      })();
+
       const state = {
         sorting: q.sorting,
         columnFilters: q.filters.map((f) => ({ id: f.id, value: f.value })),
-        pagination: q.pagination ?? { pageIndex: 0, pageSize: 25 },
+        pagination: paginationState,
         columnOrder: [],
         columnVisibility: {},
         columnPinning: { left: [], right: [] },
         columnSizing: {},
         columnSizingInfo: null,
         focusedCell: null,
+        rowSelection: {},
       };
 
       let result: TRow[] = rows;
@@ -106,11 +139,22 @@ export const createClientDataSource = <TRow>(
       }
 
       // Paginate (when 'client') — otherwise return full slice + totalRowCount.
-      if (capabilities.paginate === 'client' && q.pagination) {
-        result = paginateRows({ rows: result, pagination: q.pagination });
+      // v2.0.0: Only paginate for offset strategy. Cursor pagination doesn't apply client-side.
+      if (capabilities.paginate === 'client' && q.pagination?.type === 'offset') {
+        result = paginateRows({ rows: result, pagination: paginationState });
       }
 
-      return { rows: result, totalRowCount: opts.totalRowCount ?? rows.length };
+      // R2-R7 fix: Include resolved dataVersion in each result.
+      // This enables mutable-data SWR behavior: fresh version on each query.
+      const resolvedVersion = resolveVersion();
+      const baseResult: { rows: TRow[]; totalRowCount: number; dataVersion?: string | number } = {
+        rows: result,
+        totalRowCount: opts.totalRowCount ?? rows.length,
+      };
+      if (resolvedVersion !== undefined) {
+        baseResult.dataVersion = resolvedVersion;
+      }
+      return baseResult;
     },
   };
 };

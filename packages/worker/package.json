@@ -1,6 +1,6 @@
 {
   "name": "@lynellf/tablekit-worker",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": false,
   "description": "Worker pivot engine + message protocol + tiny in-worker data store, plus a server engine reference factory.",
   "type": "module",
@@ -44,6 +44,6 @@
     "bench": "vitest bench --run bench/worker.bench.ts"
   },
   "peerDependencies": {
-    "@lynellf/tablekit-pivot": "workspace:*"
+    "@lynellf/tablekit-pivot": "^2.0.0"
   }
 }

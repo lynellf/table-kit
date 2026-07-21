@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { VERSION, useDataTable } from './index';
+import { DataGrid, PivotGrid, VERSION, useDataTable } from './index';
 
 describe('@lynellf/tablekit-react', () => {
   it('exports a version string', () => {
@@ -9,5 +9,10 @@ describe('@lynellf/tablekit-react', () => {
 
   it('exports useDataTable', () => {
     expect(typeof useDataTable).toBe('function');
+  });
+
+  it('exports the rendered grid components', () => {
+    expect(typeof DataGrid).toBe('function');
+    expect(typeof PivotGrid).toBe('function');
   });
 });

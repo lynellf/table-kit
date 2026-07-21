@@ -8,12 +8,17 @@
  * The cache invalidates when any input identity changes. Consumers mutating
  * `data` in place must pass a new array reference (the standard React/Immer
  * pattern); the cache will then re-run the pipeline.
+ *
+ * R2 fix: Includes dataVersion token in the memo key so same-reference data
+ * with changed version is detected and recomputed.
  */
 
 import type { ColumnDef, DataTableState, Row } from '../types';
 
 export interface MemoKey {
   data: unknown[];
+  /** R2 fix: Data version token for mutable data identity. */
+  dataVersion: string | number | undefined;
   sorting: DataTableState['sorting'];
   columnFilters: DataTableState['columnFilters'];
   pagination: DataTableState['pagination'];
@@ -29,6 +34,8 @@ export interface MemoBuildOptions<TRow> {
   data: TRow[];
   columns: Array<ColumnDef<TRow, unknown>>;
   state: DataTableState;
+  /** R2 fix: Data version token for mutable data identity. */
+  dataVersion?: string | number;
   manualSorting?: boolean;
   manualFiltering?: boolean;
   manualPagination?: boolean;
@@ -36,6 +43,9 @@ export interface MemoBuildOptions<TRow> {
 
 export const buildMemoKey = <TRow>(opts: MemoBuildOptions<TRow>): MemoKey => ({
   data: opts.data as unknown[],
+  // R2 fix: Include dataVersion in memo key for mutable data identity.
+  // Same reference + same version reuses cache; same reference + changed version recomputes.
+  dataVersion: opts.dataVersion,
   sorting: opts.state.sorting,
   columnFilters: opts.state.columnFilters,
   pagination: opts.state.pagination,
@@ -50,6 +60,8 @@ export const buildMemoKey = <TRow>(opts: MemoBuildOptions<TRow>): MemoKey => ({
 export const memoKeysEqual = (a: MemoKey | null, b: MemoKey): boolean => {
   if (a === null) return false;
   if (a.data !== b.data) return false;
+  // R2 fix: Compare dataVersion token. Same reference + changed version = cache miss.
+  if (a.dataVersion !== b.dataVersion) return false;
   if (a.sorting !== b.sorting) return false;
   if (a.columnFilters !== b.columnFilters) return false;
   if (a.pagination !== b.pagination) return false;
@@ -72,9 +84,13 @@ export const buildPipelineRowModel = <TRow>(_opts: MemoBuildOptions<TRow>): Row<
 /**
  * Per-instance cache. The factory creates one of these and consults it
  * on every `getRowModel()` call.
+ *
+ * R2 fix: Tracks dataVersion to detect same-reference mutable data changes.
  */
 export class RowModelCache<TRow> {
   private cachedData: unknown[] | null = null;
+  /** R2 fix: Track cached data version for mutable data identity. */
+  private cachedDataVersion: string | number | undefined = undefined;
   private cachedSorting: unknown | null = null;
   private cachedColumnFilters: unknown | null = null;
   private cachedPagination: unknown | null = null;
@@ -83,6 +99,8 @@ export class RowModelCache<TRow> {
   getMemoKey() {
     return {
       data: this.cachedData,
+      // R2 fix: Include dataVersion in memo key.
+      dataVersion: this.cachedDataVersion,
       sorting: this.cachedSorting,
       columnFilters: this.cachedColumnFilters,
       pagination: this.cachedPagination,
@@ -90,8 +108,15 @@ export class RowModelCache<TRow> {
     };
   }
 
-  setCachedResult(data: unknown[], state: DataTableState, rows: Row<TRow>[]): void {
+  setCachedResult(
+    data: unknown[],
+    state: DataTableState,
+    rows: Row<TRow>[],
+    dataVersion?: string | number,
+  ): void {
     this.cachedData = data;
+    // R2 fix: Store dataVersion with cached result.
+    this.cachedDataVersion = dataVersion;
     this.cachedSorting = state.sorting;
     this.cachedColumnFilters = state.columnFilters;
     this.cachedPagination = state.pagination;
@@ -100,6 +125,7 @@ export class RowModelCache<TRow> {
 
   invalidate(): void {
     this.cachedData = null;
+    this.cachedDataVersion = undefined;
     this.cachedSorting = null;
     this.cachedColumnFilters = null;
     this.cachedPagination = null;

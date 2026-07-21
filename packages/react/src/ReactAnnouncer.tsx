@@ -2,15 +2,22 @@
  * @lynellf/tablekit-react — React live-region announcer.
  *
  * Mounts a visually-hidden `aria-live="polite"` div. The `useDataTable`
- * hook exposes this via `getReactAnnouncer()`.
+ * hook creates the announcer channel and passes it to this component (via props).
+ * The channel is also shared with the table factory (via options).
+ *
+ * R5 fix: Uses subscription/disposal lifecycle via the AnnouncerChannel.
+ * This ensures:
+ * 1. Each instance is independent and isolated
+ * 2. No cross-instance message leakage
+ * 3. Proper cleanup on unmount
+ * 4. Messages are delivered post-mount to the live region
  *
  * Spec §10 (M1 minimal): the live-region is the only M1 surface. The
  * `messages` map and i18n land in M6.
  */
 
-import type { Announcer } from '@lynellf/tablekit-core';
-import { setGlobalAnnouncer } from '@lynellf/tablekit-core';
 import { useEffect, useRef, useState } from 'react';
+import type { AnnouncerChannel } from './createAnnouncerChannel';
 
 const visuallyHiddenStyle: React.CSSProperties = {
   position: 'absolute',
@@ -27,52 +34,59 @@ const visuallyHiddenStyle: React.CSSProperties = {
 const POLITENESS_INTERVAL_MS = 1000;
 
 /**
- * Singleton announcer. Uses a module-level variable to avoid React context
- * for a single-purpose component.
+ * Props for ReactAnnouncer.
  */
-let singletonAnnouncer: Announcer | null = null;
-
-export const getReactAnnouncer = (): Announcer => {
-  if (!singletonAnnouncer) {
-    singletonAnnouncer = { announce: () => {} };
-  }
-  return singletonAnnouncer;
-};
-
-export const ReactAnnouncer = ({
-  politeness = 'polite',
-}: {
+export interface ReactAnnouncerProps {
+  /** The announcer channel created by useDataTable/usePivotTable. Shared with the table/pivot. */
+  channel: AnnouncerChannel;
   politeness?: 'polite' | 'assertive';
-}) => {
+}
+
+/**
+ * ReactAnnouncer renders a visually-hidden live region and updates it
+ * when the announcer channel receives messages.
+ *
+ * R5 fix: Uses the AnnouncerChannel subscription/disposal lifecycle.
+ * - Each hook-created table/pivot has its own isolated channel
+ * - Cleanup properly disposes the subscription on unmount
+ * - Messages are delivered post-mount to the live region
+ */
+export const ReactAnnouncer = ({ channel, politeness = 'polite' }: ReactAnnouncerProps) => {
   const [message, setMessage] = useState('');
   const lastAnnounceRef = useRef<{ message: string; ts: number }>({
     message: '',
     ts: 0,
   });
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
+  // R5 fix: Wire the announcer channel using subscription/disposal lifecycle.
+  // Messages delivered before subscription are not replayed.
   useEffect(() => {
-    const announcer: Announcer = {
-      announce: (msg: string) => {
-        const now = Date.now();
-        if (
-          msg === lastAnnounceRef.current.message &&
-          now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
-        ) {
-          return;
-        }
-        lastAnnounceRef.current = { message: msg, ts: now };
-        // Use setTimeout to batch with React's rendering cycle.
-        // This ensures the state update happens after the current render cycle.
-        setTimeout(() => setMessage(msg), 0);
-      },
+    const handleMessage = (msg: string, _msgPoliteness?: 'polite' | 'assertive') => {
+      // Throttle duplicate messages
+      const now = Date.now();
+      if (
+        msg === lastAnnounceRef.current.message &&
+        now - lastAnnounceRef.current.ts < POLITENESS_INTERVAL_MS
+      ) {
+        return;
+      }
+      lastAnnounceRef.current = { message: msg, ts: now };
+
+      // Use setMessage to batch with React's rendering cycle.
+      setMessage(msg);
     };
-    singletonAnnouncer = announcer;
-    // Also set the global announcer so the core table can use it
-    setGlobalAnnouncer(announcer);
+
+    unsubscribeRef.current = channel.subscribe(handleMessage);
+
     return () => {
-      singletonAnnouncer = { announce: () => {} };
+      // Dispose the subscription on cleanup
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
     };
-  }, []);
+  }, [channel]);
 
   return (
     <output

@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # Phase 6 — Public Surface + Final Verification
 
 **Goal:** Wire the public surface re-exports from both `index.ts` files, fix the README `createTable` mismatch, and confirm that `pnpm verify` is green from a clean tree, satisfying the M0 exit criteria.

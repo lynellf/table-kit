@@ -2,7 +2,7 @@
 
 Headless table primitives for the modern web — framework-free state engine, row pipeline, column model, PivotTable support, and first-class React adapters.
 
-**Status:** v1.0.0 — stable. The public API is frozen. See [`docs/m6-hardening/api-freeze.md`](./docs/m6-hardening/api-freeze.md) for the v1.0 contract.
+**Status:** v2.0.0 — Foundation phase complete. See [`docs/migration-v1-to-v2.md`](./docs/migration-v1-to-v2.md) for migration from v1, and [`docs/table-kit-2.0-parity-plan/phase-1-foundation-remediation-round-4.md`](./docs/table-kit-2.0-parity-plan/phase-1-foundation-remediation-round-4.md) for the v2.0 contract status.
 
 ## Packages
 
@@ -40,6 +40,73 @@ table.subscribe(() => { /* re-render */ });
 ```
 
 See the [v1.0 API contract](https://github.com/lynellf/table-kit/tree/main/docs/m6-hardening/api-freeze.md) for the full export surface.
+
+## React DataGrid and PivotGrid
+
+`@lynellf/tablekit-react` includes rendered, virtualized components for the
+common table and pivot workflows. Import the default stylesheet once in your
+application:
+
+```tsx
+import { DataGrid, PivotGrid } from '@lynellf/tablekit-react';
+import '@lynellf/tablekit-react/styles.css';
+
+export function Tables() {
+  return (
+    <>
+      <DataGrid
+        rows={people}
+        columns={personColumns}
+        getRowId={(row) => row.id}
+        initialState={{ columnPinning: { left: ['name'], right: ['status'] } }}
+        rowSelectionMode="multiple"
+        height={480}
+      />
+      <PivotGrid
+        data={sales}
+        pivot={{
+          rows: ['region', 'quarter'],
+          columns: ['year'],
+          measures: [{ id: 'sales', field: 'sales', aggregator: 'sum' }],
+        }}
+        getRowId={(row) => row.id}
+        initialState={{ columnPinning: { left: ['[2024]::sales'], right: [] } }}
+        height={480}
+      />
+    </>
+  );
+}
+```
+
+`DataGrid` accepts either `rows` for client operations or an offset-capable
+`DataSource` for server filtering, sorting, and pagination. `PivotGrid` uses the
+main-thread aggregation engine by default and accepts an `AggregationEngine`
+for server root and child requests.
+
+Both components use the existing `columnPinning` state slice. Pinned columns
+remain mounted while only center columns are virtualized. `PivotGrid` promotes
+any pinned generated leaf to its complete top-level column group so hierarchy
+headers remain contiguous; opposite sides within one group are rejected.
+
+| Workflow | DataGrid | PivotGrid |
+| --- | --- | --- |
+| Client filter/sort/page | Supported | Pre-aggregation filters supported |
+| Server execution | Offset `DataSource` | Root and child `AggregationEngine` requests |
+| Virtualization | Fixed-height rows and columns | Fixed-height rows and columns |
+| Frozen columns | Programmatic left/right pinning; selection stays fixed-left | Atomic top-level generated groups; row headers stay fixed-left; grand totals default right |
+| Selection and events | Single/multiple rows; row/cell click and double-click | Expand/collapse row groups |
+| Status and accessibility | Loading/empty/error, keyboard focus, grid ARIA | Root/child status, retry, keyboard focus, treegrid ARIA |
+
+The deterministic browser host contains client and server scenarios for both
+components at [`examples/m4-pivot-main-thread/`](./examples/m4-pivot-main-thread/)
+using `?functional-parity`.
+
+The rendered components intentionally do not promise Webix or AG Grid API,
+theme, or DOM compatibility. Variable-height rows, server-wide select-all,
+shift-range selection, per-level pivot subtotals, formulas, field-builder UI,
+editing, range selection, paste, charts, and frozen rows are outside the MVP.
+Cursor pagination remains a headless API and is not part of `DataGrid` server
+mode acceptance.
 
 ## Server modes
 

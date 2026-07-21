@@ -1,0 +1,17 @@
+{
+  "name": "@fixture/tablekit-worker-consumer",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "//": "R6 fix: Use version placeholder instead of workspace:* for packed artifact verification",
+  "dependencies": {
+    "@lynellf/tablekit-core": "2.0.0",
+    "@lynellf/tablekit-pivot": "2.0.0",
+    "@lynellf/tablekit-worker": "2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

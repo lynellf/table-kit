@@ -12,6 +12,7 @@ const baseState = (): DataTableState => ({
   columnSizing: {},
   columnSizingInfo: null,
   focusedCell: null,
+  rowSelection: {},
 });
 
 const makeCtx = (rowCount: number, columnCount: number) => {
