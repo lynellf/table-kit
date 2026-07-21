@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # DnD Column Reorder Recipe — dnd-kit
 
 > Recipe — Last verified against v1.0.0 (`docs/m6-hardening/api-freeze.md`)

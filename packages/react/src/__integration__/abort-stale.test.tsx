@@ -19,7 +19,9 @@ interface Row {
 
 // Track calls with a module-level array (persists across renders)
 const getRowsCalls: Array<{
-  pagination?: { pageIndex: number; pageSize: number };
+  pagination?:
+    | { type: 'offset'; offset: number; limit: number }
+    | { type: 'cursor'; cursor: string | null; limit: number; direction?: 'next' | 'previous' };
   timestamp: number;
 }> = [];
 
@@ -27,7 +29,10 @@ function makeServerSource(): DataSource<Row> {
   return {
     capabilities: { sort: 'server', filter: 'server', paginate: 'server' },
     getRows: (q) => {
-      getRowsCalls.push({ pagination: q.pagination, timestamp: Date.now() });
+      getRowsCalls.push({
+        pagination: q.pagination as (typeof getRowsCalls)[0]['pagination'],
+        timestamp: Date.now(),
+      });
       // Return totalRowCount > pageSize so the Next button is enabled
       return { rows: [{ id: '1', name: 'Alice' }], totalRowCount: 100 };
     },
@@ -105,10 +110,13 @@ describe('abort-stale integration', () => {
       console.log(`  Call ${i}:`, JSON.stringify(call.pagination));
     });
 
-    // Check if any call has the new pagination
-    const hasNewPagination = getRowsCalls
-      .slice(initialCount)
-      .some((call) => call.pagination?.pageIndex === 1);
-    expect(hasNewPagination).toBe(true);
+    // R3-B7: Assert exactly one replacement call for the new pagination key
+    const replacementCalls = getRowsCalls.slice(initialCount);
+    expect(replacementCalls.length).toBe(1);
+
+    // The replacement call should have the new pagination
+    const replacementPagination = replacementCalls[0]?.pagination;
+    expect(replacementPagination?.type).toBe('offset');
+    expect((replacementPagination as { type: 'offset'; offset: number }).offset).toBe(10);
   });
 });

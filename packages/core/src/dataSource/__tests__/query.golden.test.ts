@@ -19,6 +19,7 @@ const baseState: DataTableState = {
   columnSizing: {},
   columnSizingInfo: null,
   focusedCell: null,
+  rowSelection: {},
 };
 
 const baseColumns: Array<ColumnDef<unknown, unknown>> = [

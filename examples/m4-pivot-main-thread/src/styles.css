@@ -84,3 +84,29 @@ body {
   background: #ffebee;
   color: #b71c1c;
 }
+
+.parity-app {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.parity-app main {
+  display: grid;
+  gap: 2rem;
+}
+
+.scenario {
+  padding: 1rem;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.event-log {
+  display: block;
+  min-height: 1.5rem;
+  margin-top: 0.75rem;
+  color: #334155;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}

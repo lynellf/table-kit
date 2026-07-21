@@ -11,7 +11,20 @@
 export type {
   MaybePromise,
   Capability,
+  PaginationStrategy,
   DataSourceCapabilities,
+  DataVersion,
+  DataVersionToken,
+  UnsetVersionToken,
+  OffsetPagination,
+  CursorPagination,
+  CursorDirection,
+  CursorSelection,
+  PaginationWire,
+  CursorState,
+  CursorResult,
+  DataSourceStateWithCursor,
+  RowsResult,
   SerializedFilter,
   RowsQuery,
   DataSourceStatus,
@@ -21,8 +34,26 @@ export type {
   CreateClientDataSourceOptions,
 } from './types';
 
+// ─── Public constants ─────────────────────────────────────────────────────────
+export { UNSET_VERSION_TOKEN } from './types';
+
 // ─── Serializer ─────────────────────────────────────────────────────────
-export { buildRowsQuery, __resetInlineFilterFnWarningForTests } from './query';
+export {
+  buildRowsQuery,
+  buildPaginationWire,
+  validateNoUnregisteredFilterFns,
+  __resetInlineFilterFnWarningForTests,
+} from './query';
+
+// ─── Query key ───────────────────────────────────────────────────────────
+export {
+  buildQueryKey,
+  validateSerializable,
+  QueryKeySerializationError,
+  type QueryKeySerializationErrorCode,
+  type SerializationErrorKind,
+  type QueryKeyResult,
+} from './queryKey';
 
 // ─── Client data source ─────────────────────────────────────────────────
 export { createClientDataSource } from './client';

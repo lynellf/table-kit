@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # Webix Pivot → table-kit concept map
 
 > Guide — Last verified against v1.0.0 (`docs/m6-hardening/api-freeze.md`)

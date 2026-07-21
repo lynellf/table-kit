@@ -73,6 +73,9 @@ export interface CellPosition {
   columnId: string;
 }
 
+/** Stable row IDs currently selected by the consumer. */
+export type RowSelectionState = Record<string, true>;
+
 /**
  * DataTable state model.
  *
@@ -90,6 +93,7 @@ export interface DataTableState {
   columnSizing: ColumnSizingState;
   columnSizingInfo: ColumnResizeSession | null;
   focusedCell: CellPosition | null;
+  rowSelection: RowSelectionState;
 }
 
 /** Default starting values for every slice when the consumer passes no `initialState`. */
@@ -103,6 +107,7 @@ export const DEFAULT_STATE: DataTableState = {
   columnSizing: {},
   columnSizingInfo: null,
   focusedCell: null,
+  rowSelection: {},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,6 +204,7 @@ export interface DataTableOptions<TRow> {
   onColumnSizingChange?: SliceChange<ColumnSizingState>;
   onColumnSizingInfoChange?: SliceChange<ColumnResizeSession | null>;
   onFocusedCellChange?: SliceChange<CellPosition | null>;
+  onRowSelectionChange?: SliceChange<RowSelectionState>;
   onStateChange?: SliceChange<DataTableState>;
   // ─────── Feature flags (M1+ behavior) ───────
   manualSorting?: boolean;
@@ -244,6 +250,34 @@ export interface DataTableOptions<TRow> {
    * `state.pagination.pageSize`. Set to 0 to disable placeholder rows.
    */
   placeholderRows?: number;
+  // ─────── Data identity (v2.0.0) ───────────────────────────────────────────────
+  /**
+   * Data version escape hatch for mutable data patterns.
+   *
+   * By default, the engine treats data as immutable: same reference = no update.
+   * When data is mutated in-place (common in live-updating datasets), consumers
+   * can provide a version token to signal that the data changed even if the
+   * array reference is unchanged.
+   *
+   * `dataVersion` can be:
+   * - A static version token (string or number)
+   * - A function that derives the version from the current data array
+   *
+   * @example
+   * ```ts
+   * // Static token
+   * dataVersion: { version: 1 }
+   *
+   * // Derived version
+   * dataVersion: { getVersion: (data) => data.length }
+   * ```
+   */
+  dataVersion?: {
+    /** Static version token. */
+    version?: string | number;
+    /** Derive version token from data. */
+    getVersion?: (data: TRow[]) => string | number;
+  };
 }
 
 /**
@@ -368,6 +402,13 @@ export interface DataTableInstance<TRow> {
   setFocusedCell(
     updater: CellPosition | null | ((old: CellPosition | null) => CellPosition | null),
   ): void;
+  setRowSelection(
+    updater: RowSelectionState | ((old: RowSelectionState) => RowSelectionState),
+  ): void;
+  toggleRowSelected(rowId: string, mode?: 'single' | 'multiple'): void;
+  getSelectedRowIds(): string[];
+  /** Return selected rows that are present in the currently loaded data only. */
+  getSelectedRows(): TRow[];
 
   // ─── Column ordering (M1) ─────────────────────────────────────────────
   moveColumn(id: string, to: number | 'left' | 'right' | 'center' | false): void;
@@ -375,6 +416,12 @@ export interface DataTableInstance<TRow> {
   // ─── Column visibility (M1) ─────────────────────────────────────────
   toggleColumnVisibility(columnId: string): void;
   toggleAllColumnsVisibility(next?: boolean): void;
+
+  // ─── State reset (Phase 1 F0.1) ───────────────────────────────────────
+  /** Reset all state slices to their initial values. Respects controlled slices. */
+  resetState(): void;
+  /** Reset a specific state slice to its initial value. Respects controlled slices. */
+  resetSlice(slice: keyof DataTableState): void;
 
   // ─── Column resolution helpers (M1) ─────────────────────────────────
   getVisibleColumns(): Array<ColumnClass<TRow, unknown>>;
@@ -403,5 +450,22 @@ export interface DataTableInstance<TRow> {
   /** @internal Build a RowsQuery from current state + capabilities. Used by the React hook. */
   __buildRowsQuery(
     capabilities: import('./dataSource/types').DataSourceCapabilities,
+    cursor?: import('./dataSource/types').CursorSelection,
+    dataVersion?: string | number,
   ): import('./dataSource/types').RowsQuery;
+  /** @internal Prune invalid column IDs from state slices when columns change. */
+  __pruneColumnIds(validColumnIds: Set<string>): void;
+  /** @internal R3-MANUAL-CAPABILITY-OVERLAY: Apply data-source capability flags. */
+  __applyCapabilityOverlay(
+    overlay: { manualSorting: boolean; manualFiltering: boolean; manualPagination: boolean } | null,
+  ): void;
+
+  // ─── Data identity (v2.0.0) ─────────────────────────────────────────────────
+  /**
+   * Returns the current data version token.
+   * Used by mutable integrations to signal that data changed even if the
+   * array reference is unchanged.
+   * @returns The current version token, or undefined if no dataVersion is configured.
+   */
+  getDataVersion(): string | number | undefined;
 }

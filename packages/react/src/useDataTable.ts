@@ -11,6 +11,7 @@
 
 import { createDataTable } from '@lynellf/tablekit-core';
 import type {
+  Announcer,
   DataTableInstance,
   DataTableOptions,
   DataTableState,
@@ -21,6 +22,7 @@ import React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { ReactElement } from 'react';
 import { ReactAnnouncer } from './ReactAnnouncer';
+import { type AnnouncerChannel, createAnnouncerChannel } from './createAnnouncerChannel';
 import { createT } from './i18n/t';
 import type { MessagesMap } from './messages';
 import { useDataSource } from './useDataSource';
@@ -37,6 +39,13 @@ export interface UseDataTableOptions<TRow> extends DataTableOptions<TRow> {
    * - 'cells' (opt-in): Tab focuses the first cell; Arrow keys move within the row.
    */
   tabBehavior?: TabBehavior;
+  /**
+   * R5-ANNOUNCE-ONLY-005 fix: Accept any Announcer object (including minimal
+   * { announce } without subscribe). The hook wraps it in a private stable
+   * AnnouncerChannel so both the table and ReactAnnouncer can use it safely.
+   * When omitted, uses an internal no-op announcer wrapped in a channel.
+   */
+  announcer?: Announcer;
 }
 
 export interface UseDataTableResult<TRow> {
@@ -46,13 +55,13 @@ export interface UseDataTableResult<TRow> {
   state: DataTableState;
   /** Render this component to mount the announcer. */
   Announcer: () => ReactElement;
-  /** M3 phase 3: present iff `dataSource` option is provided. */
-  dataSourceState?: DataSourceState<TRow>;
+  /** M3 phase 3: always present (idle when no dataSource). */
+  dataSourceState: DataSourceState<TRow>;
   /**
    * M6 phase 2: assign this ref to the root grid element to enable Tab behavior.
    * Consumers typically spread it into their grid div: <div {...table.getGridProps()} ref={gridRef} />
    */
-  gridRef: React.RefObject<HTMLDivElement | null>;
+  gridRef: React.RefObject<HTMLDivElement>;
 }
 
 /**
@@ -67,10 +76,38 @@ export interface UseDataTableResult<TRow> {
 export const useDataTable = <TRow>(
   options: UseDataTableOptions<TRow>,
 ): UseDataTableResult<TRow> => {
+  // R5-ANNOUNCE-ONLY-005 fix: Create a stable channel for the announcer.
+  // If options.announcer is an AnnouncerChannel (has subscribe), use it directly.
+  // If it's a minimal Announcer (only announce), wrap it in a channel.
+  // This allows consumers to pass { announce } without subscribe.
+  const announcerChannelRef = useRef<AnnouncerChannel | null>(null);
+  if (announcerChannelRef.current === null) {
+    if (options.announcer) {
+      // Check if it's a full AnnouncerChannel or a minimal Announcer
+      if (typeof (options.announcer as AnnouncerChannel).subscribe === 'function') {
+        announcerChannelRef.current = options.announcer as AnnouncerChannel;
+      } else {
+        // Wrap minimal Announcer in a channel
+        announcerChannelRef.current = createAnnouncerChannel(options.announcer);
+      }
+    } else {
+      // No announcer provided — create a no-op channel
+      announcerChannelRef.current = createAnnouncerChannel({ announce: () => {} });
+    }
+  }
+
   // Create the instance once. The ref initializer runs only on mount.
   const ref = useRef<DataTableInstance<TRow> | null>(null);
   if (ref.current === null) {
-    ref.current = createDataTable<TRow>(options);
+    // R5-R7-FIX: Always pass the channel to createDataTable, not the minimal
+    // announcer object. The channel is what ReactAnnouncer subscribes to, so
+    // passing the minimal object directly would bypass the live-region subscription.
+    // The channel wraps the minimal announcer (if any) internally and handles
+    // subscription lifecycle for both the table and ReactAnnouncer.
+    ref.current = createDataTable<TRow>({
+      ...options,
+      announcer: announcerChannelRef.current!,
+    });
   }
   const table = ref.current;
 
@@ -91,8 +128,25 @@ export const useDataTable = <TRow>(
   //   - We rely on `sliceValuesEqual` to keep setOptions a no-op when the
   //     post-commit options derive the same state, so the per-render effect
   //     does not storm notifications.
+  //
+  // R1 fix: Column pruning is handled by core `setOptions` in `createDataTable`.
+  // The core calls `__pruneColumnIds` when columns change, so the React adapter
+  // does NOT need to call it separately. This prevents duplicate callback delivery
+  // for controlled column replacement.
+  //
+  // R5 fix: Always include announcer in setOptions call. When the consumer doesn't
+  // provide an announcer, options.announcer is undefined. Passing undefined to setOptions
+  // would overwrite the internal channel that was set during createDataTable.
+  // We always pass the announcer (consumer-provided or internal channel).
+  const { announcer: _unusedAnnouncer, ...optionsWithoutAnnouncer } = options;
   useEffect(() => {
-    table.setOptions(options);
+    // R5-R7 fix: Always pass the channel to setOptions, not the minimal announcer.
+    // Previously this passed options.announcer ?? announcerChannelRef.current, which
+    // would overwrite the channel with a minimal announcer object after mount.
+    table.setOptions({
+      ...optionsWithoutAnnouncer,
+      announcer: announcerChannelRef.current!,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, table]);
 
@@ -107,14 +161,13 @@ export const useDataTable = <TRow>(
   // M6 phase 1: i18n translator (created once per hook; no per-call allocation).
   const t = useMemo(() => createT(options.messages), [options.messages]);
 
-  // M3 phase 3: dataSource wiring (passes t() for announcer localization).
-  const dataSourceState = options.dataSource
-    ? useDataSource(
-        table as DataTableInstance<TRow> & Parameters<typeof useDataSource<TRow>>[0],
-        options.dataSource,
-        t,
-      )
-    : undefined;
+  // M3 phase 3: Always call useDataSource unconditionally (R3 fix).
+  // When dataSource is null, it returns idle state without subscriptions.
+  const dataSourceState = useDataSource(
+    table as DataTableInstance<TRow> & Parameters<typeof useDataSource<TRow>>[0],
+    options.dataSource ?? null,
+    t,
+  );
 
   // M6 phase 2: tabBehavior ref and hook.
   // Consumers assign gridRef.current to the root grid element so the Tab handler
@@ -126,10 +179,14 @@ export const useDataTable = <TRow>(
   return {
     table,
     state,
+    // R5 fix: Pass the shared announcer instance to ReactAnnouncer.
+    // This ensures the same announcer is used by both the table and the live region.
+    // R5 fix: Pass the channel to ReactAnnouncer for proper subscription lifecycle.
+    // This ensures instance isolation and post-mount message delivery.
     Announcer: () => {
-      return React.createElement(ReactAnnouncer);
+      return React.createElement(ReactAnnouncer, { channel: announcerChannelRef.current! });
     },
-    ...(dataSourceState ? { dataSourceState } : {}),
+    dataSourceState,
     gridRef,
   };
 };

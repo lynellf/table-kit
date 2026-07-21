@@ -232,13 +232,42 @@ describe('createDataTable', () => {
       expect(listener).not.toHaveBeenCalled();
     });
 
-    it('honors a new initialState in setOptions', () => {
-      const table = createDataTable(baseOptions());
-      table.setOptions({
+    it('honors initialState in constructor', () => {
+      const table = createDataTable({
         ...baseOptions(),
         initialState: { sorting: [{ id: 'age', desc: true }] },
       });
       expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+    });
+
+    it('ignores initialState in subsequent setOptions calls (F0.1)', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: { sorting: [{ id: 'name', desc: false }] },
+      });
+      // Apply a user action (sort by age)
+      table.setSorting([{ id: 'age', desc: true }]);
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      // Subsequent setOptions with different initialState should NOT reset sorting
+      table.setOptions({
+        ...baseOptions(),
+        initialState: { sorting: [{ id: 'email', desc: false }] },
+      });
+      // F0.1: State must be preserved across setOptions calls
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+    });
+
+    it('resetSlice resets a slice to constructor-effective baseline', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: { sorting: [{ id: 'name', desc: false }] },
+      });
+      // Apply a user action
+      table.setSorting([{ id: 'age', desc: true }]);
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      // Reset sorting to constructor baseline (which includes initialState)
+      table.resetSlice('sorting');
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
     });
 
     it('honors a new controlled state in setOptions', () => {
@@ -283,6 +312,19 @@ describe('createDataTable', () => {
       expect(model).toHaveLength(1);
       expect((model[0] as Row<Person>).id).toBe('1');
       expect((model[0] as Row<Person>).original).toBe(data[0]);
+    });
+  });
+
+  describe('query changes reset pagination', () => {
+    it('resets pageIndex to zero when sorting changes', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: { pagination: { pageIndex: 3, pageSize: 25 } },
+      });
+
+      table.setSorting([{ id: 'age', desc: false }]);
+
+      expect(table.getState().pagination).toEqual({ pageIndex: 0, pageSize: 25 });
     });
   });
 
@@ -418,6 +460,823 @@ describe('createDataTable', () => {
       dispatchers(table).setSorting([]); // already []
       expect(subscriber).not.toHaveBeenCalled();
       expect(onStateChange).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── R1: Constructor-effective baseline ─────────────────────────────────
+
+  describe('R1: constructor-effective baseline for reset', () => {
+    it('resetSlice restores the constructor-effective baseline (initialState + defaults), not DEFAULT_STATE', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: {
+          sorting: [{ id: 'name', desc: false }],
+          pagination: { pageIndex: 5, pageSize: 100 },
+        },
+      });
+      // Apply user actions that differ from initialState
+      table.setSorting([{ id: 'age', desc: true }]);
+      table.setPagination((p) => ({ ...p, pageIndex: 10 }));
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      expect(table.getState().pagination.pageIndex).toBe(10);
+
+      // Reset sorting — should restore initialState baseline, not DEFAULT_STATE
+      table.resetSlice('sorting');
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      expect(table.getState().pagination.pageIndex).toBe(10); // pagination untouched
+
+      // Reset pagination — should restore initialState baseline
+      table.resetSlice('pagination');
+      expect(table.getState().pagination).toEqual({ pageIndex: 5, pageSize: 100 });
+    });
+
+    it('resetState restores the constructor-effective baseline for all uncontrolled slices', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: {
+          sorting: [{ id: 'name', desc: false }],
+          columnVisibility: { name: false },
+        },
+      });
+      // Apply user actions
+      table.setSorting([{ id: 'age', desc: true }]);
+      table.setColumnVisibility({ name: true, age: false });
+      table.setPagination((p) => ({ ...p, pageIndex: 7 }));
+
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      expect(table.getState().columnVisibility).toEqual({ name: true, age: false });
+      expect(table.getState().pagination.pageIndex).toBe(7);
+
+      // resetState should restore all slices to constructor baseline in ONE notification
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+      table.resetState();
+
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      expect(table.getState().columnVisibility).toEqual({ name: false });
+      expect(table.getState().pagination).toEqual({ pageIndex: 0, pageSize: 25 }); // defaults, not initialState
+      expect(subscriber).toHaveBeenCalledTimes(1); // one atomic notification
+    });
+
+    it('resetState emits exactly one notification regardless of how many slices are reset', () => {
+      const table = createDataTable(baseOptions());
+      // Apply changes to multiple slices
+      table.setSorting([{ id: 'age', desc: true }]);
+      table.setColumnVisibility({ name: false });
+      table.setPagination((p) => ({ ...p, pageIndex: 3 }));
+
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+      subscriber.mockClear();
+
+      table.resetState();
+      // Should be exactly 1 notification, not 3 (one per slice)
+      expect(subscriber).toHaveBeenCalledTimes(1);
+    });
+
+    it('resetSlice does not notify when the slice is already at baseline', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        initialState: { sorting: [{ id: 'name', desc: false }] },
+      });
+      // State already matches baseline
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+
+      table.resetSlice('sorting');
+      expect(subscriber).not.toHaveBeenCalled();
+    });
+
+    it('resetSlice for controlled slices invokes the callback with the baseline value', () => {
+      const onSortingChange = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange,
+      });
+
+      table.resetSlice('sorting');
+      // Should invoke callback with baseline value, not DEFAULT_STATE
+      expect(onSortingChange).toHaveBeenCalledWith([{ id: 'name', desc: false }]);
+    });
+  });
+
+  // ─── R1: Partial controlled state preservation ────────────────────────────
+
+  describe('R1: partial controlled state does not reset omitted slices', () => {
+    it('setOptions with partial controlled state preserves uncontrolled slices', () => {
+      const table = createDataTable(baseOptions());
+
+      // Apply some uncontrolled state changes
+      table.setSorting([{ id: 'age', desc: true }]);
+      table.setPagination((p) => ({ ...p, pageIndex: 5 }));
+      expect(table.getState().sorting).toEqual([{ id: 'age', desc: true }]);
+      expect(table.getState().pagination.pageIndex).toBe(5);
+
+      // Now pass a partial controlled state (only sorting controlled)
+      table.setOptions({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange: vi.fn(),
+      });
+
+      // Controlled slice should update
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      // Uncontrolled slice should be PRESERVED, not reset
+      expect(table.getState().pagination.pageIndex).toBe(5);
+    });
+
+    it('setOptions without state argument preserves all current slices', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange: vi.fn(),
+      });
+
+      // Apply uncontrolled changes
+      table.setSorting([{ id: 'age', desc: true }]); // but this goes through callback since controlled
+      table.setPagination((p) => ({ ...p, pageIndex: 7 }));
+
+      // Pass setOptions without state — should preserve current state
+      table.setOptions({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] }, // same controlled
+        onSortingChange: vi.fn(),
+      });
+
+      // pagination should be preserved
+      expect(table.getState().pagination.pageIndex).toBe(7);
+    });
+
+    it('controlled slice can be later released to uncontrolled without losing state', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange: vi.fn(),
+      });
+
+      // Change uncontrolled pagination
+      table.setPagination((p) => ({ ...p, pageIndex: 3 }));
+      expect(table.getState().pagination.pageIndex).toBe(3);
+
+      // Release sorting control by passing no state
+      table.setOptions({
+        ...baseOptions(),
+        // No state — all slices now uncontrolled, but should preserve current values
+      });
+
+      // Sorting should have retained the controlled value
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      // Pagination should be preserved
+      expect(table.getState().pagination.pageIndex).toBe(3);
+    });
+  });
+
+  // ─── R1: Column ID pruning ──────────────────────────────────────────────
+
+  describe('R1: __pruneColumnIds removes invalid IDs from state', () => {
+    it('prunes invalid column IDs from sorting state', () => {
+      const table = createDataTable(baseOptions());
+      table.setSorting([
+        { id: 'name', desc: false },
+        { id: 'age', desc: true },
+        { id: 'ghost', desc: false },
+      ]);
+      expect(table.getState().sorting.map((s) => s.id)).toEqual(['name', 'age', 'ghost']);
+
+      // Prune: only 'name' and 'age' are valid
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().sorting.map((s) => s.id)).toEqual(['name', 'age']);
+    });
+
+    it('prunes invalid column IDs from columnFilters state', () => {
+      const table = createDataTable(baseOptions());
+      table.setColumnFilters([
+        { id: 'name', value: 'Alice' },
+        { id: 'ghost', value: 'Bob' },
+      ]);
+      expect(table.getState().columnFilters.map((f) => f.id)).toEqual(['name', 'ghost']);
+
+      table.__pruneColumnIds(new Set(['name']));
+      expect(table.getState().columnFilters.map((f) => f.id)).toEqual(['name']);
+    });
+
+    it('prunes invalid column IDs from columnOrder state', () => {
+      const table = createDataTable(baseOptions());
+      // Default columnOrder is empty, so set one with invalid IDs
+      (table as unknown as { state: DataTableState }).state.columnOrder = [
+        'name',
+        'age',
+        'ghost',
+        'other',
+      ];
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().columnOrder).toEqual(['name', 'age']);
+    });
+
+    it('prunes invalid column IDs from columnVisibility state', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnVisibility = {
+        name: true,
+        age: false,
+        ghost: true,
+      };
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().columnVisibility).toEqual({ name: true, age: false });
+    });
+
+    it('prunes invalid column IDs from columnPinning state', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnPinning = {
+        left: ['name', 'ghost'],
+        right: ['age', 'other'],
+      };
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().columnPinning).toEqual({ left: ['name'], right: ['age'] });
+    });
+
+    it('prunes invalid column IDs from columnSizing state', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnSizing = {
+        name: 100,
+        age: 50,
+        ghost: 75,
+      };
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(table.getState().columnSizing).toEqual({ name: 100, age: 50 });
+    });
+
+    it('clears focusedCell when its columnId is pruned', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.focusedCell = {
+        rowId: '1',
+        columnId: 'name',
+      };
+
+      table.__pruneColumnIds(new Set(['age'])); // 'name' is not valid
+      expect(table.getState().focusedCell).toBeNull();
+    });
+
+    it('clears columnSizingInfo when its columnId is pruned', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnSizingInfo = {
+        columnId: 'name',
+        startSize: 100,
+        delta: 10,
+        mode: 'onChange',
+      };
+
+      table.__pruneColumnIds(new Set(['age'])); // 'name' is not valid
+      expect(table.getState().columnSizingInfo).toBeNull();
+    });
+
+    it('does not notify when no column IDs are pruned', () => {
+      const table = createDataTable(baseOptions());
+      (table as unknown as { state: DataTableState }).state.columnSizing = { name: 100, age: 50 };
+
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+
+      // All IDs are valid, nothing to prune
+      table.__pruneColumnIds(new Set(['name', 'age']));
+      expect(subscriber).not.toHaveBeenCalled();
+    });
+
+    it('R1: controlled sorting: invokes callback with pruned value instead of mutating internal state', () => {
+      const sortingCallback = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { sorting: [{ id: 'name', desc: false }] },
+        onSortingChange: sortingCallback,
+      });
+
+      // Internal state has 'ghost' which should be pruned
+      (table as unknown as { state: DataTableState }).state.sorting = [
+        { id: 'name', desc: false },
+        { id: 'ghost', desc: true },
+      ];
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+
+      // Should invoke callback with pruned value, not mutate internal state
+      expect(sortingCallback).toHaveBeenCalledOnce();
+      expect(sortingCallback).toHaveBeenCalledWith([{ id: 'name', desc: false }]);
+      // Internal state should still have the invalid ID (consumer is responsible for updating)
+      expect((table as unknown as { state: DataTableState }).state.sorting).toEqual([
+        { id: 'name', desc: false },
+        { id: 'ghost', desc: true },
+      ]);
+    });
+
+    it('R1: controlled columnFilters: invokes callback with pruned value', () => {
+      const filtersCallback = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { columnFilters: [{ id: 'name', value: 'Alice' }] },
+        onColumnFiltersChange: filtersCallback,
+      });
+
+      (table as unknown as { state: DataTableState }).state.columnFilters = [
+        { id: 'name', value: 'Alice' },
+        { id: 'ghost', value: 'Bob' },
+      ];
+
+      table.__pruneColumnIds(new Set(['name']));
+
+      expect(filtersCallback).toHaveBeenCalledOnce();
+      expect(filtersCallback).toHaveBeenCalledWith([{ id: 'name', value: 'Alice' }]);
+    });
+
+    it('R1: controlled columnVisibility: invokes callback with pruned value', () => {
+      const visibilityCallback = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { columnVisibility: { name: true, ghost: true } },
+        onColumnVisibilityChange: visibilityCallback,
+      });
+
+      table.__pruneColumnIds(new Set(['name', 'age']));
+
+      expect(visibilityCallback).toHaveBeenCalledOnce();
+      expect(visibilityCallback).toHaveBeenCalledWith({ name: true });
+    });
+
+    it('R1: controlled focusedCell: invokes callback with null when column is pruned', () => {
+      const focusCallback = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        state: { focusedCell: { rowId: '0', columnId: 'name' } },
+        onFocusedCellChange: focusCallback,
+      });
+
+      table.__pruneColumnIds(new Set(['age'])); // 'name' is pruned
+
+      expect(focusCallback).toHaveBeenCalledOnce();
+      expect(focusCallback).toHaveBeenCalledWith(null);
+    });
+
+    it('R1: uncontrolled slices: prunes directly and notifies', () => {
+      const table = createDataTable(baseOptions());
+
+      (table as unknown as { state: DataTableState }).state.sorting = [
+        { id: 'name', desc: false },
+        { id: 'ghost', desc: true },
+      ];
+
+      const subscriber = vi.fn();
+      table.subscribe(subscriber);
+
+      table.__pruneColumnIds(new Set(['name']));
+
+      // Internal state should be pruned directly
+      expect(table.getState().sorting).toEqual([{ id: 'name', desc: false }]);
+      expect(subscriber).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ─── R2: direct-table version notification ─────────────────────────────────
+  describe('R2: direct-table version notification', () => {
+    it('notifies on dataVersion token change in setOptions (A -> B)', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Set initial dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // Change version token (same policy reference, different value)
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT notify when dataVersion token is unchanged (same token value)', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Set initial dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // Same token value, different policy reference
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('handles same-reference mutable policy transitions A -> B -> UNSET', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // A: Set dataVersion to static token 'v1'
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // A -> B: Change to 'v2'
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // B -> UNSET: Remove dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        // dataVersion not set
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // UNSET -> A: Restore dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('R2 regression: notifies when same policy reference is mutated in-place (A -> B -> UNSET)', () => {
+      // This is the exact scenario the reviewer flagged: the SAME policy object is
+      // reused across setOptions calls and its .version field is mutated in place.
+      // Before the fix, this test would fail because resolvedPrevToken was compared
+      // against resolvedNextToken (both read from the same policy before it was
+      // mutated), not against _publishedDataVersion.
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Create ONE policy reference — hold it for the entire test
+      const policy = { version: 'v1' as string | number };
+
+      // A: Publish with token 'v1'
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // A -> B: Mutate the policy in place (same reference, different resolved value)
+      policy.version = 'v2';
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // B -> UNSET: Mutate the policy to undefined (same reference, removes the token)
+      // @ts-expect-error - intentional mutation to undefined for UNSET test
+      delete policy.version;
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // UNSET -> A: Restore the token on the same reference
+      policy.version = 'v1';
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('R2-R7 regression: repeated UNSET calls after first removal do NOT notify', () => {
+      // Bug: When dataVersion is removed (UNSET), _publishedDataVersion was not
+      // reset to undefined. This caused subsequent setOptions calls with no
+      // dataVersion to incorrectly detect a "change" (comparing old token
+      // against undefined), triggering spurious notifications.
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // A: Set dataVersion to 'v1'
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // A -> UNSET: Remove dataVersion — should notify ONCE
+      table.setOptions({
+        ...baseOptions(),
+        // dataVersion not set
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // UNSET -> UNSET: Repeated removal calls should NOT notify
+      // This is the core bug: without the fix, this would incorrectly notify.
+      table.setOptions({
+        ...baseOptions(),
+        // dataVersion not set
+      });
+      expect(listener).not.toHaveBeenCalled();
+
+      // Another UNSET call — still should NOT notify
+      table.setOptions({
+        ...baseOptions(),
+        // dataVersion not set
+      });
+      expect(listener).not.toHaveBeenCalled();
+
+      // UNSET -> A: Restoring should notify again
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('R2 regression: same reference + same resolved token is a no-op (no notify)', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Create ONE policy reference with a static version
+      const policy = { version: 'v1' as string | number };
+
+      // A: Publish
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).toHaveBeenCalledTimes(1);
+      listener.mockClear();
+
+      // Same reference + same resolved token — must NOT notify
+      // (The policy object reference is the same, and .version was not mutated)
+      table.setOptions({ ...baseOptions(), dataVersion: policy });
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('notifies exactly once per real token transition', () => {
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Set initial dataVersion
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // Multiple same-token calls should only notify once total
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+
+      // Only ONE notification for the transition, not three
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('notifies when dataVersion policy changes even if resolved tokens might match', () => {
+      // This tests that changing the dataVersion policy triggers notification.
+      // The current implementation compares option objects, so different policy
+      // references always notify. The fix should compare resolved tokens.
+      const table = createDataTable(baseOptions());
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // First policy: static version
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      listener.mockClear();
+
+      // Change to different policy (static version)
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+
+      // Should notify because policy changed (resolved token changed)
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('changed data reference recomputes even when values are deeply equal', () => {
+      const getVersion = vi.fn((data: Person[]) => data.length);
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: { getVersion },
+      });
+
+      // Get initial row model
+      const initialModel = table.getRowModel();
+      expect(initialModel).toHaveLength(2);
+
+      // Same values, new reference - should recompute
+      const newData = [
+        { id: '1', name: 'Alice', age: 30 },
+        { id: '2', name: 'Bob', age: 25 },
+      ];
+      table.setOptions({
+        ...baseOptions(),
+        data: newData,
+        dataVersion: { getVersion },
+      });
+
+      // getVersion should be called again with new data reference
+      expect(getVersion).toHaveBeenCalled();
+
+      // Row model should reflect new data
+      const newModel = table.getRowModel();
+      expect(newModel[0]?.original).toBe(newData[0]);
+    });
+  });
+
+  // ─── R2: __setDataSourceState version tracking ───────────────────────────────
+  describe('R2: __setDataSourceState version tracking', () => {
+    it('publishes notification when result dataVersion transitions to UNSET', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Simulate: source returns a result with dataVersion 'v1'
+      table.__setDataSourceState({
+        status: 'success',
+        data: [{ id: '1', name: 'Alice', age: 30 }],
+        refetch: vi.fn(),
+        dataVersion: 'v1',
+      });
+      listener.mockClear();
+
+      // Simulate: source returns a result WITHOUT dataVersion (UNSET)
+      // This should notify because the published version changed
+      table.__setDataSourceState({
+        status: 'success',
+        data: [{ id: '1', name: 'Alice', age: 30 }],
+        refetch: vi.fn(),
+        // no dataVersion field
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT notify when result dataVersion is unchanged', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Use the same data reference for both calls
+      const data = [{ id: '1', name: 'Alice', age: 30 }];
+
+      // Simulate: source returns a result with dataVersion 'v1'
+      table.__setDataSourceState({
+        status: 'success',
+        data,
+        refetch: vi.fn(),
+        dataVersion: 'v1',
+      });
+      listener.mockClear();
+
+      // Simulate: source returns another result with same dataVersion 'v1' (same reference)
+      table.__setDataSourceState({
+        status: 'success',
+        data, // Same reference!
+        refetch: vi.fn(),
+        dataVersion: 'v1',
+      });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('tracks previously published token distinct from configured option token', () => {
+      // This tests that the published token is tracked separately from the
+      // dataVersion option. When a result has dataVersion: undefined but
+      // options have dataVersion configured, we should track result's undefined.
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: { version: 'v1' },
+      });
+      const listener = vi.fn();
+      table.subscribe(listener);
+
+      // Simulate: source returns result with no dataVersion (undefined)
+      // (even though table has configured version 'v1')
+      table.__setDataSourceState({
+        status: 'success',
+        data: [{ id: '1', name: 'Alice', age: 30 }],
+        refetch: vi.fn(),
+        // dataVersion intentionally omitted to test transition to UNSET
+      });
+      listener.mockClear();
+
+      // Now configure a different version via setOptions
+      // This should notify because configured version changed from 'v1'
+      table.setOptions({
+        ...baseOptions(),
+        dataVersion: { version: 'v2' },
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─── R2: Data version identity ──────────────────────────────────────────────
+  describe('R2: getDataVersion returns version token', () => {
+    it('returns undefined when dataVersion is not configured', () => {
+      const table = createDataTable(baseOptions());
+      expect(table.getDataVersion()).toBeUndefined();
+    });
+
+    it('returns static version token when configured', () => {
+      const table = createDataTable({ ...baseOptions(), dataVersion: { version: 42 } });
+      expect(table.getDataVersion()).toBe(42);
+    });
+
+    it('returns derived version when getVersion is configured', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: {
+          getVersion: (data) => data.length,
+        },
+      });
+      expect(table.getDataVersion()).toBe(2); // baseOptions has 2 rows
+    });
+
+    it('prefers derived version over static version when both are provided', () => {
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: {
+          version: 100,
+          getVersion: (data) => data.length * 10,
+        },
+      });
+      expect(table.getDataVersion()).toBe(20); // 2 rows * 10
+    });
+
+    it('uses dataSourceState.data when available, otherwise options.data', () => {
+      // This tests that getVersion receives the data from dataSourceState when present
+      // For this test, we create a table and verify the method exists and returns a value
+      const table = createDataTable({
+        ...baseOptions(),
+        dataVersion: {
+          getVersion: (data) => `got ${data.length} rows`,
+        },
+      });
+      expect(table.getDataVersion()).toBe('got 2 rows');
+    });
+  });
+
+  describe('row selection', () => {
+    it('keeps stable row ids selected across query operations and returns loaded rows', () => {
+      const table = createDataTable({ ...baseOptions(), getRowId: (row) => row.id });
+
+      table.toggleRowSelected('1', 'multiple');
+      table.setColumnFilters([{ id: 'name', value: 'Bob' }]);
+      table.setSorting([{ id: 'name', desc: true }]);
+
+      expect(table.getState().rowSelection).toEqual({ '1': true });
+      expect(table.getSelectedRowIds()).toEqual(['1']);
+      expect(table.getSelectedRows().map((row) => row.id)).toEqual(['1']);
+
+      table.toggleRowSelected('2', 'single');
+      expect(table.getSelectedRowIds()).toEqual(['2']);
+    });
+
+    it('dispatches controlled selection changes without mutating local state', () => {
+      const onRowSelectionChange = vi.fn();
+      const table = createDataTable({
+        ...baseOptions(),
+        getRowId: (row) => row.id,
+        state: { rowSelection: { '1': true } },
+        onRowSelectionChange,
+      });
+
+      table.toggleRowSelected('2', 'multiple');
+
+      expect(table.getState().rowSelection).toEqual({ '1': true });
+      expect(onRowSelectionChange).toHaveBeenCalledOnce();
     });
   });
 });

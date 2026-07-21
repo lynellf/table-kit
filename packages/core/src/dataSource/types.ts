@@ -4,6 +4,8 @@
  * Spec §5.1 (RowsQuery shape), §5.2 (DataSource interface), §5.3 (mixed-mode trap).
  * Mirrors the spec verbatim where the spec gives a shape; introduces `MaybePromise<T>`
  * as a shared utility used by `createClientDataSource` and the React hook.
+ *
+ * v2.0.0: Added DataVersion, OffsetPagination, CursorPagination, and pagination strategy.
  */
 
 /** A value that may be a promise of T or T directly. */
@@ -12,11 +14,177 @@ export type MaybePromise<T> = T | Promise<T>;
 /** Per-concern capability: 'client' (resolved locally) or 'server' (resolved remotely). */
 export type Capability = 'client' | 'server';
 
-/** Capabilities per concern. Spec §5.2: every concern is independently configurable. */
+/**
+ * Pagination strategy used by the data source.
+ * - 'offset': uses page-based pagination (pageIndex, pageSize).
+ * - 'cursor': uses cursor-based pagination (cursor, direction, limit).
+ */
+export type PaginationStrategy = 'offset' | 'cursor';
+
+/**
+ * Capabilities per concern. Spec §5.2: every concern is independently configurable.
+ * v2.0.0: Added `pagination` strategy field.
+ */
 export interface DataSourceCapabilities {
   sort: Capability;
   filter: Capability;
   paginate: Capability;
+  /** Pagination strategy. Default: 'offset'. 'cursor' requires server-side support. */
+  pagination?: PaginationStrategy;
+}
+
+// ─── Data identity (v2.0.0) ─────────────────────────────────────────────────────
+
+/**
+ * Data version escape hatch for mutable data patterns.
+ *
+ * By default, the engine treats data as immutable: same reference = no update.
+ * When data is mutated in-place (common in live-updating datasets), consumers
+ * can publish a new version token to signal that the data changed even if
+ * the array reference is unchanged.
+ *
+ * `DataVersion` can be:
+ * - A string/number token (consumer-provided version identifier)
+ * - A `getDataVersion: () => string | number` function (derived version)
+ *
+ * v2.0.0: Added as part of the data identity escape hatch.
+ */
+export interface DataVersion<TRow = unknown> {
+  /**
+   * Static version token. When provided, the engine compares this token
+   * instead of the data array reference to determine if an update occurred.
+   */
+  version?: string | number;
+  /**
+   * Function to derive the version token from the data.
+   * Called with the current data array; return value is compared to the
+   * previous version to detect changes.
+   */
+  getVersion?: (data: TRow[]) => string | number;
+}
+
+/**
+ * Exported canonical token type for mutable data version identity.
+ * Used at source/table/query/result/state/cache boundaries.
+ *
+ * R2 fix: `DataVersionToken` is the canonical shared alias for the version
+ * token used throughout the system. `UNSET_VERSION_TOKEN` is the explicit
+ * sentinel for "no token configured".
+ */
+export type DataVersionToken = string | number;
+
+/**
+ * Sentinel value for "no data version configured".
+ * Used to distinguish "version is undefined" from "no version configured".
+ *
+ * R2 fix: Explicit UNSET state at all boundaries so same-reference A→B→unset
+ * transitions are detectable without ambiguity.
+ */
+export const UNSET_VERSION_TOKEN = Symbol('UNSET_VERSION_TOKEN');
+export type UnsetVersionToken = typeof UNSET_VERSION_TOKEN;
+
+// ─── Pagination wire types (v2.0.0) ───────────────────────────────────────────────
+
+/**
+ * Offset-based pagination query. Used when `paginationStrategy === 'offset'`.
+ * This is the traditional page-index/page-size model.
+ */
+export interface OffsetPagination {
+  type: 'offset';
+  /** Zero-based page index. */
+  offset: number;
+  /** Number of rows per page. */
+  limit: number;
+}
+
+/**
+ * Cursor-based pagination query. Used when `paginationStrategy === 'cursor'`.
+ * The server returns `nextCursor` and/or `previousCursor` in the response,
+ * which the consumer passes back on subsequent requests.
+ */
+export interface CursorPagination {
+  type: 'cursor';
+  /**
+   * The cursor from the previous response (or `null`/`undefined` for the first request).
+   * Direction determines which page to fetch relative to the cursor.
+   */
+  cursor: string | null | undefined;
+  /**
+   * Pagination direction. 'next' fetches rows after the cursor;
+   * 'previous' fetches rows before the cursor.
+   * Required per the wire contract; undefined direction is treated as 'next'.
+   */
+  direction: 'next' | 'previous';
+  /** Number of rows to fetch. */
+  limit: number;
+}
+
+/** Discriminated union of pagination wire types. */
+export type PaginationWire = OffsetPagination | CursorPagination;
+
+/**
+ * Direction for cursor navigation.
+ */
+export type CursorDirection = 'next' | 'previous';
+
+/**
+ * Cursor selection input. Used by consumers to select which cursor to navigate to.
+ * The cursor value comes from RowsResult.nextCursor/previousCursor.
+ */
+export interface CursorSelection {
+  /** The cursor value (from RowsResult.nextCursor or previousCursor). */
+  cursor: string | null;
+  /** Navigation direction relative to the cursor. */
+  direction: CursorDirection;
+}
+
+/**
+ * Cursor state exposed by the data source.
+ * Consumers use this to store the current cursor for subsequent requests.
+ */
+export interface CursorState {
+  /** Cursor for fetching the next page. */
+  nextCursor?: string | null;
+  /** Cursor for fetching the previous page. */
+  previousCursor?: string | null;
+}
+
+/**
+ * Cursor result from the data source response.
+ * Contains the cursors for navigating to adjacent pages.
+ */
+export interface CursorResult {
+  /** Cursor to fetch the next page of results. */
+  nextCursor?: string | null;
+  /** Cursor to fetch the previous page of results. */
+  previousCursor?: string | null;
+}
+
+/**
+ * Extended data source state with cursor support.
+ * Used when `paginationStrategy === 'cursor'`.
+ */
+export interface DataSourceStateWithCursor<TRow> extends DataSourceState<TRow> {
+  /** Cursor state for navigating cursor-based pagination. */
+  cursor?: CursorState;
+}
+
+/**
+ * Extended rows result with cursor information.
+ * Used when `paginationStrategy === 'cursor'`.
+ */
+export interface RowsResult<TRow> {
+  rows: TRow[];
+  totalRowCount?: number;
+  /** Cursor for the next page. Present only when there are more rows. */
+  nextCursor?: string | null;
+  /** Cursor for the previous page. Present only when paginating backwards. */
+  previousCursor?: string | null;
+  /**
+   * R2-VERSION-002: Accepted data version token from the remote result.
+   * This is publication metadata; it does NOT become the next outgoing query token automatically.
+   */
+  dataVersion?: string | number;
 }
 
 /**
@@ -45,7 +213,19 @@ export interface SerializedFilter {
 export interface RowsQuery {
   sorting: import('../types').SortItem[];
   filters: SerializedFilter[];
-  pagination?: import('../types').PaginationState;
+  /**
+   * Discriminated pagination wire type. When `capabilities.paginate === 'server'`:
+   * - 'offset' strategy: `{ type: 'offset', offset, limit }`
+   * - 'cursor' strategy: `{ type: 'cursor', cursor, direction?, limit }`
+   *
+   * v2.0.0: Changed from `PaginationState` to `PaginationWire` discriminated union.
+   */
+  pagination?: PaginationWire;
+  /**
+   * v2.0.0: Data version token for mutable data identity.
+   * Used in query identity; the accepted result token is published separately.
+   */
+  dataVersion?: string | number;
 }
 
 /**
@@ -58,35 +238,64 @@ export interface RowsQuery {
 export type DataSourceStatus = 'idle' | 'loading' | 'success' | 'error';
 
 /**
- * The state exposed by `useDataSource` (spec §5.2). `data` is non-null iff
- * `status === 'success'`; `error` is non-null iff `status === 'error'`.
+ * The state exposed by `useDataSource` (spec §5.2).
+ *
+ * R3-SWR-CONTRACT-003 fix: Document unconditional stale-while-revalidate (SWR).
+ * Prior data is ALWAYS retained through replacement loading and error states
+ * (the hook never clears data on a new request). This includes `data`,
+ * `totalRowCount`, `cursor`, and accepted `dataVersion` — all are preserved
+ * through replacement loading/error so the UI shows stale content with a loading
+ * indicator rather than a blank state.
+ *
+ * `data` is null only on: initial loading (no prior data yet), source removal,
+ * and error on initial load (no prior data to retain).
+ *
  * `refetch()` re-runs the current query with a fresh AbortController.
  */
 export interface DataSourceState<TRow> {
   status: DataSourceStatus;
+  /** R3-SWR: non-null during success AND during replacement loading/error. */
   data: TRow[] | null;
+  /** R3-SWR: retained through replacement loading/error. */
   totalRowCount?: number;
   error?: Error;
   refetch: () => void;
+  /** v2.0.0: Cursor state for navigating cursor-based pagination. */
+  cursor?: CursorState;
+  /** v2.0.0: Data version token for mutable data patterns. */
+  dataVersion?: string | number;
 }
 
 /**
  * The Level 1 data source interface (spec §5.2). The consumer implements
  * `getRows` against their API; the library handles abort, refetch, and
  * `RowsQuery` serialization.
+ *
+ * v2.0.0: Supports cursor-based pagination via the RowsResult interface.
+ * v2.0.0: Supports source-owned `dataVersion` token for mutable data identity.
+ *   When a source provides `dataVersion`, it takes precedence over the table's
+ *   configured token for request identity. The result token is accepted as
+ *   publication metadata and does not become the next outgoing query token.
  */
 export interface DataSource<TRow> {
   capabilities: DataSourceCapabilities;
-  getRows(
-    q: RowsQuery,
-    ctx: { signal: AbortSignal },
-  ): MaybePromise<{ rows: TRow[]; totalRowCount?: number }>;
+  getRows(q: RowsQuery, ctx: { signal: AbortSignal }): MaybePromise<RowsResult<TRow>>;
+  /**
+   * R2-SOURCE-VERSION-001 fix: Optional source-owned data version token.
+   * When provided, this token is used for request identity (source token takes
+   * precedence over table token). The result's dataVersion is accepted as
+   * publication metadata only; it does not feed into the next outgoing token.
+   */
+  dataVersion?: string | number;
 }
 
 /**
  * Options passed to `buildRowsQuery`. `capabilities` is the source of truth for
  * which concerns are in scope; `defaultFilterFn` is the registry name stripped
  * from outbound filters when the column's `filterFn` resolves to it (saves bytes).
+ *
+ * v2.0.0: Added `cursor` for cursor-based pagination and `dataVersion` for
+ * mutable data identity.
  */
 export interface BuildRowsQueryOptions {
   capabilities: DataSourceCapabilities;
@@ -97,6 +306,16 @@ export interface BuildRowsQueryOptions {
    * (`paginate: 'server'` with client-side sort/filter applies within the page).
    */
   allowWithinPageOperations?: boolean;
+  /**
+   * v2.0.0: Cursor selection for cursor-based pagination.
+   * Threaded from useDataSource through __buildRowsQuery to buildPaginationWire.
+   */
+  cursor?: import('./types').CursorSelection;
+  /**
+   * v2.0.0: Data version token for mutable data identity.
+   * Resolved from source or table configuration; used in query identity.
+   */
+  dataVersion?: string | number;
 }
 
 /** Options for `createClientDataSource`. */
@@ -107,4 +326,6 @@ export interface CreateClientDataSourceOptions<TRow> {
   totalRowCount?: number;
   /** Override `getRowId`. Default: `defaultGetRowId` (dev fallback). */
   getRowId?: (row: TRow, index: number) => string;
+  /** v2.0.0: Data version for mutable data patterns. */
+  dataVersion?: DataVersion<TRow>;
 }

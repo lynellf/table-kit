@@ -12,7 +12,9 @@ import type { Column } from './columns';
 import { createColumns } from './columns';
 import { synthesizePlaceholderRows } from './dataSource/placeholderRows';
 import { buildRowsQuery } from './dataSource/query';
-import type { DataSourceCapabilities, DataSourceState } from './dataSource/types';
+import { validateNoUnregisteredFilterFns } from './dataSource/query';
+import { QueryKeySerializationError, QueryKeySerializationErrorCode } from './dataSource/queryKey';
+import type { CursorSelection, DataSourceCapabilities, DataSourceState } from './dataSource/types';
 import { validateModeConfiguration } from './dataSource/warnings';
 import { buildHeaderGroups } from './headers';
 import type { HeaderContext } from './headers';
@@ -60,6 +62,7 @@ import type {
   PaginationState,
   Row,
   Row as RowInterface,
+  RowSelectionState,
 } from './types';
 import { createColumnVirtualizer } from './virtualization/columnVirtualizer';
 import { createRowVirtualizer } from './virtualization/rowVirtualizer';
@@ -68,6 +71,13 @@ import {
   toggleAllColumnsVisibility,
   toggleColumnVisibility as toggleColumnVisibilityHelper,
 } from './visibility';
+
+/**
+ * R2 fix: Sentinel value to track when dataVersion has been explicitly cleared.
+ * This distinguishes "never published" (undefined) from "published as undefined".
+ */
+const DATA_VERSION_UNSET = Symbol('DATA_VERSION_UNSET');
+type DataVersionUnset = typeof DATA_VERSION_UNSET;
 
 type SliceChangeKey =
   | 'sorting'
@@ -78,7 +88,8 @@ type SliceChangeKey =
   | 'columnPinning'
   | 'columnSizing'
   | 'columnSizingInfo'
-  | 'focusedCell';
+  | 'focusedCell'
+  | 'rowSelection';
 
 /**
  * Implementation class. Public surface is the `DataTableInstance<TRow>`
@@ -114,9 +125,15 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     },
   };
 
+  // R1: Constructor-effective baseline for resetSlice/resetState.
+  // Captures DEFAULT_STATE + initialState + constructor state.
+  private constructorBaseline: DataTableState;
+
   constructor(options: DataTableOptions<TRow>) {
     this.options = options;
     this.state = mergeInitialState(options.initialState, options.state);
+    // Capture the constructor-effective baseline for reset operations.
+    this.constructorBaseline = this.state;
     this.navigationMode = options.navigationMode ?? 'cell';
     // M3 phase 1: mixed-mode trap warning. One-shot dev warning.
     validateModeConfiguration(this.options);
@@ -136,23 +153,43 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     const prevState = this.state;
     this.options = next;
 
-    // When next.state is undefined (e.g., useDataSource's setOptions calls),
-    // preserve the controlled slices from the current state. This prevents
-    // useDataSource's setOptions from resetting controlled slices to defaults.
-    // When next.state is provided, use it directly.
-    const controlledState =
-      next.state ??
-      (() => {
-        const keys = controlledSliceKeys(prevOptions?.state);
-        if (keys.length === 0) return undefined;
-        const partial: Partial<DataTableState> = {};
-        for (const key of keys) {
-          (partial as Record<string, unknown>)[key] = this.state[key];
-        }
-        return partial;
-      })();
+    // R1 fix: Track if columns changed for pruning.
+    const columnsChanged =
+      prevOptions !== undefined &&
+      next.columns !== prevOptions.columns &&
+      next.columns !== undefined;
 
-    const nextState = mergeInitialState(next.initialState, controlledState);
+    // Phase 1 F0.1 / R1: Preserve ALL state slices on subsequent setOptions calls.
+    // - When next.state is provided, preserve current values for omitted slices
+    //   (partial controlled state must not reset omitted slices).
+    // - When next.state is undefined, preserve all current values
+    //   (omitted slices must not reset per spec).
+    // - initialState is constructor-only; subsequent calls treat it as undefined
+    //   to prevent re-initializing state from defaults.
+    const controlledState = (() => {
+      // First setOptions call: let mergeInitialState handle initialState.
+      if (prevOptions === undefined) {
+        return next.state;
+      }
+
+      if (next.state !== undefined) {
+        // next.state is defined (partial or full controlled update):
+        // preserve current values for slices NOT in next.state.
+        // This ensures partial controlled state does not reset omitted slices.
+        const partial: Partial<DataTableState> = { ...this.state };
+        Object.assign(partial, next.state);
+        return partial;
+      }
+
+      // next.state is undefined: preserve ALL current slices.
+      // (omitted slices must not reset per spec)
+      return { ...this.state };
+    })();
+
+    // F0.1 fix: initialState is constructor-only. Subsequent calls ignore it.
+    const initialStateForMerge = isFirstSetOptions ? next.initialState : undefined;
+
+    const nextState = mergeInitialState(initialStateForMerge, controlledState);
 
     // Only update this.state if the derived state actually differs.
     // This prevents useSyncExternalStore's getSnapshot() from returning
@@ -173,6 +210,20 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       this.state = nextState;
     }
 
+    // R3-MANUAL-CAPABILITY-OVERLAY fix: Reapply the capability overlay after
+    // every setOptions call so it survives option updates.
+    if (this._capabilityOverlay) {
+      this._applyOverlayToOptions();
+    }
+
+    // R1 fix: Prune invalid column IDs from state slices when columns change.
+    // This runs in the core setOptions path so direct factory consumers also get pruning.
+    // The React adapter may also call this; the method is idempotent (checks if columns actually changed).
+    if (columnsChanged && next.columns) {
+      const validColumnIds = new Set(next.columns.map((c) => c.id));
+      this.__pruneColumnIds(validColumnIds);
+    }
+
     // M3 phase 1: re-validate when the option set changes (manual* flags flipped).
     if (
       !isFirstSetOptions &&
@@ -185,12 +236,66 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       validateModeConfiguration(next);
     }
 
+    // R2-R7 fix: Check if dataVersion changed. dataVersion is in options, not state,
+    // so we need to explicitly compare it. If dataVersion changes, we must notify
+    // so that useSyncExternalStore subscribers (like useDataSource) re-check the version.
+    // R2 fix: Compare resolved tokens instead of option objects.
+    // This handles the case where the same getVersion function returns the same value
+    // (should NOT notify) versus when the resolved token changes (should notify).
+    const nextData = next.data ?? [];
+
+    // R2 fix: Resolve the new token (if dataVersion is configured).
+    // This is what the consumer wants to publish as the current version.
+    const resolvedNextToken = (() => {
+      if (!next.dataVersion) return undefined;
+      const dv = next.dataVersion;
+      if (dv.getVersion) return dv.getVersion(nextData as TRow[]);
+      return dv.version;
+    })();
+
+    // R2 fix: Compare against the PREVIOUSLY PUBLISHED token, not the freshly-
+    // resolved previous token.  This is the core of the mutable-policy fix: if
+    // the same policy object is mutated in place (policy.version = 'v2'), the
+    // resolved token for the next call differs from what was last published,
+    // so we correctly detect the transition and notify listeners.
+    //
+    // Use _dataVersionConfigured to distinguish "was never configured" from
+    // "was configured and then removed".  When dataVersion is not currently
+    // configured BUT was configured previously, removing it is a real UNSET
+    // transition and must notify.
+    //
+    // When dataVersion is currently configured, compare _publishedDataVersion
+    // (which may be the sentinel, a prior token, or undefined) against the
+    // newly resolved token.  Object.is handles all three cases correctly.
+    const dataVersionChanged = next.dataVersion
+      ? !Object.is(this._publishedDataVersion, resolvedNextToken)
+      : this._dataVersionConfigured && !Object.is(this._publishedDataVersion, undefined);
+
+    // R2-R7 remediation: Update the published token tracker.
+    // When dataVersion is configured, store the resolved token.
+    // When dataVersion is removed (UNSET), reset _publishedDataVersion to undefined
+    // so that subsequent calls with no dataVersion correctly detect as no-ops.
+    if (next.dataVersion) {
+      this._publishedDataVersion = resolvedNextToken;
+      this._dataVersionConfigured = true;
+    } else {
+      // R2-R7 fix: Reset _publishedDataVersion to undefined on removal.
+      // Without this, subsequent UNSET calls would incorrectly detect a "change"
+      // (comparing old token against undefined), causing spurious notifications.
+      this._publishedDataVersion = undefined;
+    }
+    // Note: we do NOT reset _dataVersionConfigured to false when dataVersion
+    // is removed — the UNSET transition (configured → unconfigured) is a
+    // real change that must notify on the removal call.  _dataVersionConfigured
+    // is a one-way flag: once true, it stays true for the table lifetime.
+
     // Notify listeners:
     // - Always notify on first setOptions call (to initialize useSyncExternalStore)
     // - After first call, only notify if state actually changed
+    // - Also notify if dataVersion changed (even if state slices didn't change)
     // - Skip if options reference is unchanged (no-op call)
     if (Object.is(next, prevOptions)) return;
-    if (isFirstSetOptions || slicesChanged) {
+    if (isFirstSetOptions || slicesChanged || dataVersionChanged) {
       this.notify();
     }
   }
@@ -209,25 +314,124 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     return this.dataSourceState;
   }
 
+  /**
+   * R2 fix: Tracks the previously published resolved dataVersion token.
+   * Uses DATA_VERSION_UNSET sentinel to distinguish "never published" from
+   * "published as undefined".
+   *
+   * Initialized to DATA_VERSION_UNSET so that the first setOptions call
+   * registers as a transition when dataVersion IS configured.
+   */
+  private _publishedDataVersion: string | number | undefined | DataVersionUnset =
+    DATA_VERSION_UNSET;
+
+  /**
+   * R2 fix: Tracks whether dataVersion was ever configured on the table.
+   * Distinguishes "dataVersion was configured and then removed" (should notify
+   * on removal) from "dataVersion was never configured" (no-op on first call).
+   */
+  private _dataVersionConfigured = false;
+
   /** @internal Write the data source state. Used by the React hook. */
   __setDataSourceState(state: DataSourceState<TRow>): void {
     const prev = this.dataSourceState;
-    // Only update if status, data, error, or totalRowCount actually changed.
-    // Spreading { ...prev, refetch } creates a new object even when data is same;
-    // we use JSON stringify for deep comparison of the data field.
-    const dataChanged =
-      prev.data !== state.data && JSON.stringify(prev.data) !== JSON.stringify(state.data);
+
+    // F0.5: Treat data identity as reference-based by default.
+    // Reference equality is sufficient for typical data-fetching patterns.
+    // For mutable data patterns (same reference, mutated content), check version.
+    const dataChanged = prev.data !== state.data;
+
+    // R2 fix: Compare the resolved token against the previously published token
+    // (using _publishedDataVersion, which carries the DATA_VERSION_UNSET sentinel
+    // for the "never published" case).  This mirrors the setOptions comparison so
+    // that mutable-data updates are detected even when the same policy reference
+    // is held across calls.
+    //
+    // The version check runs INDEPENDENTLY of data reference changes.  Even when
+    // a new data reference arrives, the version comparison must be consulted so
+    // that the same-version result is correctly skipped (no notify).  This is
+    // critical for SWR patterns where a remote result with the same token
+    // arrives but the data array is a new reference (fresh fetch, same version).
+    //
+    // Always update _publishedDataVersion to newVersion (even when undefined) so
+    // that subsequent calls with the same resolved token are correctly detected
+    // as no-ops.  This ensures Object.is correctly returns true when the same
+    // token is published twice.
+    let versionChanged = false;
+    if (this.options.dataVersion) {
+      const dv = this.options.dataVersion;
+      const newVersion = dv.getVersion ? dv.getVersion(state.data ?? []) : dv.version;
+      // Compare against _publishedDataVersion (which may be the sentinel or a prior token)
+      versionChanged = !Object.is(this._publishedDataVersion, newVersion);
+      // Always update so subsequent same-token calls are correctly no-ops
+      this._publishedDataVersion = newVersion;
+    }
+
+    // R2 fix: Also compare incoming state.dataVersion and cursor transitions.
+    // If the incoming state carries a different dataVersion or cursor, we must notify.
+    const incomingDataVersion = state.dataVersion;
+    const prevDataVersion = prev.dataVersion;
+    const dataVersionFieldChanged = incomingDataVersion !== prevDataVersion;
+
+    // R2 fix: Compare cursor state transitions.
+    const cursorChanged =
+      prev.cursor?.nextCursor !== state.cursor?.nextCursor ||
+      prev.cursor?.previousCursor !== state.cursor?.previousCursor;
+
     const statusChanged = prev.status !== state.status;
     const errorChanged = prev.error !== state.error;
     const totalRowCountChanged = prev.totalRowCount !== state.totalRowCount;
-    if (!statusChanged && !dataChanged && !errorChanged && !totalRowCountChanged) {
-      // Only refetch changed — skip to avoid unnecessary state updates.
+
+    if (
+      !statusChanged &&
+      !dataChanged &&
+      !errorChanged &&
+      !totalRowCountChanged &&
+      !versionChanged &&
+      !dataVersionFieldChanged &&
+      !cursorChanged
+    ) {
+      // No meaningful change — skip to avoid unnecessary state updates.
       this.dataSourceState = state;
       return;
     }
     this.dataSourceState = state;
     // Always call notify() to trigger useSyncExternalStore re-renders
     this.notify();
+  }
+
+  /**
+   * @internal F0.2 / R3-MANUAL-CAPABILITY-OVERLAY: Apply data-source capability
+   * flags as a stable overlay that survives setOptions calls.
+   *
+   * Unlike __setManualFlags (which directly mutated options), this:
+   * 1. Stores the overlay internally
+   * 2. Reapplies it after every setOptions call
+   * 3. Replaces it on source/capability changes
+   * 4. Clears it when source is removed
+   */
+  private _capabilityOverlay: {
+    manualSorting: boolean;
+    manualFiltering: boolean;
+    manualPagination: boolean;
+  } | null = null;
+
+  __applyCapabilityOverlay(
+    overlay: { manualSorting: boolean; manualFiltering: boolean; manualPagination: boolean } | null,
+  ): void {
+    this._capabilityOverlay = overlay;
+    this._applyOverlayToOptions();
+  }
+
+  private _applyOverlayToOptions(): void {
+    if (this._capabilityOverlay) {
+      this.options = {
+        ...this.options,
+        manualSorting: this._capabilityOverlay.manualSorting,
+        manualFiltering: this._capabilityOverlay.manualFiltering,
+        manualPagination: this._capabilityOverlay.manualPagination,
+      };
+    }
   }
 
   /**
@@ -238,8 +442,15 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
    *
    * For controlled slices, uses the consumer-provided state from options.state
    * instead of the internal state.
+   *
+   * v2.0.0: R2 fix - now accepts optional cursor and dataVersion for
+   * cursor-based pagination and mutable data identity.
    */
-  __buildRowsQuery(capabilities: DataSourceCapabilities) {
+  __buildRowsQuery(
+    capabilities: DataSourceCapabilities,
+    cursor?: CursorSelection,
+    dataVersion?: string | number,
+  ) {
     // For controlled slices, use the options state instead of internal state
     const sorting = isSliceControlled(this.options.state, 'sorting')
       ? this.options.state!.sorting!
@@ -257,7 +468,35 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       pagination,
     };
     const columns = this.getResolvedColumns();
-    return buildRowsQuery(state, columns, { capabilities });
+
+    // B7-SERIALIZER-FILTER-FUNCTION fix: Validate for unregistered filter functions
+    // before building the query. If found, throw a FUNCTION_VALUE error so the
+    // caller (useDataSource) can publish error state WITHOUT calling getRows.
+    const unregisteredColumnId = validateNoUnregisteredFilterFns(
+      { sorting, columnFilters, pagination } as DataTableState,
+      columns,
+    );
+    if (unregisteredColumnId !== null) {
+      throw new QueryKeySerializationError(
+        QueryKeySerializationErrorCode.FUNCTION_VALUE,
+        'function',
+        `filters.${unregisteredColumnId}`,
+      );
+    }
+
+    // R2 fix: Thread cursor and dataVersion through to buildRowsQuery.
+    // Use spread to avoid exactOptionalPropertyTypes issues with undefined values.
+    const queryOpts: Parameters<typeof buildRowsQuery>[2] = { capabilities };
+    if (cursor !== undefined) {
+      queryOpts.cursor = cursor;
+    }
+    if (dataVersion !== undefined) {
+      queryOpts.dataVersion = dataVersion;
+    }
+    // B7-SERIALIZER-FILTER-FUNCTION fix: Validate for unregistered filter functions
+    // before building the query. If found, useDataSource will publish error state.
+    // buildRowsQuery returns the raw RowsQuery (backward compatible).
+    return buildRowsQuery(state, columns, queryOpts);
   }
 
   // ─── Row model (M1: filter → sort → paginate pipeline) ─────────────────────
@@ -274,6 +513,11 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // When the data source has fresh data, use it instead of options.data.
     let rows: TRow[] = this.dataSourceState.data ?? options.data;
 
+    // R2 fix: Resolve dataVersion for memo cache.
+    // Use accepted dataVersion from dataSourceState first (remote result token),
+    // then fall back to table-configured token.
+    const dataVersion = this.dataSourceState.dataVersion ?? this.getDataVersion();
+
     if (options.manualFiltering !== true) {
       rows = filterRows({ rows, filters: state.columnFilters, columns });
     }
@@ -287,12 +531,14 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     // Memoize based on the computed rows identity
     const memoKey = this.rowModelCache.getMemoKey();
     const dataChanged = memoKey.data !== rows;
+    // R2 fix: Compare dataVersion for cache validity.
+    const versionChanged = memoKey.dataVersion !== dataVersion;
     const stateChanged =
       memoKey.sorting !== state.sorting ||
       memoKey.columnFilters !== state.columnFilters ||
       memoKey.pagination !== state.pagination;
 
-    if (!dataChanged && !stateChanged && memoKey.cachedRows) {
+    if (!dataChanged && !versionChanged && !stateChanged && memoKey.cachedRows) {
       return memoKey.cachedRows;
     }
 
@@ -329,8 +575,8 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       return base;
     }) as Row<TRow>[];
 
-    // Update cache
-    this.rowModelCache.setCachedResult(rows, state, result);
+    // Update cache with dataVersion
+    this.rowModelCache.setCachedResult(rows, state, result, dataVersion);
     return result;
   }
 
@@ -599,7 +845,10 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   getPageCount(): number {
     const { pageSize } = this.state.pagination;
     if (this.options.manualPagination === true) {
-      const total = this.options.rowCount ?? this.options.data.length;
+      // F0.2: Prefer dataSourceState.totalRowCount (from useDataSource) over options.rowCount.
+      // This keeps total-row count in data-source state rather than mutating table options.
+      const total =
+        this.dataSourceState.totalRowCount ?? this.options.rowCount ?? this.options.data.length;
       return computePageCount(total, pageSize);
     }
     const fullRowCount = this.getFullRowCount();
@@ -608,7 +857,10 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
   getRowCount(): number {
     if (this.options.manualPagination === true) {
-      return this.options.rowCount ?? this.options.data.length;
+      // F0.2: Prefer dataSourceState.totalRowCount (from useDataSource) over options.rowCount.
+      const total =
+        this.dataSourceState.totalRowCount ?? this.options.rowCount ?? this.options.data.length;
+      return total;
     }
     return this.getFullRowCount();
   }
@@ -689,13 +941,19 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
 
   /** Announce a message via the live-region. Used by useDataSource on success. */
   announce = (message: string, politeness: 'polite' | 'assertive' = 'polite'): void => {
-    // Use global announcer if available, otherwise fall back to options announcer.
-    // This allows the React adapter to set up the announcer after the table is created.
-    const global = getGlobalAnnouncer();
-    if (global !== noopAnnouncer) {
-      global.announce(message, politeness);
+    // R5 fix: Prefer the instance announcer (from options) over the global announcer.
+    // The global announcer is only a fallback when no instance announcer is supplied.
+    // This ensures each grid's announcements stay in its own live-region channel
+    // and unmounting one grid cannot replace another's channel.
+    const instance = this.getAnnouncer();
+    if (instance && instance !== noopAnnouncer) {
+      instance.announce(message, politeness);
     } else {
-      this.getAnnouncer().announce(message, politeness);
+      // Fall back to global announcer only when no instance announcer is configured
+      const global = getGlobalAnnouncer();
+      if (global !== noopAnnouncer) {
+        global.announce(message, politeness);
+      }
     }
   };
 
@@ -711,7 +969,7 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
           const next = toggleSortItem(this.state.sorting, id, {
             append: append ?? false,
           });
-          this.applyChange('sorting', next);
+          this.setSorting(next);
         },
         getColumnCount: () => this.getVisibleColumns().length,
         getRowCount: () => this.getRowCount(),
@@ -841,6 +1099,7 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       columnSizing: 'onColumnSizingChange',
       columnSizingInfo: 'onColumnSizingInfoChange',
       focusedCell: 'onFocusedCellChange',
+      rowSelection: 'onRowSelectionChange',
     };
     const o = this.options as unknown as Record<string, unknown>;
     return o[CB[slice as SliceChangeKey]] as ((updater: unknown) => void) | undefined;
@@ -863,6 +1122,7 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
                 'columnSizing',
                 'columnSizingInfo',
                 'focusedCell',
+                'rowSelection',
               ]
             : (Object.keys(this.options.state as object) as Array<keyof DataTableState>),
         )
@@ -887,6 +1147,9 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
       | ((old: DataTableState['sorting']) => DataTableState['sorting']),
   ): void => {
     this.applyChange('sorting', updater);
+    // Filtering and sorting both change the logical result order, so page
+    // offsets must restart from the first page unless explicitly disabled.
+    this.resetPaginationOnQueryChange();
   };
   setColumnFilters = (
     updater: ColumnFilterItem[] | ((old: ColumnFilterItem[]) => ColumnFilterItem[]),
@@ -894,17 +1157,17 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
     this.applyChange('columnFilters', updater);
     // autoResetPageIndex (default true): reset pageIndex to 0 on filter change.
     // Route through the controlled-slice-aware method.
-    this.resetPaginationOnFilterChange();
+    this.resetPaginationOnQueryChange();
     // Announce filter result count.
     this.announce(`Filters applied. ${this.getFullRowCount()} rows.`);
   };
 
   /**
-   * autoResetPageIndex logic. When pagination is uncontrolled, apply the reset
+   * autoResetPageIndex logic for filter/sort changes. When pagination is uncontrolled, apply the reset
    * locally (fires onStateChange). When pagination is controlled, invoke the
    * slice callback only (consumer owns the slice).
    */
-  private resetPaginationOnFilterChange(): void {
+  private resetPaginationOnQueryChange(): void {
     if (this.options.autoResetPageIndex === false) return;
     const prev = this.state;
     const next: DataTableState = {
@@ -951,6 +1214,310 @@ class DataTable<TRow> implements DataTableInstance<TRow> {
   ): void => {
     this.applyChange('focusedCell', updater);
   };
+  setRowSelection = (
+    updater: RowSelectionState | ((old: RowSelectionState) => RowSelectionState),
+  ): void => {
+    this.applyChange('rowSelection', updater);
+  };
+  toggleRowSelected = (rowId: string, mode: 'single' | 'multiple' = 'multiple'): void => {
+    this.setRowSelection((current) => {
+      if (current[rowId]) {
+        const next = { ...current };
+        delete next[rowId];
+        return next;
+      }
+      if (mode === 'single') return { [rowId]: true };
+      return { ...current, [rowId]: true };
+    });
+  };
+  getSelectedRowIds = (): string[] => Object.keys(this.state.rowSelection);
+  getSelectedRows = (): TRow[] => {
+    const rows = this.dataSourceState.data ?? this.options.data;
+    const getRowId = this.options.getRowId ?? defaultGetRowId;
+    return rows.filter((row, index) => this.state.rowSelection[getRowId(row, index)] === true);
+  };
+
+  // ─── State reset (Phase 1 F0.1) ─────────────────────────────────────────────
+
+  /**
+   * Reset all state slices to the constructor-effective baseline.
+   * Respects the controlled-slice contract: if a slice is controlled (present in options.state),
+   * it is NOT reset; only uncontrolled slices are affected.
+   * Emits one atomic notification for all reset slices.
+   */
+  resetState(): void {
+    const slices: SliceChangeKey[] = [
+      'sorting',
+      'columnFilters',
+      'pagination',
+      'columnOrder',
+      'columnVisibility',
+      'columnPinning',
+      'columnSizing',
+      'columnSizingInfo',
+      'focusedCell',
+      'rowSelection',
+    ];
+
+    const prev = this.state;
+    let next = prev;
+    let anyChange = false;
+
+    for (const slice of slices) {
+      const controlled = isSliceControlled(this.options.state, slice);
+      if (controlled) continue; // Skip controlled slices
+
+      const baselineValue = this.constructorBaseline[slice];
+      if (Object.is(prev[slice], baselineValue)) continue; // No change needed
+
+      next = { ...next, [slice]: baselineValue };
+      anyChange = true;
+    }
+
+    if (!anyChange) return;
+
+    this.state = next;
+    this.notifySliceAndAggregate(prev, next);
+  }
+
+  /**
+   * Reset a specific state slice to the constructor-effective baseline.
+   * Respects the controlled-slice contract: if the slice is controlled (present in options.state),
+   * it is NOT reset; the slice callback is invoked instead (consumer owns the state).
+   */
+  resetSlice(slice: keyof DataTableState): void {
+    const controlled = isSliceControlled(this.options.state, slice as SliceChangeKey);
+    if (controlled) {
+      // Controlled slices: invoke the callback with the baseline value to signal reset.
+      // The consumer decides what value to pass back.
+      const cb = this.sliceCallback(slice as SliceChangeKey);
+      if (cb) {
+        cb(this.constructorBaseline[slice as SliceChangeKey]);
+      }
+      return;
+    }
+
+    // Uncontrolled slices: reset to constructor baseline
+    const prev = this.state;
+    const next: DataTableState = {
+      ...prev,
+      [slice]: this.constructorBaseline[slice as SliceChangeKey],
+    };
+
+    if (Object.is(prev[slice], next[slice])) return;
+    this.state = next;
+    this.notifySliceAndAggregate(prev, next);
+  }
+
+  /**
+   * @internal
+   * Prune invalid column IDs from state slices when columns change.
+   * Called by the React adapter after columns are updated.
+   *
+   * R1 fix: Respects the controlled-slice contract. For uncontrolled slices,
+   * prunes directly. For controlled slices, invokes the callback with the
+   * pruned value so the consumer can update their state.
+   */
+  __pruneColumnIds(validColumnIds: Set<string>): void {
+    const prev = this.state;
+    let next = prev;
+    let anyChange = false;
+    // Track which slices changed for notification purposes
+    const changedSlices: SliceChangeKey[] = [];
+
+    // ─── Sorting ────────────────────────────────────────────────────────────────
+    const validSorting = prev.sorting.filter((s) => validColumnIds.has(s.id));
+    const sortingActuallyChanged =
+      validSorting.length !== prev.sorting.length ||
+      !validSorting.every((item, i) => Object.is(item, prev.sorting[i]));
+    if (sortingActuallyChanged) {
+      if (isSliceControlled(this.options.state, 'sorting')) {
+        // Controlled: invoke callback with pruned value
+        const cb = this.sliceCallback('sorting');
+        if (cb) cb(validSorting);
+      } else {
+        // Uncontrolled: apply directly
+        next = { ...next, sorting: validSorting };
+        changedSlices.push('sorting');
+      }
+      anyChange = true;
+    }
+
+    // ─── Column Filters ─────────────────────────────────────────────────────────
+    const validColumnFilters = prev.columnFilters.filter((f) => validColumnIds.has(f.id));
+    const filtersActuallyChanged =
+      validColumnFilters.length !== prev.columnFilters.length ||
+      !validColumnFilters.every((item, i) => Object.is(item, prev.columnFilters[i]));
+    if (filtersActuallyChanged) {
+      if (isSliceControlled(this.options.state, 'columnFilters')) {
+        const cb = this.sliceCallback('columnFilters');
+        if (cb) cb(validColumnFilters);
+      } else {
+        next = { ...next, columnFilters: validColumnFilters };
+        changedSlices.push('columnFilters');
+      }
+      anyChange = true;
+    }
+
+    // ─── Column Order ───────────────────────────────────────────────────────────
+    const validColumnOrder = prev.columnOrder.filter((id) => validColumnIds.has(id));
+    const orderActuallyChanged =
+      validColumnOrder.length !== prev.columnOrder.length ||
+      !validColumnOrder.every((item, i) => Object.is(item, prev.columnOrder[i]));
+    if (orderActuallyChanged) {
+      if (isSliceControlled(this.options.state, 'columnOrder')) {
+        const cb = this.sliceCallback('columnOrder');
+        if (cb) cb(validColumnOrder);
+      } else {
+        next = { ...next, columnOrder: validColumnOrder };
+        changedSlices.push('columnOrder');
+      }
+      anyChange = true;
+    }
+
+    // ─── Column Visibility ───────────────────────────────────────────────────────
+    const validColumnVisibility: Record<string, boolean> = {};
+    for (const id of validColumnIds) {
+      if (Object.prototype.hasOwnProperty.call(prev.columnVisibility, id)) {
+        validColumnVisibility[id] = prev.columnVisibility[id]!;
+      }
+    }
+    const prevVisKeys = Object.keys(prev.columnVisibility).sort();
+    const validVisKeys = Object.keys(validColumnVisibility).sort();
+    let visibilityChanged = false;
+    if (prevVisKeys.length !== validVisKeys.length) {
+      visibilityChanged = true;
+    } else {
+      for (let i = 0; i < prevVisKeys.length; i++) {
+        const k = prevVisKeys[i]!;
+        const validK = validVisKeys[i]!;
+        if (k !== validK || !Object.is(prev.columnVisibility[k], validColumnVisibility[k])) {
+          visibilityChanged = true;
+          break;
+        }
+      }
+    }
+    if (visibilityChanged) {
+      if (isSliceControlled(this.options.state, 'columnVisibility')) {
+        const cb = this.sliceCallback('columnVisibility');
+        if (cb) cb(validColumnVisibility);
+      } else {
+        next = { ...next, columnVisibility: validColumnVisibility };
+        changedSlices.push('columnVisibility');
+      }
+      anyChange = true;
+    }
+
+    // ─── Column Pinning ────────────────────────────────────────────────────────
+    const validLeft = prev.columnPinning.left.filter((id) => validColumnIds.has(id));
+    const validRight = prev.columnPinning.right.filter((id) => validColumnIds.has(id));
+    const pinningActuallyChanged =
+      validLeft.length !== prev.columnPinning.left.length ||
+      !validLeft.every((item, i) => Object.is(item, prev.columnPinning.left[i])) ||
+      validRight.length !== prev.columnPinning.right.length ||
+      !validRight.every((item, i) => Object.is(item, prev.columnPinning.right[i]));
+    if (pinningActuallyChanged) {
+      const newPinning = { left: validLeft, right: validRight };
+      if (isSliceControlled(this.options.state, 'columnPinning')) {
+        const cb = this.sliceCallback('columnPinning');
+        if (cb) cb(newPinning);
+      } else {
+        next = { ...next, columnPinning: newPinning };
+        changedSlices.push('columnPinning');
+      }
+      anyChange = true;
+    }
+
+    // ─── Column Sizing ─────────────────────────────────────────────────────────
+    const validColumnSizing: ColumnSizingState = {};
+    for (const id of validColumnIds) {
+      if (Object.prototype.hasOwnProperty.call(prev.columnSizing, id)) {
+        validColumnSizing[id] = prev.columnSizing[id]!;
+      }
+    }
+    const prevSizingKeys = Object.keys(prev.columnSizing).sort();
+    const validSizingKeys = Object.keys(validColumnSizing).sort();
+    let sizingChanged = false;
+    if (prevSizingKeys.length !== validSizingKeys.length) {
+      sizingChanged = true;
+    } else {
+      for (let i = 0; i < prevSizingKeys.length; i++) {
+        const k = prevSizingKeys[i]!;
+        const validK = validSizingKeys[i]!;
+        if (k !== validK || !Object.is(prev.columnSizing[k], validColumnSizing[k])) {
+          sizingChanged = true;
+          break;
+        }
+      }
+    }
+    if (sizingChanged) {
+      if (isSliceControlled(this.options.state, 'columnSizing')) {
+        const cb = this.sliceCallback('columnSizing');
+        if (cb) cb(validColumnSizing);
+      } else {
+        next = { ...next, columnSizing: validColumnSizing };
+        changedSlices.push('columnSizing');
+      }
+      anyChange = true;
+    }
+
+    // ─── Focused Cell ─────────────────────────────────────────────────────────
+    if (prev.focusedCell !== null && !validColumnIds.has(prev.focusedCell.columnId)) {
+      if (isSliceControlled(this.options.state, 'focusedCell')) {
+        const cb = this.sliceCallback('focusedCell');
+        if (cb) cb(null);
+      } else {
+        next = { ...next, focusedCell: null };
+        changedSlices.push('focusedCell');
+      }
+      anyChange = true;
+    }
+
+    // ─── Column Sizing Info ─────────────────────────────────────────────────────
+    if (prev.columnSizingInfo !== null && !validColumnIds.has(prev.columnSizingInfo.columnId)) {
+      if (isSliceControlled(this.options.state, 'columnSizingInfo')) {
+        const cb = this.sliceCallback('columnSizingInfo');
+        if (cb) cb(null);
+      } else {
+        next = { ...next, columnSizingInfo: null };
+        changedSlices.push('columnSizingInfo');
+      }
+      anyChange = true;
+    }
+
+    if (!anyChange) return;
+
+    // For uncontrolled changes, update state and notify
+    if (changedSlices.length > 0) {
+      this.state = next;
+      this.notify();
+    }
+  }
+
+  /**
+   * Returns the current data version token.
+   *
+   * R2 fix: Exposes version identity at the table boundary for mutable
+   * data patterns. When `dataVersion` is configured with a `getVersion`
+   * function, this method calls it with the current data to derive the token.
+   * When configured with a static `version`, this returns that value.
+   *
+   * @returns The current version token, or undefined if `dataVersion` is not configured.
+   */
+  getDataVersion(): string | number | undefined {
+    const dv = this.options.dataVersion;
+    if (!dv) return undefined;
+
+    // If getVersion is provided, call it with the current data
+    if (dv.getVersion) {
+      // Use the data from the data source if available, otherwise use options.data
+      const data = this.dataSourceState.data ?? this.options.data;
+      return dv.getVersion(data);
+    }
+
+    // Otherwise return the static version token
+    return dv.version;
+  }
 }
 
 /**

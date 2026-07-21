@@ -27,8 +27,18 @@ export function DemoPanel<TRow>({
     pivot,
     getRowId,
     state: { expanded, pivotSorting: sorting },
-    onExpandedChange: setExpanded,
-    onPivotSortingChange: setSorting,
+    onExpandedChange: (updater) =>
+      setExpanded((previous) =>
+        typeof updater === 'function'
+          ? (updater as (value: PivotExpansionState) => PivotExpansionState)(previous)
+          : updater,
+      ),
+    onPivotSortingChange: (updater) =>
+      setSorting((previous) =>
+        typeof updater === 'function'
+          ? (updater as (value: PivotSortingState) => PivotSortingState)(previous)
+          : updater,
+      ),
   });
 
   const visible = instance.getVisibleRows();

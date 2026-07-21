@@ -27,6 +27,7 @@ Requires **React ≥ 18** and **Node ≥ 20**.
 
 | Concern | API |
 |---|---|
+| Rendered grids | `DataGrid`, `PivotGrid`, and `styles.css` |
 | Data table | `useDataTable` hook + prop getters |
 | Pivot table | `usePivotTable` hook + prop getters |
 | Screen-reader announcements | `ReactAnnouncer` / `<Announcer />` + `announce` |
@@ -34,6 +35,33 @@ Requires **React ≥ 18** and **Node ≥ 20**.
 | Column resize | `useResizeHandle` (pointer gesture wiring) |
 | Keyboard navigation | APG roving tabindex via `getGridProps`; `useTabBehavior` for Tab routing |
 | i18n | `messages` prop on hooks; `defaultMessages` for key inspection |
+
+### Rendered grids
+
+Import the default stylesheet once, then use the existing `columnPinning`
+state slice for programmatic frozen columns:
+
+```tsx
+import { DataGrid, PivotGrid } from '@lynellf/tablekit-react';
+import '@lynellf/tablekit-react/styles.css';
+
+<DataGrid
+  rows={people}
+  columns={columns}
+  initialState={{ columnPinning: { left: ['name'], right: ['status'] } }}
+/>
+
+<PivotGrid
+  data={sales}
+  pivot={pivotConfig}
+  initialState={{ columnPinning: { left: ['[2024]::sales'], right: [] } }}
+/>
+```
+
+Pinned columns stay mounted while the center region is virtualized. DataGrid's
+selection control and PivotGrid's row header stay fixed ahead of left-pinned
+columns. PivotGrid promotes a pinned generated leaf to its entire top-level
+column group and keeps the grand-total group right-pinned by default.
 
 ---
 

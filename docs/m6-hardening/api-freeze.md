@@ -1,3 +1,4 @@
+<!-- Historical: true -->
 # v1.0 API Freeze
 
 > Canonical API contract for v1.0.0 — the npm release published from this repo.
